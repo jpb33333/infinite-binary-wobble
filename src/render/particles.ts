@@ -14,6 +14,12 @@ interface Particle {
 // Stardust system. Two responsibilities:
 //   - Ambient drift across the whole canvas at all times (slow, low-density)
 //   - On-demand bursts (e.g. when bodies collide)
+//
+// Global cap: 300 particles. Defends against console-spam DoS — burst()
+// silently drops anything over the cap rather than letting the array grow
+// unboundedly. Ambient (~36) plus the largest legitimate burst (~80) leaves
+// ample headroom. (Caught by /qa Layer 15 DoS audit.)
+const MAX_PARTICLES = 300;
 
 export class Particles {
   private particles: Particle[] = [];
@@ -25,14 +31,17 @@ export class Particles {
 
   // Continuously emits a slow drift so the void feels alive. Call per frame.
   ambient(width: number, height: number, dt: number, target: number = 36): void {
-    while (this.particles.length < target) {
+    const cap = Math.min(target, MAX_PARTICLES);
+    while (this.particles.length < cap) {
       this.spawnDrift(width, height);
     }
     this.update(dt, width, height);
   }
 
   burst(x: number, y: number, count: number, color: string, speed: number = 220): void {
-    for (let i = 0; i < count; i++) {
+    const room = MAX_PARTICLES - this.particles.length;
+    const n = Math.min(count, Math.max(0, room));
+    for (let i = 0; i < n; i++) {
       const angle = this.rng() * Math.PI * 2;
       const s = speed * (0.3 + this.rng() * 0.7);
       this.particles.push({
