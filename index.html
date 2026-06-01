@@ -6,12 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="A two-player gravitational binary-star game." />
     <title>Infinite Binary Wobble</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
+    <!-- Tight content security policy. frame-ancestors is silently
+         ignored when delivered via <meta> (header-only), so iframe-busting
+         is handled in main.ts instead. The directives below DO work via
+         meta and restrict every resource type to same-origin. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self';"
     />
+    <!-- Fonts are self-hosted from /fonts/ via @font-face in style.css —
+         no Google Fonts request on every page load, no IP/UA leak. -->
   </head>
   <body>
     <canvas id="stage" width="1280" height="800" aria-label="Celestial Court"></canvas>

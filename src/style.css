@@ -1,3 +1,33 @@
+/* Self-hosted fonts. The Latin-only subsets we fetched are small (~82KB
+   total) and ship from the same origin as the game — no IP / User-Agent
+   leak to Google on every visit, and no extra round-trip to
+   fonts.googleapis.com. font-display: swap keeps first paint snappy. */
+
+@font-face {
+  font-family: 'Cardo';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/cardo-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Cardo';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/cardo-400-italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  /* Inter ships as a variable font — single woff2 covers 400..600 */
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter-variable.woff2') format('woff2');
+}
+
 html,
 body {
   margin: 0;
