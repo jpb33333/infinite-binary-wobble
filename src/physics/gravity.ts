@@ -1,11 +1,14 @@
 import type { Body } from './Body.ts';
 
 // Plummer-softened Newtonian gravity. Writes accelerations directly to
-// body.accel so the Verlet integrator can consume them with no allocation.
+// body.accel so the integrator can consume them with no allocation.
 //
-//   F_magnitude  =  G · m₁ · m₂ / (r² + ε²)^(3/2)         (vector form below)
-//   a₁           =  G · m₂ · (b - a) / (r² + ε²)^(3/2)
-//   a₂           = -G · m₁ · (b - a) / (r² + ε²)^(3/2)
+//   F⃗_on_a =  G · m_a · m_b · (b - a) / (r² + ε²)^(3/2)     (vector form)
+//   |F|     =  G · m_a · m_b · r / (r² + ε²)^(3/2)            (magnitude)
+//   a⃗_a     =  G · m_b · (b - a) / (r² + ε²)^(3/2)            (accel on a)
+//   a⃗_b     = -G · m_a · (b - a) / (r² + ε²)^(3/2)            (accel on b)
+//
+// (r = |b - a|; ε = softening length.)
 //
 // The Plummer kernel (Aarseth, 1963; standard in N-body codes) regularises
 // the 1/r² singularity at close approach without changing far-field behaviour.

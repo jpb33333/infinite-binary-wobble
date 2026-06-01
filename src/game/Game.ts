@@ -7,7 +7,7 @@ import { ArrowControl } from '../ui/ArrowControl.ts';
 import { eventToCanvas, inRect } from '../ui/input.ts';
 import { Simulation, PHYSICS } from '../physics/Simulation.ts';
 import { vec2 } from '../physics/Vec2.ts';
-import { OutcomeClassifier, type Outcome } from './outcomes.ts';
+import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
 import { Trail } from '../render/trail.ts';
 import { palette } from '../theme.ts';
 
@@ -218,7 +218,9 @@ export class Game {
       p1.mass, vec2(p1.pos.x, p1.pos.y), vec2(p1.vel.x, p1.vel.y),
       p2.mass, vec2(p2.pos.x, p2.pos.y), vec2(p2.vel.x, p2.vel.y),
     );
-    this.classifier = new OutcomeClassifier();
+    this.classifier = new OutcomeClassifier(
+      outcomeConfigForLayout(this.renderer.layout),
+    );
     this.trails.p1.reset();
     this.trails.p2.reset();
     this.outcome = null;

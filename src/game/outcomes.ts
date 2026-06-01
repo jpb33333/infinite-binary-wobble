@@ -41,6 +41,24 @@ export const DEFAULT_OUTCOME_CONFIG: OutcomeConfig = {
   offCanvasPad: 80,
 };
 
+// Build an outcome config from the live court layout — keeps the off-canvas
+// check honest if the canvas ever resizes. Callers should prefer this over
+// DEFAULT_OUTCOME_CONFIG so the classifier and the renderer can't disagree
+// about what "off canvas" means.
+export function outcomeConfigForLayout(layout: {
+  canvas: { width: number; height: number };
+}): OutcomeConfig {
+  return {
+    ...DEFAULT_OUTCOME_CONFIG,
+    canvasBounds: {
+      minX: 0,
+      maxX: layout.canvas.width,
+      minY: 0,
+      maxY: layout.canvas.height,
+    },
+  };
+}
+
 // Stateful classifier — instantiated once per simulation run and asked to
 // `update(sim, dt)` every frame. Tracks orbit count via unwrapped relative
 // angle, and off-canvas-grace via a small timer.

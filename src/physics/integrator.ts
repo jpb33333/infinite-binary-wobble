@@ -1,59 +1,18 @@
 import type { Body } from './Body.ts';
 import { applyGravity } from './gravity.ts';
 
-// Two symplectic integrators for the 2-body Hamiltonian. Both preserve
+// 4th-order symplectic integrator for the 2-body Hamiltonian. Preserves
 // phase-space volume; energy oscillates with bounded amplitude rather than
 // drifting secularly (as Euler / RK4 do for periodic systems).
 //
-//   - verletStep    : kick-drift-kick Velocity Verlet (2nd order, 1 force/step)
-//   - pefrlStep     : Position Extended Forest-Ruth-Like (4th order, 4 forces/step)
-//
 // PEFRL [Omelyan, Mryglod & Folk, 2002] reduces the leading error constant
 // relative to standard 4th-order schemes (e.g. Forest-Ruth, Yoshida 4),
-// giving ~10x smaller energy oscillation than Verlet at the same dt for our
-// 2-body orbital problem. Simulation uses pefrlStep by default; verletStep
-// is kept for tests and reference.
+// giving roughly an order of magnitude smaller energy oscillation at the
+// same dt for our problem.
 //
 // Reference: I.P. Omelyan, I.M. Mryglod, R. Folk, "Symplectic analytically
 // integrable decomposition algorithms" (2002), Computer Physics Communications
 // 146, 188–202.
-
-// ─── Velocity Verlet (2nd order) ───────────────────────────────────────────
-//
-// PRECONDITION: body.accel must hold a(t) at current positions. The
-// Simulation primes this at construction by calling applyGravity once
-// before any step.
-
-export function verletStep(
-  a: Body,
-  b: Body,
-  dt: number,
-  G: number,
-  softening: number,
-): void {
-  const halfDt = 0.5 * dt;
-
-  // First half-kick
-  a.vel.x += a.accel.x * halfDt;
-  a.vel.y += a.accel.y * halfDt;
-  b.vel.x += b.accel.x * halfDt;
-  b.vel.y += b.accel.y * halfDt;
-
-  // Drift
-  a.pos.x += a.vel.x * dt;
-  a.pos.y += a.vel.y * dt;
-  b.pos.x += b.vel.x * dt;
-  b.pos.y += b.vel.y * dt;
-
-  // Recompute acceleration at the new positions
-  applyGravity(a, b, G, softening);
-
-  // Second half-kick
-  a.vel.x += a.accel.x * halfDt;
-  a.vel.y += a.accel.y * halfDt;
-  b.vel.x += b.accel.x * halfDt;
-  b.vel.y += b.accel.y * halfDt;
-}
 
 // ─── PEFRL (4th order) ─────────────────────────────────────────────────────
 //
