@@ -3,14 +3,14 @@ import { Simulation, PHYSICS } from '../src/physics/Simulation.ts';
 import { circularRelativeVelocity } from '../src/physics/orbit.ts';
 import { vec2 } from '../src/physics/Vec2.ts';
 
-// Velocity Verlet is symplectic. It does NOT exactly conserve energy each
-// step — instead it conserves a nearby "shadow Hamiltonian", so the true
-// energy oscillates around the true value with bounded amplitude rather
-// than drifting secularly (as Euler / RK4 would). For a circular orbit
-// this oscillation is small.
+// The Simulation uses PEFRL (Position Extended Forest-Ruth-Like) — a
+// 4th-order symplectic integrator. Like Verlet, it preserves phase-space
+// volume; unlike Verlet, the leading error is O(dt^4) instead of O(dt^2),
+// so the bounded energy oscillation is several orders of magnitude smaller
+// at the same dt. The bounds below are calibrated to lock in that win.
 
-describe('Velocity Verlet energy behavior', () => {
-  test('equal-mass circular orbit: total energy drift < 1% over ~3 orbits', () => {
+describe('PEFRL energy behavior', () => {
+  test('equal-mass circular orbit: total energy drift < 1e-5 over ~3 orbits', () => {
     const m = 2;
     const r = 400; // separation
     const vRelCirc = circularRelativeVelocity(m, m, r, PHYSICS.G);
@@ -30,10 +30,10 @@ describe('Velocity Verlet energy behavior', () => {
 
     const E = sim.orbit().totalEnergy;
     const drift = Math.abs((E - E0) / E0);
-    expect(drift).toBeLessThan(0.01);
+    expect(drift).toBeLessThan(1e-5);
   });
 
-  test('elliptical orbit: total energy bounded < 5% over ~5000 steps', () => {
+  test('elliptical orbit: total energy bounded < 1% over ~5000 steps', () => {
     // Same configuration but tangential velocity at 70% of circular —
     // produces a moderate ellipse. Energy still bounded; tolerance looser
     // because elliptical orbits stress the integrator more at perihelion.
@@ -51,6 +51,28 @@ describe('Velocity Verlet energy behavior', () => {
     for (let i = 0; i < 5000; i++) sim.step();
     const E = sim.orbit().totalEnergy;
     const drift = Math.abs((E - E0) / E0);
-    expect(drift).toBeLessThan(0.05);
+    expect(drift).toBeLessThan(0.01);
+  });
+
+  test('circular orbit: drift stays bounded over a 50,000-step long run (symplectic property)', () => {
+    // Verlet/PEFRL preserve a shadow Hamiltonian, so the error does NOT grow
+    // secularly. This verifies that property: the worst-case drift over 10x
+    // the standard test horizon is still tiny.
+    const m = 2;
+    const r = 400;
+    const vRelCirc = circularRelativeVelocity(m, m, r, PHYSICS.G);
+    const v = vRelCirc / 2;
+    const sim = Simulation.create(
+      m, vec2(-r / 2, 0), vec2(0, +v),
+      m, vec2(+r / 2, 0), vec2(0, -v),
+    );
+    const E0 = sim.initialEnergy;
+    let maxDrift = 0;
+    for (let i = 0; i < 50_000; i++) {
+      sim.step();
+      const d = Math.abs((sim.orbit().totalEnergy - E0) / E0);
+      if (d > maxDrift) maxDrift = d;
+    }
+    expect(maxDrift).toBeLessThan(1e-5);
   });
 });

@@ -3,7 +3,7 @@ import { createBody } from './Body.ts';
 import type { Vec2 } from './Vec2.ts';
 import { vec2 } from './Vec2.ts';
 import { applyGravity } from './gravity.ts';
-import { verletStep } from './integrator.ts';
+import { pefrlStep } from './integrator.ts';
 import type { OrbitState } from './orbit.ts';
 import { computeOrbit } from './orbit.ts';
 
@@ -46,9 +46,12 @@ export class Simulation {
     this.initialEnergy = computeOrbit(a, b, PHYSICS.G).totalEnergy;
   }
 
-  // Single fixed-dt sub-step.
+  // Single fixed-dt sub-step using the 4th-order PEFRL symplectic integrator.
+  // Cost is 4 force evaluations per call (vs 1 for Velocity Verlet) in
+  // exchange for ~10x lower energy oscillation at the same dt — worth it
+  // for a system that may sim indefinitely after a WIN.
   step(dt: number = PHYSICS.DT): void {
-    verletStep(this.a, this.b, dt, PHYSICS.G, PHYSICS.SOFTENING);
+    pefrlStep(this.a, this.b, dt, PHYSICS.G, PHYSICS.SOFTENING);
     this.time += dt;
   }
 

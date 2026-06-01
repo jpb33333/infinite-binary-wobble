@@ -296,9 +296,15 @@ export class Renderer {
       showCenterLine: true,
     });
 
-    // Trails first (under stars)
+    // Trails first (under stars + barycenter)
     drawTrail(ctx, input.trails.p1, palette.player1, 0.85, 0, 2.2);
     drawTrail(ctx, input.trails.p2, palette.player2, 0.85, 0, 2.2);
+
+    // Barycenter — the shared center of mass both stars orbit around.
+    // Drawn dimly behind the stars so it doesn't compete for attention,
+    // but visibly enough to make the metaphor literal: the wobble is
+    // *around this point*.
+    if (input.sim) this.drawBarycenter(input.sim, input.time);
 
     if (input.sim) {
       drawStar(ctx, input.sim.a.pos.x, input.sim.a.pos.y, bodyRadius(input.sim.a.mass), STYLE_P1, input.time);
@@ -309,16 +315,45 @@ export class Renderer {
       const o = input.sim.orbit();
       const boundText = o.bound ? 'BOUND' : 'UNBOUND';
       const boundColor = o.bound ? palette.cream : palette.wine;
+      const eccText = Number.isFinite(o.eccentricity) ? o.eccentricity.toFixed(2) : '∞';
       drawHud(ctx, w, h, [
         { label: 'separation', value: `${o.separation.toFixed(0)} px`, color: palette.rose },
         { label: 'rel. speed', value: `${o.vRel.toFixed(0)} m/s`, color: palette.rose },
         { label: 'energy', value: boundText, color: boundColor },
+        { label: 'ecc.', value: eccText, color: palette.cream },
         { label: 'orbits', value: String(input.classifier.orbits), color: palette.cream },
         { label: 'time', value: `${input.sim.time.toFixed(1)} s`, color: palette.rose },
       ]);
     }
 
     drawPhaseLabel(ctx, 'in motion', w, palette.rose);
+  }
+
+  // A small, dim glow at the shared center of mass. Pulses gently so it
+  // reads as alive rather than as a UI fixture. Drawn additively so it
+  // brightens cleanly when the bodies pass through it.
+  private drawBarycenter(sim: Simulation, time: number): void {
+    const M = sim.a.mass + sim.b.mass;
+    const bx = (sim.a.mass * sim.a.pos.x + sim.b.mass * sim.b.pos.x) / M;
+    const by = (sim.a.mass * sim.a.pos.y + sim.b.mass * sim.b.pos.y) / M;
+    const pulse = 0.5 + 0.5 * Math.sin(time * 1.3);
+
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const haloR = 18;
+    const halo = ctx.createRadialGradient(bx, by, 0, bx, by, haloR);
+    halo.addColorStop(0, rgba(palette.cream, 0.18 + 0.12 * pulse));
+    halo.addColorStop(1, rgba(palette.cream, 0));
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(bx, by, haloR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = rgba(palette.cream, 0.55 + 0.25 * pulse);
+    ctx.beginPath();
+    ctx.arc(bx, by, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   private renderResolved(input: RenderInput): void {
