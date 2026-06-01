@@ -167,28 +167,32 @@ export function drawOutcomeCard(
   outcome: Outcome,
   w: number,
   h: number,
-): { titleColor: string; titleText: string; bodyText: string } {
-  // Background dim
-  ctx.save();
-  ctx.fillStyle = rgba(palette.voidDeep, 0.55);
-  ctx.fillRect(0, 0, w, h);
-  ctx.restore();
-
+): { titleColor: string; titleText: string; bodyText: string; buttonY: number } {
   const card = outcomeText(outcome);
+  const isWin = outcome.kind === 'win';
 
-  // Centered card
-  const cardW = 640;
-  const cardH = 260;
+  // For WIN the orbit itself is the experience — don't dim the canvas and
+  // anchor the card at the bottom so the wobble stays the focus.
+  // For LOSE the sim is frozen, so a centered, more emphatic card reads better.
+  if (!isWin) {
+    ctx.save();
+    ctx.fillStyle = rgba(palette.voidDeep, 0.55);
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
+  const cardW = isWin ? 560 : 640;
+  const cardH = isWin ? 156 : 260;
   const cx = (w - cardW) / 2;
-  const cy = (h - cardH) / 2;
+  const cy = isWin ? h - cardH - 48 : (h - cardH) / 2;
 
   ctx.save();
   ctx.beginPath();
   roundedRectPath(ctx, cx, cy, cardW, cardH, 18);
-  ctx.fillStyle = rgba(palette.voidDeep, 0.92);
+  ctx.fillStyle = rgba(palette.voidDeep, isWin ? 0.78 : 0.92);
   ctx.fill();
   ctx.lineWidth = 1;
-  ctx.strokeStyle = rgba(card.titleColor, 0.6);
+  ctx.strokeStyle = rgba(card.titleColor, isWin ? 0.45 : 0.6);
   ctx.stroke();
   ctx.restore();
 
@@ -196,15 +200,18 @@ export function drawOutcomeCard(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = card.titleColor;
-  ctx.font = `400 44px ${fonts.serif}`;
-  ctx.fillText(card.titleText, w / 2, cy + 92);
+  ctx.font = `400 ${isWin ? 30 : 44}px ${fonts.serif}`;
+  ctx.fillText(card.titleText, w / 2, cy + (isWin ? 44 : 92));
 
   ctx.fillStyle = palette.rose;
-  ctx.font = `italic 400 19px ${fonts.serif}`;
-  ctx.fillText(card.bodyText, w / 2, cy + 142);
+  ctx.font = `italic 400 ${isWin ? 16 : 19}px ${fonts.serif}`;
+  ctx.fillText(card.bodyText, w / 2, cy + (isWin ? 78 : 142));
   ctx.restore();
 
-  return card;
+  // Recommended button Y for the caller (Renderer) — sits below the text on
+  // both layouts but inside the card.
+  const buttonY = isWin ? cy + cardH - 56 : cy + 192;
+  return { ...card, buttonY };
 }
 
 function outcomeText(outcome: Outcome): {

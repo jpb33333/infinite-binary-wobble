@@ -320,7 +320,7 @@ export class Renderer {
     const btn: CanvasButton = {
       label: 'Again',
       x: this.layout.canvas.width / 2 - 90,
-      y: this.layout.canvas.height / 2 + 70,
+      y: card.buttonY,
       width: 180,
       height: 44,
     };
