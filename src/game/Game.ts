@@ -5,7 +5,7 @@ import { PositionControl } from '../ui/PositionControl.ts';
 import { MassControl } from '../ui/MassControl.ts';
 import { ArrowControl } from '../ui/ArrowControl.ts';
 import { eventToCanvas, inRect } from '../ui/input.ts';
-import { Simulation } from '../physics/Simulation.ts';
+import { Simulation, PHYSICS } from '../physics/Simulation.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, type Outcome } from './outcomes.ts';
 import { Trail } from '../render/trail.ts';
@@ -34,6 +34,10 @@ export class Game {
   private lastFrameTime = 0;
   private elapsed = 0;
   private countdownRemaining = COUNTDOWN_SECONDS;
+  // Accumulator for fixed-step physics integration. Real-time dt feeds in;
+  // sim.step() pulls fixed PHYSICS.DT chunks out. Decouples gameplay speed
+  // from frame rate so 60Hz / 120Hz / headless all run at the same speed.
+  private simAccum = 0;
   private burstedOnResolve = false;
   private running = false;
 
@@ -154,6 +158,7 @@ export class Game {
     this.classifier = null;
     this.outcome = null;
     this.burstedOnResolve = false;
+    this.simAccum = 0;
     this.posControl.release();
     this.arrowControl.release();
     this.state = 'setup_p1';
@@ -185,6 +190,7 @@ export class Game {
     this.trails.p2.reset();
     this.outcome = null;
     this.burstedOnResolve = false;
+    this.simAccum = 0;
     this.state = 'simulate';
   }
 
@@ -226,6 +232,20 @@ export class Game {
     requestAnimationFrame(this.tick);
   };
 
+  // Fixed-step integration: feed real-time dt into the accumulator, pull
+  // PHYSICS.DT chunks out. Gameplay speed becomes independent of display
+  // refresh rate — same wall-time orbit on 60Hz, 120Hz, or headless.
+  private advancePhysics(dt: number): void {
+    if (!this.sim) return;
+    this.simAccum += dt;
+    // Hard cap so a long tab-pause doesn't queue thousands of steps.
+    if (this.simAccum > 0.25) this.simAccum = 0.25;
+    while (this.simAccum >= PHYSICS.DT) {
+      this.sim.step();
+      this.simAccum -= PHYSICS.DT;
+    }
+  }
+
   private update(dt: number): void {
     switch (this.state) {
       case 'countdown': {
@@ -235,7 +255,7 @@ export class Game {
       }
       case 'simulate': {
         if (!this.sim || !this.classifier) break;
-        this.sim.advanceFrame();
+        this.advancePhysics(dt);
         this.trails.p1.push(this.sim.a.pos.x, this.sim.a.pos.y);
         this.trails.p2.push(this.sim.b.pos.x, this.sim.b.pos.y);
         const o = this.classifier.update(this.sim, dt);
@@ -245,7 +265,7 @@ export class Game {
       case 'resolved': {
         // For WINs, the wobble keeps going — it really is infinite.
         if (this.sim && this.outcome?.kind === 'win') {
-          this.sim.advanceFrame();
+          this.advancePhysics(dt);
           this.trails.p1.push(this.sim.a.pos.x, this.sim.a.pos.y);
           this.trails.p2.push(this.sim.b.pos.x, this.sim.b.pos.y);
         }
