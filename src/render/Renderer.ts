@@ -213,7 +213,7 @@ export class Renderer {
       : activeSpec.pos.y - starRadius - 4;
     drawTooltip(
       ctx,
-      `mass ${activeSpec.mass.toFixed(1)} · scroll to adjust`,
+      `mass ${activeSpec.mass.toFixed(1)}`,
       activeSpec.pos.x,
       tooltipAnchorY,
       rgba(activeStyle.primary, 1),
@@ -232,13 +232,45 @@ export class Renderer {
       width: 160,
       height: 40,
     };
-    const lockHovered = this.hoveredButton(input.hover) === 'lock_in';
+    const hoveredName = this.hoveredButton(input.hover);
     const okToLock = Math.hypot(activeSpec.vel.x, activeSpec.vel.y) >= 1;
     drawButton(ctx, btn, {
       primary: okToLock ? activeStyle.primary : palette.terracotta,
-      hovered: okToLock && lockHovered,
+      hovered: okToLock && hoveredName === 'lock_in',
     });
     this.buttons.set('lock_in', btn);
+
+    // Touch-friendly mass control. Pill buttons on either side of the LOCK
+    // IN button — large enough to tap with a finger, in the active player's
+    // accent. Desktop users still have the scroll wheel; phone users get
+    // these. Buttons fit in the lock-in row so they don't compete with the
+    // star or the predicted-orbit area.
+    const massBtnSize = 40;
+    const massBtnGap = 18;
+    const massMinus: CanvasButton = {
+      label: '−',
+      x: btn.x - massBtnSize - massBtnGap,
+      y: btn.y + (btn.height - massBtnSize) / 2,
+      width: massBtnSize,
+      height: massBtnSize,
+    };
+    const massPlus: CanvasButton = {
+      label: '+',
+      x: btn.x + btn.width + massBtnGap,
+      y: btn.y + (btn.height - massBtnSize) / 2,
+      width: massBtnSize,
+      height: massBtnSize,
+    };
+    drawButton(ctx, massMinus, {
+      primary: activeStyle.primary,
+      hovered: hoveredName === 'mass_minus',
+    });
+    drawButton(ctx, massPlus, {
+      primary: activeStyle.primary,
+      hovered: hoveredName === 'mass_plus',
+    });
+    this.buttons.set('mass_minus', massMinus);
+    this.buttons.set('mass_plus', massPlus);
 
     if (!okToLock) {
       // Communicate why the button isn't lively — needs a velocity to launch.
@@ -266,7 +298,7 @@ export class Renderer {
     const lines = [
       'DRAG OUTWARD from the star to throw it.',
       'TAP your court to reposition the star.',
-      'SCROLL on the star to set mass.',
+      'TAP − or + to set mass.',
       `Max velocity ${LIMITS.maxVelocityPerBody} m/s.`,
     ];
     let y = 120;

@@ -67,16 +67,22 @@ export class Game {
   // ─────────────────────────────────────────────────────────────── input
 
   private attachInput(canvas: HTMLCanvasElement): void {
-    canvas.addEventListener('mousedown', e => this.onMouseDown(e));
-    canvas.addEventListener('mousemove', e => this.onMouseMove(e));
-    window.addEventListener('mouseup', e => this.onMouseUp(e));
-    canvas.addEventListener('wheel', e => this.onWheel(e), { passive: false });
-    canvas.addEventListener('mouseleave', () => {
+    // PointerEvent unifies mouse + touch + pen, so a finger on a phone routes
+    // through the same code path as a mouse on a laptop. We preventDefault on
+    // pointerdown to claim the gesture as game input (with touch-action: none
+    // in CSS, the browser already gives us this, but defense in depth).
+    canvas.addEventListener('pointerdown', e => this.onPointerDown(e));
+    canvas.addEventListener('pointermove', e => this.onPointerMove(e));
+    window.addEventListener('pointerup', e => this.onPointerUp(e));
+    canvas.addEventListener('pointerleave', () => {
       this.hover = null;
     });
+    canvas.addEventListener('pointercancel', e => this.onPointerUp(e));
+    canvas.addEventListener('wheel', e => this.onWheel(e), { passive: false });
   }
 
-  private onMouseDown(e: MouseEvent): void {
+  private onPointerDown(e: PointerEvent): void {
+    e.preventDefault();
     const p = eventToCanvas(
       e,
       this.renderer.canvas,
@@ -101,6 +107,20 @@ export class Game {
     }
     if (btn === 'again' && this.state === 'resolved') {
       this.toSetup1();
+      return;
+    }
+    // Touch-friendly mass control: tap the [−] or [+] pill to step.
+    // Wheel still works on desktop in parallel.
+    if (
+      (btn === 'mass_minus' || btn === 'mass_plus') &&
+      (this.state === 'setup_p1' || this.state === 'setup_p2')
+    ) {
+      const spec = this.activeSpec();
+      if (spec) {
+        // applyWheel takes a deltaY in browser-wheel convention; the existing
+        // implementation reuses one notch per call, so + / − map directly.
+        this.massControl.applyWheel(spec, btn === 'mass_minus' ? +100 : -100);
+      }
       return;
     }
 
@@ -134,7 +154,10 @@ export class Game {
     }
   }
 
-  private onMouseMove(e: MouseEvent): void {
+  private onPointerMove(e: PointerEvent): void {
+    if (this.posControl.isGrabbing || this.arrowControl.isGrabbing) {
+      e.preventDefault();
+    }
     const p = eventToCanvas(
       e,
       this.renderer.canvas,
@@ -154,7 +177,7 @@ export class Game {
     }
   }
 
-  private onMouseUp(_e: MouseEvent): void {
+  private onPointerUp(_e: PointerEvent): void {
     this.posControl.release();
     this.arrowControl.release();
   }

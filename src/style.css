@@ -59,11 +59,48 @@ body {
   height: 800px;
   cursor: crosshair;
   image-rendering: optimizeQuality;
+  /* On touch devices: claim every gesture as game input — disable browser
+     pinch-zoom, double-tap-zoom, and pull-to-refresh on the canvas. */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 @media (max-width: 1300px) {
   #stage {
     width: 100vw;
     height: calc(100vw * 800 / 1280);
+  }
+}
+
+/* On a narrow portrait viewport (a phone held upright) the 1280×800 canvas
+   shrinks to maybe 390×244 — too small for finger-sized controls. Nudge the
+   player to rotate instead of forcing them to fight cramped buttons. */
+@media (max-width: 700px) and (orientation: portrait) {
+  body {
+    flex-direction: column;
+    gap: 1.2rem;
+    padding: 0 1.5rem;
+    text-align: center;
+  }
+  #stage {
+    display: none;
+  }
+  body::before {
+    content: 'Infinite Binary Wobble';
+    color: #FFC89B;
+    font-family: 'Cardo', Georgia, serif;
+    font-size: 2.2rem;
+    line-height: 1.1;
+  }
+  body::after {
+    content: 'Rotate your phone to landscape to play.';
+    color: #F4A58D;
+    font-family: 'Cardo', Georgia, serif;
+    font-style: italic;
+    font-size: 1.05rem;
+    max-width: 280px;
+    line-height: 1.5;
   }
 }
