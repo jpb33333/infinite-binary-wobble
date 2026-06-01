@@ -345,7 +345,23 @@ export class Game {
             mergedMass: this.supernova.mergedMass,
           }
         : null,
+      cameraOffset: this.computeCameraOffset(),
     });
+  }
+
+  // Centre the camera on the barycenter so the orbit stays watchable even
+  // when net linear momentum drifts the whole system. Returns null in
+  // non-sim states where no offset should apply (title, setup, countdown).
+  private computeCameraOffset(): { x: number; y: number } | null {
+    if (!this.sim) return null;
+    if (this.state !== 'simulate' && this.state !== 'resolved') return null;
+    const M = this.sim.a.mass + this.sim.b.mass;
+    if (!Number.isFinite(M) || M <= 0) return null;
+    const bx = (this.sim.a.mass * this.sim.a.pos.x + this.sim.b.mass * this.sim.b.pos.x) / M;
+    const by = (this.sim.a.mass * this.sim.a.pos.y + this.sim.b.mass * this.sim.b.pos.y) / M;
+    const cx = this.renderer.layout.canvas.width / 2;
+    const cy = this.renderer.layout.canvas.height / 2;
+    return { x: cx - bx, y: cy - by };
   }
 }
 

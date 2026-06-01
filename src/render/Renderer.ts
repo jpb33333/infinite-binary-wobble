@@ -39,6 +39,12 @@ export interface RenderInput {
   // Renderer uses this to animate flash → shockwave → persistent remnant
   // in place of drawing the two original bodies.
   supernova: { x: number; y: number; elapsed: number; mergedMass: number } | null;
+  // World → canvas translation applied to the simulated content (trails,
+  // stars, predicted orbits, barycenter, supernova). Tracks the barycenter
+  // so a drifting binary stays centred on screen — the orbit becomes
+  // watch-forever instead of getting clipped off the edge. null in non-sim
+  // states (no offset needed).
+  cameraOffset: { x: number; y: number } | null;
 }
 
 export class Renderer {
@@ -312,23 +318,22 @@ export class Renderer {
       showCenterLine: true,
     });
 
-    // Analytical orbit overlay — each body's predicted ellipse around the
-    // barycenter, computed from current state. Drawn under the trails so
-    // a tightly-conserved orbit reads as "trail painting exactly along the
-    // prediction." PEFRL keeps them coincident; if they ever diverge,
-    // that's the integrator drifting.
-    if (input.sim) this.drawPredictedOrbits(input.sim);
+    // World → canvas translation. Everything that "belongs to the system"
+    // — trails, predicted orbits, barycenter dot, the two stars or the
+    // merger remnant — is drawn inside this transform so the barycenter
+    // appears at the canvas centre no matter where the system has drifted.
+    // The court, starfield and HUD stay canvas-fixed.
+    ctx.save();
+    if (input.cameraOffset) {
+      ctx.translate(input.cameraOffset.x, input.cameraOffset.y);
+    }
 
-    // Trails on top of prediction so the active history takes precedence
+    if (input.sim) this.drawPredictedOrbits(input.sim);
     drawTrail(ctx, input.trails.p1, palette.player1, 0.85, 0, 2.2);
     drawTrail(ctx, input.trails.p2, palette.player2, 0.85, 0, 2.2);
-
-    // Barycenter — the shared center of mass both stars orbit around.
-    // Hide once the system has collapsed into a single remnant.
     if (input.sim && !input.supernova) this.drawBarycenter(input.sim, input.time);
 
     if (input.supernova) {
-      // The two stars are gone — the merger event replaces them.
       this.drawSupernova(input.supernova, input.time);
     } else if (input.sim) {
       const styleA = this.dopplerTinted(STYLE_P1, input.sim.a);
@@ -336,6 +341,8 @@ export class Renderer {
       drawStar(ctx, input.sim.a.pos.x, input.sim.a.pos.y, bodyRadius(input.sim.a.mass), styleA, input.time);
       drawStar(ctx, input.sim.b.pos.x, input.sim.b.pos.y, bodyRadius(input.sim.b.mass), styleB, input.time + 1.7);
     }
+
+    ctx.restore();
 
     if (input.sim && input.classifier) {
       const o = input.sim.orbit();

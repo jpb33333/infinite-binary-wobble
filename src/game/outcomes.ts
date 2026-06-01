@@ -17,19 +17,20 @@ export interface OutcomeConfig {
   warmupSeconds: number;
 
   // To win: at least this many complete orbits, with eccentricity at or below
-  // this ceiling, both bodies still on the canvas.
+  // this ceiling, both bodies still inside the "in the system" radius.
   winOrbitsRequired: number;
   winMaxEccentricity: number;
 
-  // Either body off-canvas for this long → the system has clearly resolved.
-  // We then call ESCAPE if the system is unbound, SLINGSHOT if it's bound
-  // (the bodies could return eventually but not in any meaningful arc).
+  // With the camera following the barycenter, "off-canvas" stops meaning
+  // "absolute canvas position" — a system can drift forever on screen so
+  // long as the orbit stays compact. Instead we measure each body's
+  // distance from the shared barycenter. If either body sits beyond
+  // maxBodyDistanceFromBarycenter for `offCanvasGraceSeconds`, we declare:
+  //   - ESCAPE  if the system is unbound (ε ≥ 0)
+  //   - SLINGSHOT if it's bound — the orbit is so wide we can't keep it on
+  //     screen even with the camera following.
   offCanvasGraceSeconds: number;
-
-  canvasBounds: { minX: number; maxX: number; minY: number; maxY: number };
-  // Beyond the visible canvas we allow this much margin before considering
-  // a body "off-canvas" — gives near-edge orbits a chance to swing back in.
-  offCanvasPad: number;
+  maxBodyDistanceFromBarycenter: number;
 }
 
 export const DEFAULT_OUTCOME_CONFIG: OutcomeConfig = {
@@ -37,26 +38,18 @@ export const DEFAULT_OUTCOME_CONFIG: OutcomeConfig = {
   winOrbitsRequired: 2,
   winMaxEccentricity: 0.93,
   offCanvasGraceSeconds: 0.6,
-  canvasBounds: { minX: 0, maxX: 1280, minY: 0, maxY: 800 },
-  offCanvasPad: 80,
+  // Threshold tuned so the winning-orbit envelope (e ≤ 0.93, typical sep
+  // ~640 px, equal masses) — apoapsis from barycenter ~720 px — fits
+  // comfortably under the bound. Anything larger reads as SLINGSHOT.
+  maxBodyDistanceFromBarycenter: 820,
 };
 
-// Build an outcome config from the live court layout — keeps the off-canvas
-// check honest if the canvas ever resizes. Callers should prefer this over
-// DEFAULT_OUTCOME_CONFIG so the classifier and the renderer can't disagree
-// about what "off canvas" means.
-export function outcomeConfigForLayout(layout: {
+// Kept for API stability — the classifier no longer needs layout-derived
+// bounds, but callers may pass a layout for forward compatibility.
+export function outcomeConfigForLayout(_layout: {
   canvas: { width: number; height: number };
 }): OutcomeConfig {
-  return {
-    ...DEFAULT_OUTCOME_CONFIG,
-    canvasBounds: {
-      minX: 0,
-      maxX: layout.canvas.width,
-      minY: 0,
-      maxY: layout.canvas.height,
-    },
-  };
+  return { ...DEFAULT_OUTCOME_CONFIG };
 }
 
 // Stateful classifier — instantiated once per simulation run and asked to
@@ -116,9 +109,17 @@ export class OutcomeClassifier {
       return this.resolved;
     }
 
-    const bothOnCanvas = this.onCanvas(sim.a.pos) && this.onCanvas(sim.b.pos);
+    // Compute each body's distance from the shared barycenter. With camera
+    // follow on, the renderer keeps the barycenter centered, so this — not
+    // absolute canvas position — is the honest measure of "too far gone."
+    const M = sim.a.mass + sim.b.mass;
+    const bx = (sim.a.mass * sim.a.pos.x + sim.b.mass * sim.b.pos.x) / M;
+    const by = (sim.a.mass * sim.a.pos.y + sim.b.mass * sim.b.pos.y) / M;
+    const dA = Math.hypot(sim.a.pos.x - bx, sim.a.pos.y - by);
+    const dB = Math.hypot(sim.b.pos.x - bx, sim.b.pos.y - by);
+    const maxBodyDist = Math.max(dA, dB);
 
-    if (!bothOnCanvas) {
+    if (maxBodyDist > this.cfg.maxBodyDistanceFromBarycenter) {
       this.offCanvasTime += dt;
       if (this.offCanvasTime >= this.cfg.offCanvasGraceSeconds) {
         this.resolved = orbit.bound
@@ -126,11 +127,10 @@ export class OutcomeClassifier {
           : { kind: 'lose_escape' };
         return this.resolved;
       }
-      // Still in grace window — neither resolved nor a win this frame.
       return this.resolved;
     }
 
-    // Both bodies on canvas. Reset off-canvas timer; check for win.
+    // Both bodies inside the orbit envelope. Reset the timer; check for win.
     this.offCanvasTime = 0;
 
     if (
@@ -143,16 +143,5 @@ export class OutcomeClassifier {
     }
 
     return this.resolved;
-  }
-
-  private onCanvas(p: { x: number; y: number }): boolean {
-    const b = this.cfg.canvasBounds;
-    const pad = this.cfg.offCanvasPad;
-    return (
-      p.x >= b.minX - pad &&
-      p.x <= b.maxX + pad &&
-      p.y >= b.minY - pad &&
-      p.y <= b.maxY + pad
-    );
   }
 }

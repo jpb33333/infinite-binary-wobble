@@ -3,10 +3,11 @@ import { Simulation, PHYSICS } from '../src/physics/Simulation.ts';
 import { vec2 } from '../src/physics/Vec2.ts';
 import { OutcomeClassifier, DEFAULT_OUTCOME_CONFIG } from '../src/game/outcomes.ts';
 
-const canvas = DEFAULT_OUTCOME_CONFIG.canvasBounds;
-
+// Test geometry centre — equivalent to the canvas centre under the old
+// off-canvas check. With camera follow the absolute bounds no longer
+// matter; we just need a stable reference point for the tests' setups.
 function center(): { x: number; y: number } {
-  return { x: (canvas.minX + canvas.maxX) / 2, y: (canvas.minY + canvas.maxY) / 2 };
+  return { x: 640, y: 400 };
 }
 
 describe('OutcomeClassifier', () => {
