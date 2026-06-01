@@ -50,17 +50,17 @@ Skill routing:
 - `npm run preview` — serve the built bundle locally.
 
 Before every commit: `npm test && npm run build` must both pass.
-Before declaring a UI change done: `npm run dev` and actually play through both setup phases plus a full simulation.
+Before declaring a UI change done: `npm run dev` and actually play through both setup phases plus a full simulation. (Tests cover physics + outcome invariants; they do NOT exercise the canvas, controls, or rendering — only a real browser does.)
 
 ## Architecture (one-paragraph mental model)
 
-`src/main.ts` boots a `Game` (`src/game/Game.ts`) which owns a state machine (`src/game/states.ts`) and a `Simulation` (`src/physics/Simulation.ts`). The Game drives `requestAnimationFrame`; on each frame it advances the `Simulation` (Velocity Verlet integration over two `Body` instances under softened Newtonian gravity), asks `outcomes.ts` to classify the current state (WIN / LOSE_*), and asks the `Renderer` (`src/render/Renderer.ts`) to paint everything. `src/ui/` controls (PositionControl, MassControl, ArrowControl) are active during Setup states only — they directly mutate the relevant `Body` and emit events the Game listens for.
+`src/main.ts` boots a `Game` (`src/game/Game.ts`) which owns a state machine (`src/game/states.ts`) and a `Simulation` (`src/physics/Simulation.ts`). The Game drives `requestAnimationFrame`; on each frame it advances the `Simulation` (PEFRL 4th-order symplectic integration over two `Body` instances under softened Newtonian gravity), asks `outcomes.ts` to classify the current state (WIN / LOSE_*), and asks the `Renderer` (`src/render/Renderer.ts`) to paint everything. `src/ui/` controls (PositionControl, MassControl, ArrowControl) are active during Setup states only — they directly mutate the relevant `Body` and emit events the Game listens for.
 
 ## Critical files
 
 | File | Why it matters |
 |---|---|
-| `src/physics/integrator.ts` | Velocity Verlet step — the heart of orbital correctness |
+| `src/physics/integrator.ts` | PEFRL 4th-order symplectic step — the heart of orbital correctness |
 | `src/physics/orbit.ts` | Energy, angular momentum, eccentricity, period — the inputs to win/lose |
 | `src/game/outcomes.ts` | Classifies every frame as Playing / WIN / LOSE_* — the heart of game design |
 | `src/physics/Simulation.ts` | Owns the two bodies, the time, the warmup gate |
