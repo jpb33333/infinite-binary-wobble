@@ -139,6 +139,7 @@ export function drawTooltip(
   anchorX: number,
   anchorY: number,
   color: string = palette.cream,
+  placement: 'above' | 'below' = 'above',
 ): void {
   ctx.save();
   ctx.font = `500 13px ${fonts.sans}`;
@@ -148,7 +149,11 @@ export function drawTooltip(
   const w = metrics.width + padX * 2;
   const h = 24;
   const x = anchorX - w / 2;
-  const y = anchorY - h - 8;
+  // anchorY for placement='above' = the point ABOVE which the tooltip sits.
+  // anchorY for placement='below' = the point BELOW which it sits.
+  // Callers pick the placement based on whether the anchor is near the top
+  // edge of the canvas (where the help text lives). Found by /qa round 2.
+  const y = placement === 'above' ? anchorY - h - 8 : anchorY + 8;
   ctx.fillStyle = rgba(palette.voidDeep, 0.78);
   ctx.strokeStyle = rgba(color, 0.45);
   ctx.lineWidth = 1;

@@ -180,12 +180,22 @@ export class Renderer {
     );
 
     // Mass tooltip near the star (subtle, always-on)
+    // Place the mass tooltip below the body when the star is in the upper
+    // part of the canvas — otherwise it collides with the help-text block
+    // in the active player's corner (caught by /qa round 2). 240 covers the
+    // four-line help block plus a margin.
+    const starRadius = bodyRadius(activeSpec.mass);
+    const flipBelow = activeSpec.pos.y - starRadius < 240;
+    const tooltipAnchorY = flipBelow
+      ? activeSpec.pos.y + starRadius + 4
+      : activeSpec.pos.y - starRadius - 4;
     drawTooltip(
       ctx,
       `mass ${activeSpec.mass.toFixed(1)} · scroll to adjust`,
       activeSpec.pos.x,
-      activeSpec.pos.y - bodyRadius(activeSpec.mass) - 4,
+      tooltipAnchorY,
       rgba(activeStyle.primary, 1),
+      flipBelow ? 'below' : 'above',
     );
 
     // Help text — short, in the player's accent
