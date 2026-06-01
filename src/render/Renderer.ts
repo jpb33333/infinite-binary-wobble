@@ -50,9 +50,19 @@ export class Renderer {
     if (!ctx) throw new Error('Could not acquire 2D context');
     this.ctx = ctx;
     this.layout = layout;
-    // Internal pixel buffer at design resolution; CSS may scale it visually.
-    canvas.width = layout.canvas.width;
-    canvas.height = layout.canvas.height;
+
+    // Scale the internal pixel buffer by devicePixelRatio so the canvas
+    // renders sharp on retina / high-DPI displays. CSS keeps the LOGICAL
+    // size (1280×800), and we ctx.scale() once so all subsequent drawing
+    // calls work in logical pixels — render code is unaware of the DPR.
+    // (Caught by /qa Layer 3 — was soft on retina.)
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.round(layout.canvas.width * dpr);
+    canvas.height = Math.round(layout.canvas.height * dpr);
+    canvas.style.width = `${layout.canvas.width}px`;
+    canvas.style.height = `${layout.canvas.height}px`;
+    ctx.scale(dpr, dpr);
+
     this.starfield = generateStarfield(layout.canvas.width, layout.canvas.height);
     this.particlesLayer = new Particles();
   }

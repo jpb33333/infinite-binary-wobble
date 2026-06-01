@@ -74,7 +74,12 @@ export class Game {
   }
 
   private onMouseDown(e: MouseEvent): void {
-    const p = eventToCanvas(e, this.renderer.canvas);
+    const p = eventToCanvas(
+      e,
+      this.renderer.canvas,
+      this.renderer.layout.canvas.width,
+      this.renderer.layout.canvas.height,
+    );
     this.hover = p;
 
     // Button clicks first
@@ -127,7 +132,12 @@ export class Game {
   }
 
   private onMouseMove(e: MouseEvent): void {
-    const p = eventToCanvas(e, this.renderer.canvas);
+    const p = eventToCanvas(
+      e,
+      this.renderer.canvas,
+      this.renderer.layout.canvas.width,
+      this.renderer.layout.canvas.height,
+    );
     this.hover = p;
 
     if (this.state === 'setup_p1' || this.state === 'setup_p2') {
@@ -151,7 +161,12 @@ export class Game {
     const spec = this.activeSpec();
     if (!spec) return;
     // Only adjust mass if the wheel is over the active player's region.
-    const p = eventToCanvas(e, this.renderer.canvas);
+    const p = eventToCanvas(
+      e,
+      this.renderer.canvas,
+      this.renderer.layout.canvas.width,
+      this.renderer.layout.canvas.height,
+    );
     const region = spec.player === 1 ? this.renderer.layout.p1Region : this.renderer.layout.p2Region;
     if (!inRect(p, region)) return;
     e.preventDefault();
