@@ -1,0 +1,39 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #1a0f14;
+  color: #ffc89b;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#stage {
+  display: block;
+  background: #1a0f14;
+  max-width: 100vw;
+  max-height: 100vh;
+  width: 1280px;
+  height: 800px;
+  cursor: crosshair;
+  image-rendering: optimizeQuality;
+}
+
+@media (max-width: 1300px) {
+  #stage {
+    width: 100vw;
+    height: calc(100vw * 800 / 1280);
+  }
+}
