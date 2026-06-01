@@ -33,3 +33,25 @@ export function rgba(hex: string, alpha: number): string {
   const b = parseInt(h.slice(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
+
+// Linear-blend two hex colors in sRGB. t=0 returns a, t=1 returns b.
+// Used by the Doppler tint code so a star's primary color shifts toward
+// cream (approaching the observer) or wine (receding) without leaving
+// the palette.
+export function blendHex(a: string, b: string, t: number): string {
+  const ah = a.replace('#', '');
+  const bh = b.replace('#', '');
+  const ar = parseInt(ah.slice(0, 2), 16);
+  const ag = parseInt(ah.slice(2, 4), 16);
+  const ab = parseInt(ah.slice(4, 6), 16);
+  const br = parseInt(bh.slice(0, 2), 16);
+  const bg = parseInt(bh.slice(2, 4), 16);
+  const bb = parseInt(bh.slice(4, 6), 16);
+  const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
+  const k = clamp01(t);
+  const r = Math.round(ar + (br - ar) * k);
+  const g = Math.round(ag + (bg - ag) * k);
+  const bl = Math.round(ab + (bb - ab) * k);
+  const hex = (n: number): string => n.toString(16).padStart(2, '0');
+  return `#${hex(r)}${hex(g)}${hex(bl)}`.toUpperCase();
+}

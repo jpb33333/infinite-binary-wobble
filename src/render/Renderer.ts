@@ -1,4 +1,4 @@
-import { palette, fonts, rgba } from '../theme.ts';
+import { palette, fonts, rgba, blendHex } from '../theme.ts';
 import type { CourtLayout, BodySpec, GameStateKind } from '../game/states.ts';
 import { DEFAULT_LAYOUT, LIMITS } from '../game/states.ts';
 import { generateStarfield, drawStarfield, type StarSpec } from './starfield.ts';
@@ -17,6 +17,7 @@ import {
   type CanvasButton,
 } from './overlay.ts';
 import { bodyRadius } from '../physics/Body.ts';
+import type { Body } from '../physics/Body.ts';
 import type { Simulation } from '../physics/Simulation.ts';
 import type { OutcomeClassifier, Outcome } from '../game/outcomes.ts';
 
@@ -296,19 +297,25 @@ export class Renderer {
       showCenterLine: true,
     });
 
-    // Trails first (under stars + barycenter)
+    // Analytical orbit overlay — each body's predicted ellipse around the
+    // barycenter, computed from current state. Drawn under the trails so
+    // a tightly-conserved orbit reads as "trail painting exactly along the
+    // prediction." PEFRL keeps them coincident; if they ever diverge,
+    // that's the integrator drifting.
+    if (input.sim) this.drawPredictedOrbits(input.sim);
+
+    // Trails on top of prediction so the active history takes precedence
     drawTrail(ctx, input.trails.p1, palette.player1, 0.85, 0, 2.2);
     drawTrail(ctx, input.trails.p2, palette.player2, 0.85, 0, 2.2);
 
     // Barycenter — the shared center of mass both stars orbit around.
-    // Drawn dimly behind the stars so it doesn't compete for attention,
-    // but visibly enough to make the metaphor literal: the wobble is
-    // *around this point*.
     if (input.sim) this.drawBarycenter(input.sim, input.time);
 
     if (input.sim) {
-      drawStar(ctx, input.sim.a.pos.x, input.sim.a.pos.y, bodyRadius(input.sim.a.mass), STYLE_P1, input.time);
-      drawStar(ctx, input.sim.b.pos.x, input.sim.b.pos.y, bodyRadius(input.sim.b.mass), STYLE_P2, input.time + 1.7);
+      const styleA = this.dopplerTinted(STYLE_P1, input.sim.a);
+      const styleB = this.dopplerTinted(STYLE_P2, input.sim.b);
+      drawStar(ctx, input.sim.a.pos.x, input.sim.a.pos.y, bodyRadius(input.sim.a.mass), styleA, input.time);
+      drawStar(ctx, input.sim.b.pos.x, input.sim.b.pos.y, bodyRadius(input.sim.b.mass), styleB, input.time + 1.7);
     }
 
     if (input.sim && input.classifier) {
@@ -316,17 +323,97 @@ export class Renderer {
       const boundText = o.bound ? 'BOUND' : 'UNBOUND';
       const boundColor = o.bound ? palette.cream : palette.wine;
       const eccText = Number.isFinite(o.eccentricity) ? o.eccentricity.toFixed(2) : '∞';
+      const periodText = Number.isFinite(o.period) ? `${o.period.toFixed(1)} s` : '∞';
       drawHud(ctx, w, h, [
         { label: 'separation', value: `${o.separation.toFixed(0)} px`, color: palette.rose },
         { label: 'rel. speed', value: `${o.vRel.toFixed(0)} m/s`, color: palette.rose },
         { label: 'energy', value: boundText, color: boundColor },
         { label: 'ecc.', value: eccText, color: palette.cream },
+        { label: 'period', value: periodText, color: palette.rose },
         { label: 'orbits', value: String(input.classifier.orbits), color: palette.cream },
         { label: 'time', value: `${input.sim.time.toFixed(1)} s`, color: palette.rose },
       ]);
     }
 
     drawPhaseLabel(ctx, 'in motion', w, palette.rose);
+  }
+
+  // Doppler tint — the actual mechanism by which binary stars' wobble is
+  // detected from Earth. We pick a fixed observer below the canvas; each
+  // body's radial velocity toward that observer warms its color toward
+  // cream (approaching, "blue-shifted" in our warm palette) or wine
+  // (receding, red-shifted). The orbit's geometry guarantees this tint
+  // pulses sinusoidally with the orbital phase.
+  private dopplerTinted(style: StarStyle, body: Body): StarStyle {
+    const OBS_X = 640;
+    const OBS_Y = 1500; // far below the canvas
+    const REFERENCE_V = 250; // ~typical orbital speed; full tint at this radial v
+    const MAX_BLEND = 0.35; // never replace the body color, just shift it
+
+    const dx = OBS_X - body.pos.x;
+    const dy = OBS_Y - body.pos.y;
+    const inv = 1 / Math.hypot(dx, dy);
+    const radial = (body.vel.x * dx + body.vel.y * dy) * inv;
+    const shift = Math.max(-1, Math.min(1, radial / REFERENCE_V));
+    const target = shift > 0 ? palette.cream : palette.wine;
+    const amount = Math.abs(shift) * MAX_BLEND;
+    return { ...style, primary: blendHex(style.primary, target, amount) };
+  }
+
+  // Each body traces its own ellipse around the barycenter focus. With the
+  // signed angular momentum + eccentricity vector in hand, drawing the
+  // prediction is just trig.
+  //
+  // Body 1's individual orbit: a_1 = a_rel · m_2 / M; periapsis along ω + π.
+  // Body 2's individual orbit: a_2 = a_rel · m_1 / M; periapsis along ω.
+  // Both share e and the barycenter focus.
+  private drawPredictedOrbits(sim: Simulation): void {
+    const o = sim.orbit();
+    if (!o.bound || !Number.isFinite(o.semiMajorAxis)) return;
+    if (o.eccentricity >= 0.999) return; // near-parabolic — ellipse degenerates
+
+    const M = sim.a.mass + sim.b.mass;
+    const bx = (sim.a.mass * sim.a.pos.x + sim.b.mass * sim.b.pos.x) / M;
+    const by = (sim.a.mass * sim.a.pos.y + sim.b.mass * sim.b.pos.y) / M;
+
+    const aRel = o.semiMajorAxis;
+    const e = o.eccentricity;
+    const sqrtOneMinusESq = Math.sqrt(1 - e * e);
+    const omega = o.argumentOfPeriapsis;
+
+    const a1 = aRel * (sim.b.mass / M);
+    const a2 = aRel * (sim.a.mass / M);
+    const b1 = a1 * sqrtOneMinusESq;
+    const b2 = a2 * sqrtOneMinusESq;
+    const c1 = a1 * e;
+    const c2 = a2 * e;
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+
+    // Body 1 — periapsis opposite body 2 (mirror across barycenter)
+    ctx.strokeStyle = rgba(palette.player1, 0.22);
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate(omega + Math.PI);
+    ctx.beginPath();
+    ctx.ellipse(-c1, 0, a1, b1, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Body 2 — periapsis along the eccentricity vector
+    ctx.strokeStyle = rgba(palette.player2, 0.22);
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate(omega);
+    ctx.beginPath();
+    ctx.ellipse(-c2, 0, a2, b2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore();
   }
 
   // A small, dim glow at the shared center of mass. Pulses gently so it

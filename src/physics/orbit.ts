@@ -21,6 +21,12 @@ export interface OrbitState {
   period: number;                  // T = 2π√(a³/GM); Infinity when unbound
   escapeVelocity: number;          // √(2GM/r) at current separation
   bound: boolean;                  // ε < 0
+  // Direction (radians) from the barycenter focus to periapsis of the
+  // RELATIVE orbit. Undefined for a perfect circle; we just return the
+  // atan2 of the (numerically) tiny eccentricity vector — fine for drawing
+  // a circle either way. This is the conserved quantity that lets us
+  // predict the full orbital ellipse from any single state snapshot.
+  argumentOfPeriapsis: number;
 }
 
 export function computeOrbit(a: Body, b: Body, G: number): OrbitState {
@@ -36,7 +42,10 @@ export function computeOrbit(a: Body, b: Body, G: number): OrbitState {
   const specificEnergy = 0.5 * vRelSq - (G * M) / separation;
   const totalEnergy = muReduced * specificEnergy;
 
-  const specificAngularMomentum = Math.abs(crossZ(r, v));
+  // Keep the signed z-component so the eccentricity vector below has the
+  // right orientation; the public magnitude stays in `specificAngularMomentum`.
+  const hZ = crossZ(r, v);
+  const specificAngularMomentum = Math.abs(hZ);
 
   // e² = 1 + 2·ε·h² / (G·M)²
   const inside =
@@ -44,6 +53,15 @@ export function computeOrbit(a: Body, b: Body, G: number): OrbitState {
     (2 * specificEnergy * specificAngularMomentum * specificAngularMomentum) /
       ((G * M) * (G * M));
   const eccentricity = inside > 0 ? Math.sqrt(inside) : 0;
+
+  // Eccentricity vector points from the focus to periapsis along the orbit's
+  // major axis. In 3D: e_vec = (v × h)/μ − r̂. In 2D with h = (0, 0, h_z):
+  //   e_x = (v_y · h_z) / μ − r_x / |r|
+  //   e_y = (−v_x · h_z) / μ − r_y / |r|
+  const muG = G * M;
+  const eVecX = (v.y * hZ) / muG - r.x / separation;
+  const eVecY = (-v.x * hZ) / muG - r.y / separation;
+  const argumentOfPeriapsis = Math.atan2(eVecY, eVecX);
 
   const semiMajorAxis =
     specificEnergy < 0 ? -(G * M) / (2 * specificEnergy) : Infinity;
@@ -64,6 +82,7 @@ export function computeOrbit(a: Body, b: Body, G: number): OrbitState {
     semiMajorAxis,
     period,
     escapeVelocity,
+    argumentOfPeriapsis,
     bound: specificEnergy < 0,
   };
 }
