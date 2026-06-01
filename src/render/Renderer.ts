@@ -156,8 +156,9 @@ export class Renderer {
         ctx,
         input.specs.p1.pos,
         input.specs.p1.vel,
-        rgba(palette.player1, 0.45),
+        palette.player1,
         false,
+        0.55, // dim — locked, not the focus
       );
     } else {
       // We are P1 setting up; P2's spec is the default and shouldn't render

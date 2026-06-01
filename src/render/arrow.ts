@@ -8,8 +8,9 @@ export function drawVelocityArrow(
   ctx: CanvasRenderingContext2D,
   origin: { x: number; y: number },
   vel: { x: number; y: number },
-  color: string,
+  color: string, // HEX (e.g. "#E8956F") — never an rgba() string; `rgba()` below assumes hex
   showTooltip: boolean = true,
+  alpha: number = 1.0, // scale every internal alpha; lets callers dim a locked-in arrow
 ): void {
   const mag = Math.hypot(vel.x, vel.y);
   if (mag < 0.5) return; // don't draw a degenerate arrow
@@ -21,7 +22,7 @@ export function drawVelocityArrow(
   const tipY = origin.y + vel.y;
 
   ctx.save();
-  ctx.strokeStyle = rgba(color, 0.85);
+  ctx.strokeStyle = rgba(color, 0.85 * alpha);
   ctx.lineWidth = 2.2;
   ctx.lineCap = 'round';
   ctx.beginPath();
@@ -49,7 +50,7 @@ export function drawVelocityArrow(
   // Glow at the tip — pulls the eye to the drag handle
   ctx.globalCompositeOperation = 'lighter';
   const glow = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, 18);
-  glow.addColorStop(0, rgba(color, 0.6));
+  glow.addColorStop(0, rgba(color, 0.6 * alpha));
   glow.addColorStop(1, rgba(color, 0));
   ctx.fillStyle = glow;
   ctx.beginPath();
