@@ -27,6 +27,57 @@ export const PHYSICS = {
   WARMUP_SECONDS: 0.6, // give the outcome classifier this much settle time
 } as const;
 
+// Defence-in-depth bounds enforced at the boundary into the physics layer.
+// The UI clamps everything to narrower ranges (LIMITS in game/states.ts);
+// these absolute bounds catch anyone who bypasses the UI — e.g., via DevTools
+// mutation of a BodySpec between SETUP and COUNTDOWN. They are intentionally
+// generous (~10–30× wider than UI ranges) so the physics simulation stays
+// inside well-defined numerical territory even on the cheating path. Any
+// non-finite input (NaN, ±Infinity) is replaced by a default before clamping.
+const SAFE_INPUT = {
+  minMass: 0.01,
+  maxMass: 1e3,
+  defaultMass: 2.5,
+  maxSpeedComponent: 1e4, // per-component cap (each of vx, vy)
+  defaultVelComponent: 0,
+  maxPosMagnitude: 1e5, // each of |x|, |y|
+  defaultPosComponent: 0,
+} as const;
+
+function finite(x: number, fallback: number): number {
+  return Number.isFinite(x) ? x : fallback;
+}
+
+function clampInRange(x: number, lo: number, hi: number): number {
+  if (x < lo) return lo;
+  if (x > hi) return hi;
+  return x;
+}
+
+function sanitizeMass(m: number): number {
+  return clampInRange(
+    finite(m, SAFE_INPUT.defaultMass),
+    SAFE_INPUT.minMass,
+    SAFE_INPUT.maxMass,
+  );
+}
+
+function sanitizePosComponent(p: number): number {
+  return clampInRange(
+    finite(p, SAFE_INPUT.defaultPosComponent),
+    -SAFE_INPUT.maxPosMagnitude,
+    SAFE_INPUT.maxPosMagnitude,
+  );
+}
+
+function sanitizeVelComponent(v: number): number {
+  return clampInRange(
+    finite(v, SAFE_INPUT.defaultVelComponent),
+    -SAFE_INPUT.maxSpeedComponent,
+    SAFE_INPUT.maxSpeedComponent,
+  );
+}
+
 export class Simulation {
   readonly a: Body;
   readonly b: Body;
@@ -68,14 +119,23 @@ export class Simulation {
     return computeOrbit(this.a, this.b, PHYSICS.G);
   }
 
-  // Convenience constructor from raw numbers — used by both gameplay
-  // setup and physics tests.
+  // Convenience constructor from raw numbers — used by both gameplay setup
+  // and physics tests. Inputs are *sanitized* at this boundary against
+  // non-finite values and absurd magnitudes; see SAFE_INPUT above.
   static create(
     m1: number, pos1: Vec2, vel1: Vec2,
     m2: number, pos2: Vec2, vel2: Vec2,
   ): Simulation {
-    const a = createBody(m1, vec2(pos1.x, pos1.y), vec2(vel1.x, vel1.y));
-    const b = createBody(m2, vec2(pos2.x, pos2.y), vec2(vel2.x, vel2.y));
+    const a = createBody(
+      sanitizeMass(m1),
+      vec2(sanitizePosComponent(pos1.x), sanitizePosComponent(pos1.y)),
+      vec2(sanitizeVelComponent(vel1.x), sanitizeVelComponent(vel1.y)),
+    );
+    const b = createBody(
+      sanitizeMass(m2),
+      vec2(sanitizePosComponent(pos2.x), sanitizePosComponent(pos2.y)),
+      vec2(sanitizeVelComponent(vel2.x), sanitizeVelComponent(vel2.y)),
+    );
     return new Simulation(a, b);
   }
 }
