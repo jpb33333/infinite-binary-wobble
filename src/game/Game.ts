@@ -13,7 +13,6 @@ import { palette } from '../theme.ts';
 
 const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
-const POST_RESOLVE_PARTICLE_BURST = 80;
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
 
 export class Game {
@@ -40,6 +39,10 @@ export class Game {
   private simAccum = 0;
   private burstedOnResolve = false;
   private running = false;
+  // Supernova scene: { x, y } of the merger point, plus the elapsed-time
+  // marker at the moment of collision so Renderer can animate the flash,
+  // shockwave and remnant in real time. null at all other times.
+  private supernova: { x: number; y: number; t0: number; mergedMass: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas, DEFAULT_LAYOUT);
@@ -188,6 +191,7 @@ export class Game {
     this.outcome = null;
     this.burstedOnResolve = false;
     this.simAccum = 0;
+    this.supernova = null;
     this.posControl.release();
     this.arrowControl.release();
     this.state = 'setup_p1';
@@ -220,6 +224,7 @@ export class Game {
     this.outcome = null;
     this.burstedOnResolve = false;
     this.simAccum = 0;
+    this.supernova = null;
     this.state = 'simulate';
   }
 
@@ -229,11 +234,22 @@ export class Game {
     if (!this.burstedOnResolve && this.sim) {
       this.burstedOnResolve = true;
       if (o.kind === 'lose_collision') {
+        // Two stars merging at high contrast deserve a real stellar event:
+        // record the merger position + the elapsed-time anchor so the
+        // Renderer can animate the flash, shockwave and remnant. Also
+        // throw a heavy particle burst — capped by Particles' MAX so the
+        // request value is generous, the actual count clamps below.
         const mid = {
           x: (this.sim.a.pos.x + this.sim.b.pos.x) / 2,
           y: (this.sim.a.pos.y + this.sim.b.pos.y) / 2,
         };
-        this.renderer.burst(mid.x, mid.y, POST_RESOLVE_PARTICLE_BURST, palette.cream);
+        this.supernova = {
+          x: mid.x,
+          y: mid.y,
+          t0: this.elapsed,
+          mergedMass: this.sim.a.mass + this.sim.b.mass,
+        };
+        this.renderer.burst(mid.x, mid.y, 240, palette.cream, 360);
       } else if (o.kind === 'win') {
         this.renderer.burst(this.sim.a.pos.x, this.sim.a.pos.y, 24, palette.player1);
         this.renderer.burst(this.sim.b.pos.x, this.sim.b.pos.y, 24, palette.player2);
@@ -319,6 +335,14 @@ export class Game {
       trails: this.trails,
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
+      supernova: this.supernova
+        ? {
+            x: this.supernova.x,
+            y: this.supernova.y,
+            elapsed: this.elapsed - this.supernova.t0,
+            mergedMass: this.supernova.mergedMass,
+          }
+        : null,
     });
   }
 }

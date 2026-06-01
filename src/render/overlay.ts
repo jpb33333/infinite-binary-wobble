@@ -172,7 +172,7 @@ export function drawOutcomeCard(
   outcome: Outcome,
   w: number,
   h: number,
-): { titleColor: string; titleText: string; bodyText: string; buttonY: number } {
+): { titleColor: string; titleText: string; bodyText: string; buttonY: number; carseY: number } {
   const card = outcomeText(outcome);
   const isWin = outcome.kind === 'win';
 
@@ -186,10 +186,12 @@ export function drawOutcomeCard(
     ctx.restore();
   }
 
-  const cardW = isWin ? 560 : 640;
-  const cardH = isWin ? 156 : 260;
+  // Cards now include the Carse footer INSIDE their bounds, so heights are
+  // sized to fit title + body + button + 3 italic footer lines.
+  const cardW = isWin ? 600 : 660;
+  const cardH = isWin ? 232 : 308;
   const cx = (w - cardW) / 2;
-  const cy = isWin ? h - cardH - 48 : (h - cardH) / 2;
+  const cy = isWin ? h - cardH - 40 : (h - cardH) / 2;
 
   ctx.save();
   ctx.beginPath();
@@ -206,17 +208,17 @@ export function drawOutcomeCard(
   ctx.textBaseline = 'middle';
   ctx.fillStyle = card.titleColor;
   ctx.font = `400 ${isWin ? 30 : 44}px ${fonts.serif}`;
-  ctx.fillText(card.titleText, w / 2, cy + (isWin ? 44 : 92));
+  ctx.fillText(card.titleText, w / 2, cy + (isWin ? 40 : 76));
 
   ctx.fillStyle = palette.rose;
   ctx.font = `italic 400 ${isWin ? 16 : 19}px ${fonts.serif}`;
-  ctx.fillText(card.bodyText, w / 2, cy + (isWin ? 78 : 142));
+  ctx.fillText(card.bodyText, w / 2, cy + (isWin ? 72 : 122));
   ctx.restore();
 
-  // Recommended button Y for the caller (Renderer) — sits below the text on
-  // both layouts but inside the card.
-  const buttonY = isWin ? cy + cardH - 56 : cy + 192;
-  return { ...card, buttonY };
+  const buttonY = isWin ? cy + 96 : cy + 156;
+  // Carse footer goes below the button, still inside the card.
+  const carseY = buttonY + 44 + 8; // button height + small gap
+  return { ...card, buttonY, carseY };
 }
 
 function outcomeText(outcome: Outcome): {
@@ -235,19 +237,19 @@ function outcomeText(outcome: Outcome): {
       return {
         titleColor: palette.player1,
         titleText: 'Lost to the void.',
-        bodyText: 'You moved too fast, or apart.',
+        bodyText: 'You can’t lose each other.',
       };
     case 'lose_slingshot':
       return {
         titleColor: palette.player2,
         titleText: 'A long arc home.',
-        bodyText: 'Bound, but too far to mean it.',
+        bodyText: 'You can’t lose each other.',
       };
     case 'lose_collision':
       return {
         titleColor: palette.wine,
         titleText: 'Touched, and undone.',
-        bodyText: 'Too direct, too soon.',
+        bodyText: 'You can’t lose yourself.',
       };
     default:
       return { titleColor: palette.cream, titleText: '', bodyText: '' };

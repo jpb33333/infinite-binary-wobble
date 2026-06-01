@@ -34,6 +34,11 @@ export interface RenderInput {
   trails: { p1: Trail; p2: Trail };
   posGrabbing: boolean;
   arrowGrabbing: boolean;
+  // Set when the two bodies have merged; carries the merger location,
+  // wall-time elapsed since the collision, and the combined mass. The
+  // Renderer uses this to animate flash → shockwave → persistent remnant
+  // in place of drawing the two original bodies.
+  supernova: { x: number; y: number; elapsed: number; mergedMass: number } | null;
 }
 
 export class Renderer {
@@ -67,8 +72,8 @@ export class Renderer {
     this.particlesLayer = new Particles();
   }
 
-  burst(x: number, y: number, count: number, color: string): void {
-    this.particlesLayer.burst(x, y, count, color);
+  burst(x: number, y: number, count: number, color: string, speed?: number): void {
+    this.particlesLayer.burst(x, y, count, color, speed);
   }
 
   // Returns the button (in canvas-space) hovered by the pointer, if any.
@@ -319,9 +324,13 @@ export class Renderer {
     drawTrail(ctx, input.trails.p2, palette.player2, 0.85, 0, 2.2);
 
     // Barycenter — the shared center of mass both stars orbit around.
-    if (input.sim) this.drawBarycenter(input.sim, input.time);
+    // Hide once the system has collapsed into a single remnant.
+    if (input.sim && !input.supernova) this.drawBarycenter(input.sim, input.time);
 
-    if (input.sim) {
+    if (input.supernova) {
+      // The two stars are gone — the merger event replaces them.
+      this.drawSupernova(input.supernova, input.time);
+    } else if (input.sim) {
       const styleA = this.dopplerTinted(STYLE_P1, input.sim.a);
       const styleB = this.dopplerTinted(STYLE_P2, input.sim.b);
       drawStar(ctx, input.sim.a.pos.x, input.sim.a.pos.y, bodyRadius(input.sim.a.mass), styleA, input.time);
@@ -453,12 +462,89 @@ export class Renderer {
     ctx.restore();
   }
 
+  // Stellar merger animation. Three phases, all additive so they overlap
+  // cleanly with whatever's underneath:
+  //   t ∈ [0, 0.18]    flash    — bright cream radial gradient, eases out
+  //   t ∈ [0.05, 2.5]  shockwave — expanding ring, fades as it grows
+  //   t ∈ [0.25, ∞]    remnant   — single bright body at the merger point,
+  //                                a soft pulsing glow, masses combined.
+  // The flash + shock ring carry the "supernova" moment; the remnant gives
+  // the card something to sit on top of when the eye returns to it.
+  private drawSupernova(
+    s: { x: number; y: number; elapsed: number; mergedMass: number },
+    time: number,
+  ): void {
+    const { ctx } = this;
+    const t = Math.max(0, s.elapsed);
+
+    // Phase 1 — flash
+    if (t < 0.5) {
+      const k = Math.min(1, t / 0.18);
+      const fade = (1 - k) ** 2;
+      const r = 240 + k * 520;
+      const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
+      g.addColorStop(0, rgba(palette.cream, fade));
+      g.addColorStop(0.25, rgba(palette.cream, fade * 0.55));
+      g.addColorStop(1, rgba(palette.cream, 0));
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Phase 2 — shockwave (two staggered rings for extra texture)
+    for (const lag of [0.05, 0.32]) {
+      const tt = t - lag;
+      if (tt > 0 && tt < 2.5) {
+        const u = tt / 2.5;
+        const rr = u * 760;
+        const a = (1 - u) ** 2 * 0.65;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = rgba(palette.cream, a);
+        ctx.lineWidth = 3 - u * 2;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, rr, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Phase 3 — persistent merged remnant. Combined mass → larger body;
+    // primary color is a blend of P1 + P2 so the visual records what was
+    // lost. Gently pulses to read as alive rather than a sticker.
+    if (t > 0.25) {
+      const settle = Math.min(1, (t - 0.25) / 0.6);
+      const radius = bodyRadius(s.mergedMass) * (0.7 + 0.5 * settle);
+      const pulse = 0.5 + 0.5 * Math.sin(time * 2.4);
+      const blendedPrimary = blendHex(palette.player1, palette.player2, 0.5);
+      const remnantStyle: StarStyle = {
+        primary: blendedPrimary,
+        core: palette.cream,
+        haloAlpha: 0.7 + 0.25 * pulse,
+        haloRadiusFactor: 3.2,
+      };
+      drawStar(ctx, s.x, s.y, radius, remnantStyle, time + 0.7);
+    }
+  }
+
   private renderResolved(input: RenderInput): void {
     // Always draw the underlying scene first so the card sits on top
     this.renderSimulate(input);
 
     if (!input.outcome) return;
     const card = drawOutcomeCard(this.ctx, input.outcome, this.layout.canvas.width, this.layout.canvas.height);
+
+    // The merger event is the whole moment for a collision outcome — let it
+    // sit ABOVE the card so the remnant stays visible behind the message.
+    // (The card body is mostly opaque otherwise; redrawing the supernova
+    // here punches the bright glow back through.)
+    if (input.supernova) {
+      this.drawSupernova(input.supernova, input.time);
+    }
 
     const btn: CanvasButton = {
       label: 'Again',
@@ -470,6 +556,34 @@ export class Renderer {
     const hovered = this.hoveredButton(input.hover) === 'again';
     drawButton(this.ctx, btn, { primary: card.titleColor, hovered });
     this.buttons.set('again', btn);
+
+    // The Carse footer — same on every outcome, drawn INSIDE the card at
+    // the position drawOutcomeCard computed. The finite-game / infinite-game
+    // distinction is the whole point of the game; this reminds the players
+    // what they're really doing every time the AGAIN button appears.
+    this.drawCarseFooter(card.carseY);
+  }
+
+  private drawCarseFooter(topY: number): void {
+    const { ctx } = this;
+    const w = this.layout.canvas.width;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = rgba(palette.rose, 0.55);
+    ctx.font = `italic 400 12px ${fonts.serif}`;
+    const lineHeight = 16;
+    const lines = [
+      'Remember, this is just a finite game.',
+      'The real infinite game is played for its own sake',
+      'and is only won by playing again and again.',
+    ];
+    let y = topY;
+    for (const line of lines) {
+      ctx.fillText(line, w / 2, y);
+      y += lineHeight;
+    }
+    ctx.restore();
   }
 
   private drawSpecStar(spec: BodySpec, style: StarStyle, time: number): void {
