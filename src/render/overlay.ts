@@ -191,7 +191,11 @@ export function drawOutcomeCard(
   const cardW = isWin ? 600 : 660;
   const cardH = isWin ? 232 : 308;
   const cx = (w - cardW) / 2;
-  const cy = isWin ? h - cardH - 40 : (h - cardH) / 2;
+  // WIN card is bottom-anchored; the bottom 56px belong to the HUD strip
+  // (label baseline at h−44, value baseline at h−28, ascenders to ~h−53).
+  // Margin must clear that band with breathing room or the card's translucent
+  // fill bleeds over the labels.
+  const cy = isWin ? h - cardH - 72 : (h - cardH) / 2;
 
   ctx.save();
   ctx.beginPath();
