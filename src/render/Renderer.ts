@@ -149,6 +149,16 @@ export class Renderer {
     // (if it's their first time and P2 hasn't entered setup yet).
     if (activePlayer === 2) {
       this.drawSpecStar(input.specs.p1, dimmed(STYLE_P1), input.time);
+      // Show P1's locked velocity vector so P2 can plan a complementary
+      // trajectory — without this, P2 is guessing at half the system.
+      // No tooltip (the magnitude is implicit in the arrow length).
+      drawVelocityArrow(
+        ctx,
+        input.specs.p1.pos,
+        input.specs.p1.vel,
+        rgba(palette.player1, 0.45),
+        false,
+      );
     } else {
       // We are P1 setting up; P2's spec is the default and shouldn't render
       // yet — keep their side empty so the only attention is on the active
