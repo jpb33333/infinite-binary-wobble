@@ -96,18 +96,32 @@ export class Game {
       return;
     }
 
-    // Setup-phase dragging
+    // Setup-phase dragging.
+    //
+    // Mental model the player actually has:
+    //   • "Drag outward FROM the star to throw it." → mousedown on the body,
+    //     drag away to set velocity.
+    //   • "Tap somewhere else in my court to reposition the star." → mousedown
+    //     anywhere else in the player's region, optionally drag to fine-tune.
+    //
+    // The original wiring (body=position, outside=velocity) felt wrong
+    // because everyone who's ever played a slingshot game expects to pull
+    // velocity *out of* the star. Caught by /qa on 2026-06-01.
     if (this.state === 'setup_p1' || this.state === 'setup_p2') {
       const spec = this.activeSpec();
       if (!spec) return;
-      // Try grabbing the star body first
-      if (this.posControl.beginGrab(spec, p)) return;
-      // Otherwise, if the click landed in the active player's region, begin
-      // a velocity drag (snaps the arrow to point to the pointer)
-      const region = spec.player === 1 ? this.renderer.layout.p1Region : this.renderer.layout.p2Region;
-      if (inRect(p, region)) {
+      // On the star body → start a velocity drag (length = px/s, capped).
+      if (this.posControl.isOverBody(spec, p)) {
         this.arrowControl.beginGrab();
         this.arrowControl.drag(spec, p);
+        return;
+      }
+      // Elsewhere in the active player's region → reposition (and keep
+      // dragging if the player slides further).
+      const region = spec.player === 1 ? this.renderer.layout.p1Region : this.renderer.layout.p2Region;
+      if (inRect(p, region)) {
+        this.posControl.beginGrab();
+        this.posControl.drag(spec, p, this.renderer.layout);
       }
     }
   }

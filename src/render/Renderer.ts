@@ -232,8 +232,8 @@ export class Renderer {
     ctx.fillStyle = rgba(palette.cream, 0.45);
     ctx.textAlign = align;
     const lines = [
-      'DRAG the star to place it.',
-      'DRAG outward from the star to set velocity.',
+      'DRAG OUTWARD from the star to throw it.',
+      'TAP your court to reposition the star.',
       'SCROLL on the star to set mass.',
       `Max velocity ${LIMITS.maxVelocityPerBody} m/s.`,
     ];

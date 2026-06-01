@@ -3,27 +3,34 @@ import { bodyRadius } from '../physics/Body.ts';
 import { clampToInBounds } from '../render/court.ts';
 import { distSq } from './input.ts';
 
-// Drag the star's body itself to reposition it inside the player's
-// in-bounds rectangle.
+// Reposition the star by clicking anywhere in the player's court — the
+// click point (or any subsequent drag) becomes the star's new position,
+// clamped to the in-bounds rectangle.
+//
+// Hit-testing the star body lives here too (it's the same geometry), but
+// the *interaction-routing decision* (is this click on the star? → velocity
+// drag, else → position drag) lives in Game.
 
 export class PositionControl {
   private grabbed = false;
 
-  // Returns true if the pointer is currently inside the star body (drag-handle).
-  isOverHandle(spec: BodySpec, p: { x: number; y: number }): boolean {
+  // Pure hit test — exposed so Game can route mousedown without owning the
+  // body-radius math.
+  isOverBody(spec: BodySpec, p: { x: number; y: number }): boolean {
     const r = bodyRadius(spec.mass);
     return distSq(p, spec.pos) <= r * r;
   }
 
-  beginGrab(spec: BodySpec, p: { x: number; y: number }): boolean {
-    if (this.isOverHandle(spec, p)) {
-      this.grabbed = true;
-      return true;
-    }
-    return false;
+  // Start a position drag. The caller decides when this is appropriate
+  // (currently: mousedown anywhere in the player's court that is NOT on
+  // the star body).
+  beginGrab(): void {
+    this.grabbed = true;
   }
 
-  // Continue a drag — clamps to the player's in-bounds box.
+  // Continue a drag — clamps to the player's in-bounds box. Also doubles
+  // as the "teleport on first click" call: pass the initial click point
+  // and the star jumps there.
   drag(spec: BodySpec, p: { x: number; y: number }, layout: CourtLayout): void {
     if (!this.grabbed) return;
     const clamped = clampToInBounds(p, layout, spec.player);
