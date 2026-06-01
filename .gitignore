@@ -34,3 +34,4 @@ dist-ssr
 # Local notes / experiments
 SCRATCH.md
 scratch/
+.gstack/
