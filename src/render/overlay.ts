@@ -87,26 +87,19 @@ export function drawButton(
   const hovered = opts.hovered ?? false;
 
   ctx.save();
-  // Soft halo (additive)
+  // Soft halo (additive). The fill area must fully contain the gradient
+  // circle (radius haloR around the button center), otherwise wide-but-short
+  // buttons get their glow clipped into a visible rectangle. A 2·haloR square
+  // centered on the button is the smallest rect that always contains it.
   ctx.globalCompositeOperation = 'lighter';
   const haloR = Math.max(btn.width, btn.height) * (hovered ? 1.2 : 0.9);
-  const g = ctx.createRadialGradient(
-    btn.x + btn.width / 2,
-    btn.y + btn.height / 2,
-    0,
-    btn.x + btn.width / 2,
-    btn.y + btn.height / 2,
-    haloR,
-  );
+  const cx = btn.x + btn.width / 2;
+  const cy = btn.y + btn.height / 2;
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
   g.addColorStop(0, rgba(primary, hovered ? 0.35 : 0.18));
   g.addColorStop(1, rgba(primary, 0));
   ctx.fillStyle = g;
-  ctx.fillRect(
-    btn.x - haloR * 0.5,
-    btn.y - haloR * 0.5,
-    btn.width + haloR,
-    btn.height + haloR,
-  );
+  ctx.fillRect(cx - haloR, cy - haloR, haloR * 2, haloR * 2);
   ctx.restore();
 
   // Pill body
