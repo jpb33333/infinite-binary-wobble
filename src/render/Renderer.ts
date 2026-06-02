@@ -591,12 +591,44 @@ export class Renderer {
     }
   }
 
+  // Per-play stats rendered on the resolved card. Reads live sim metrics so
+  // WIN reads continue to tick (orbit count grows as long as the wobble does);
+  // LOSE outcomes are frozen so the live values equal the resolution snapshot.
+  private formatPlayStats(input: RenderInput): string | null {
+    if (!input.sim || !input.outcome) return null;
+    const o = input.sim.orbit();
+    const t = input.sim.time;
+    const orbits = input.classifier?.orbits ?? 0;
+    const eccTxt = Number.isFinite(o.eccentricity) ? o.eccentricity.toFixed(2) : '∞';
+    const sep = '  ·  ';
+    switch (input.outcome.kind) {
+      case 'win': {
+        const orbitsTxt = `${orbits} ${orbits === 1 ? 'orbit' : 'orbits'}`;
+        return `${t.toFixed(0)}s${sep}${orbitsTxt}${sep}ecc ${eccTxt}`;
+      }
+      case 'lose_escape':
+      case 'lose_slingshot':
+        return `${t.toFixed(1)}s${sep}ecc ${eccTxt}`;
+      case 'lose_collision':
+        return `${t.toFixed(1)}s${sep}${o.vRel.toFixed(0)} m/s at impact`;
+      default:
+        return null;
+    }
+  }
+
   private renderResolved(input: RenderInput): void {
     // Always draw the underlying scene first so the card sits on top
     this.renderSimulate(input);
 
     if (!input.outcome) return;
-    const card = drawOutcomeCard(this.ctx, input.outcome, this.layout.canvas.width, this.layout.canvas.height);
+    const statsLine = this.formatPlayStats(input);
+    const card = drawOutcomeCard(
+      this.ctx,
+      input.outcome,
+      this.layout.canvas.width,
+      this.layout.canvas.height,
+      statsLine,
+    );
 
     // The merger event is the whole moment for a collision outcome — let it
     // sit ABOVE the card so the remnant stays visible behind the message.
