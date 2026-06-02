@@ -9,6 +9,7 @@ import { Particles } from './particles.ts';
 import { drawVelocityArrow } from './arrow.ts';
 import {
   drawWordmark,
+  drawSessionStats,
   drawPhaseLabel,
   drawHud,
   drawButton,
@@ -45,6 +46,10 @@ export interface RenderInput {
   // watch-forever instead of getting clipped off the edge. null in non-sim
   // states (no offset needed).
   cameraOffset: { x: number; y: number } | null;
+  // Per-session scoreboard rendered on the title screen and (briefly) above
+  // the AGAIN button on each resolve. The Game owns the cookie; the Renderer
+  // just paints the summary.
+  stats: import('../game/stats.ts').StatsSummary;
 }
 
 export class Renderer {
@@ -134,6 +139,7 @@ export class Renderer {
     const { width: w, height: h } = this.layout.canvas;
 
     drawWordmark(ctx, w, h);
+    drawSessionStats(ctx, input.stats, w, h);
 
     const beginBtn: CanvasButton = {
       label: 'Begin',

@@ -8,6 +8,7 @@ import { eventToCanvas, inRect } from '../ui/input.ts';
 import { Simulation, PHYSICS } from '../physics/Simulation.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
+import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
 import { palette } from '../theme.ts';
 
@@ -43,6 +44,9 @@ export class Game {
   // marker at the moment of collision so Renderer can animate the flash,
   // shockwave and remnant in real time. null at all other times.
   private supernova: { x: number; y: number; t0: number; mergedMass: number } | null = null;
+  // Session scoreboard summary, recomputed only when a game is recorded.
+  // Reading the cookie every frame would be silly at 60Hz.
+  private statsSummary: StatsSummary = summarize(loadStats());
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas, DEFAULT_LAYOUT);
@@ -79,6 +83,15 @@ export class Game {
     });
     canvas.addEventListener('pointercancel', e => this.onPointerUp(e));
     canvas.addEventListener('wheel', e => this.onWheel(e), { passive: false });
+    // Escape returns to the title screen from any other state. A way out
+    // without forcing the player to wait for a resolve they don't want.
+    window.addEventListener('keydown', e => this.onKeyDown(e));
+  }
+
+  private onKeyDown(e: KeyboardEvent): void {
+    if (e.key === 'Escape' && this.state !== 'title') {
+      this.toTitle();
+    }
   }
 
   private onPointerDown(e: PointerEvent): void {
@@ -201,6 +214,25 @@ export class Game {
 
   // ─────────────────────────────────────────────────────── state transitions
 
+  private toTitle(): void {
+    this.specs = {
+      p1: defaultSpec(1, this.renderer.layout),
+      p2: defaultSpec(2, this.renderer.layout),
+    };
+    this.trails.p1.reset();
+    this.trails.p2.reset();
+    this.sim = null;
+    this.classifier = null;
+    this.outcome = null;
+    this.burstedOnResolve = false;
+    this.simAccum = 0;
+    this.supernova = null;
+    this.countdownRemaining = COUNTDOWN_SECONDS;
+    this.posControl.release();
+    this.arrowControl.release();
+    this.state = 'title';
+  }
+
   private toSetup1(): void {
     // Fresh specs each time. Avoid carrying over previous-round state.
     this.specs = {
@@ -256,6 +288,21 @@ export class Game {
   private toResolved(o: Outcome): void {
     this.outcome = o;
     this.state = 'resolved';
+    // Append this game to the session scoreboard exactly once per resolve.
+    // burstedOnResolve doubles as the recorded-once flag — both fire from
+    // inside this guard.
+    if (!this.burstedOnResolve && this.sim && this.classifier && o.kind !== 'playing') {
+      const orbit = this.sim.orbit();
+      const updated = recordGame({
+        outcome: o.kind,
+        duration: this.sim.time,
+        eccentricity: orbit.eccentricity,
+        orbits: this.classifier.orbits,
+        period: orbit.period,
+        ts: Date.now(),
+      });
+      this.statsSummary = summarize(updated);
+    }
     if (!this.burstedOnResolve && this.sim) {
       this.burstedOnResolve = true;
       if (o.kind === 'lose_collision') {
@@ -362,6 +409,7 @@ export class Game {
       trails: this.trails,
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
+      stats: this.statsSummary,
       supernova: this.supernova
         ? {
             x: this.supernova.x,
