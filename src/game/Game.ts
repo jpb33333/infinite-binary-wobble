@@ -345,9 +345,42 @@ export class Game {
 
     this.update(dt);
     this.render(dt);
+    this.updateCursor();
 
     requestAnimationFrame(this.tick);
   };
+
+  // Contextual cursor: 'pointer' over buttons, 'grab/grabbing' over the
+  // active star during setup, 'crosshair' over the rest of the active
+  // court (where a click would reposition), 'default' everywhere else.
+  // Setting canvas.style.cursor is a no-op when the value matches, so it's
+  // safe to call every frame.
+  private updateCursor(): void {
+    const canvas = this.renderer.canvas;
+    let desired: string = 'default';
+    if (this.hover) {
+      const btn = this.renderer.hoveredButton(this.hover);
+      if (btn) {
+        desired = 'pointer';
+      } else if (this.state === 'setup_p1' || this.state === 'setup_p2') {
+        const spec = this.activeSpec();
+        if (spec) {
+          if (this.arrowControl.isGrabbing || this.posControl.isGrabbing) {
+            desired = 'grabbing';
+          } else if (this.posControl.isOverBody(spec, this.hover)) {
+            desired = 'grab';
+          } else {
+            const region =
+              spec.player === 1 ? this.renderer.layout.p1Region : this.renderer.layout.p2Region;
+            desired = inRect(this.hover, region) ? 'crosshair' : 'default';
+          }
+        }
+      }
+    }
+    if (canvas.style.cursor !== desired) {
+      canvas.style.cursor = desired;
+    }
+  }
 
   // Fixed-step integration: feed real-time dt into the accumulator, pull
   // PHYSICS.DT chunks out. Gameplay speed becomes independent of display
