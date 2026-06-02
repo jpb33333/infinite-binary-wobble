@@ -21,6 +21,10 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 - **ESC affordance surfaced** in the setup help block as a fifth, faded
   italic line ("Press ESC to return to title.") so first-time players
   discover the key without rediscovering it through the manual.
+- **Contextual cursor.** The canvas was `cursor: crosshair` everywhere,
+  which felt cheap. Now: `pointer` over buttons, `grab` (and `grabbing`
+  while dragging) over the active star, `crosshair` over the active
+  player's court, `default` everywhere else. Standard tactile feedback.
 
 ### Fixed
 - **Card-vs-HUD overlap (ISSUE-006).** The WIN outcome card was
