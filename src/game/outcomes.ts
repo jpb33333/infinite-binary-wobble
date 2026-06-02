@@ -80,18 +80,10 @@ export class OutcomeClassifier {
   }
 
   update(sim: Simulation, dt: number): Outcome {
-    if (this.resolved.kind !== 'playing') return this.resolved;
-
-    const orbit = sim.orbit();
-
-    // Collision is always checked first and instantly resolves.
-    const rSum = bodyRadius(sim.a.mass) + bodyRadius(sim.b.mass);
-    if (orbit.separation < rSum) {
-      this.resolved = { kind: 'lose_collision' };
-      return this.resolved;
-    }
-
-    // Track the relative-position angle continuously so we can count orbits.
+    // Track the relative-position angle every frame, even after resolution.
+    // For WIN the orbit keeps going ("stay and watch as long as you like"),
+    // so the ORBITS HUD counter has to keep ticking up too — the infinite
+    // wobble is the whole metaphor. Only the *outcome* freezes on resolve.
     const r = sub(sim.b.pos, sim.a.pos);
     const angle = Math.atan2(r.y, r.x);
     if (this.prevAngle !== null) {
@@ -104,6 +96,17 @@ export class OutcomeClassifier {
     this.completedOrbits = Math.floor(
       Math.abs(this.unwrappedAngle) / (2 * Math.PI),
     );
+
+    if (this.resolved.kind !== 'playing') return this.resolved;
+
+    const orbit = sim.orbit();
+
+    // Collision is always checked first and instantly resolves.
+    const rSum = bodyRadius(sim.a.mass) + bodyRadius(sim.b.mass);
+    if (orbit.separation < rSum) {
+      this.resolved = { kind: 'lose_collision' };
+      return this.resolved;
+    }
 
     if (sim.time < this.cfg.warmupSeconds) {
       return this.resolved;
