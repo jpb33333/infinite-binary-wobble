@@ -214,6 +214,7 @@ export function drawOutcomeCard(
   outcome: Outcome,
   w: number,
   h: number,
+  statsLine: string | null = null,
 ): { titleColor: string; titleText: string; bodyText: string; buttonY: number; carseY: number } {
   const card = outcomeText(outcome);
   const isWin = outcome.kind === 'win';
@@ -228,10 +229,12 @@ export function drawOutcomeCard(
     ctx.restore();
   }
 
-  // Cards now include the Carse footer INSIDE their bounds, so heights are
-  // sized to fit title + body + button + 3 italic footer lines.
+  // Cards include title + body + (optional) per-play stats + button + Carse
+  // footer (3 italic lines) inside their bounds. Stats line adds ~28px when
+  // present so the breathing room around it doesn't collapse.
+  const statsExtra = statsLine ? 28 : 0;
   const cardW = isWin ? 600 : 660;
-  const cardH = isWin ? 232 : 308;
+  const cardH = (isWin ? 232 : 308) + statsExtra;
   const cx = (w - cardW) / 2;
   // WIN card is bottom-anchored; the bottom 56px belong to the HUD strip
   // (label baseline at h−44, value baseline at h−28, ascenders to ~h−53).
@@ -259,9 +262,17 @@ export function drawOutcomeCard(
   ctx.fillStyle = palette.rose;
   ctx.font = `italic 400 ${isWin ? 16 : 19}px ${fonts.serif}`;
   ctx.fillText(card.bodyText, w / 2, cy + (isWin ? 72 : 122));
+
+  if (statsLine) {
+    // Sit between the body line and the AGAIN button. Subtle — it's a
+    // reading-of-the-moment, not a competition with the title.
+    ctx.fillStyle = rgba(palette.cream, 0.55);
+    ctx.font = `500 12px ${fonts.sans}`;
+    ctx.fillText(statsLine, w / 2, cy + (isWin ? 100 : 152));
+  }
   ctx.restore();
 
-  const buttonY = isWin ? cy + 96 : cy + 156;
+  const buttonY = (isWin ? cy + 96 : cy + 156) + statsExtra;
   // Carse footer goes below the button, still inside the card.
   const carseY = buttonY + 44 + 8; // button height + small gap
   return { ...card, buttonY, carseY };
