@@ -393,7 +393,22 @@ export class Renderer {
       ]);
     }
 
-    drawPhaseLabel(ctx, 'in motion', w, palette.rose);
+    // Phase label echoes the actual state of the system. WIN keeps the orbit
+    // alive so 'in motion' stays honest; LOSE outcomes freeze the bodies, so
+    // 'in motion' would lie. Match each frozen outcome to a one-word reading.
+    let phaseText = 'in motion';
+    if (input.state === 'resolved' && input.outcome) {
+      switch (input.outcome.kind) {
+        case 'lose_escape':
+        case 'lose_slingshot':
+          phaseText = 'drifting';
+          break;
+        case 'lose_collision':
+          phaseText = 'stilled';
+          break;
+      }
+    }
+    drawPhaseLabel(ctx, phaseText, w, palette.rose);
   }
 
   // Doppler tint — the actual mechanism by which binary stars' wobble is
