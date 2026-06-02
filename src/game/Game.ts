@@ -333,11 +333,13 @@ export class Game {
         break;
       }
       case 'resolved': {
-        // For WINs, the wobble keeps going — it really is infinite.
+        // For WINs, the wobble keeps going — it really is infinite. Keep the
+        // classifier ticking too so the ORBITS counter on the HUD stays alive.
         if (this.sim && this.outcome?.kind === 'win') {
           this.advancePhysics(dt);
           this.trails.p1.push(this.sim.a.pos.x, this.sim.a.pos.y);
           this.trails.p2.push(this.sim.b.pos.x, this.sim.b.pos.y);
+          if (this.classifier) this.classifier.update(this.sim, dt);
         }
         break;
       }
