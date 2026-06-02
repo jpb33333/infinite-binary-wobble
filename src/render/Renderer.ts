@@ -307,11 +307,20 @@ export class Renderer {
       'TAP − or + to set mass.',
       `Max velocity ${LIMITS.maxVelocityPerBody} m/s.`,
     ];
-    let y = 120;
+    // Stack the help block so everything (including the ESC affordance below)
+    // sits above the court's top edge at y=200.
+    let y = 100;
     for (const line of lines) {
       ctx.fillText(line, x, y);
       y += 18;
     }
+    // ESC affordance, set apart by a blank line and dimmer alpha so the
+    // primary controls don't compete with it. Only surfaced during setup —
+    // by the time the player reaches countdown / sim they already know.
+    y += 8;
+    ctx.fillStyle = rgba(palette.cream, 0.3);
+    ctx.font = `italic 400 11px ${fonts.sans}`;
+    ctx.fillText('Press ESC to return to title.', x, y);
     ctx.restore();
   }
 

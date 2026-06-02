@@ -18,6 +18,9 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   *"19s · 2 orbits · ecc 0.79"* and keeps ticking as the wobble continues;
   LOSE cards show duration + eccentricity, or for collision, the relative
   speed at impact ("2275 m/s at impact").
+- **ESC affordance surfaced** in the setup help block as a fifth, faded
+  italic line ("Press ESC to return to title.") so first-time players
+  discover the key without rediscovering it through the manual.
 
 ### Fixed
 - **Card-vs-HUD overlap (ISSUE-006).** The WIN outcome card was
