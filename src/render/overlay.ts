@@ -1,5 +1,6 @@
 import { palette, fonts, rgba } from '../theme.ts';
 import type { Outcome } from '../game/outcomes.ts';
+import type { StatsSummary } from '../game/stats.ts';
 
 // HUD and overlay drawing primitives. Buttons are drawn on the canvas and
 // their click-hit-areas are returned so the Game can route mouse events.
@@ -25,6 +26,54 @@ export function drawWordmark(ctx: CanvasRenderingContext2D, w: number, h: number
   ctx.font = `italic 400 24px ${fonts.serif}`;
   ctx.fillText('a game for two who are considering', w / 2, h * 0.38 + 64);
 
+  ctx.restore();
+}
+
+// Title-screen scoreboard. One line of totals, an optional second line of
+// best-WIN superlatives. Renders nothing when no games have been played yet —
+// an empty deck shouldn't crowd the title.
+export function drawSessionStats(
+  ctx: CanvasRenderingContext2D,
+  s: StatsSummary,
+  w: number,
+  h: number,
+): void {
+  if (s.total === 0) return;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+  const winRatePct = Math.round(s.winRate * 100);
+  const head =
+    `${s.total} ${plural(s.total, 'play', 'plays')} this session  ·  ` +
+    `${s.wins} ${plural(s.wins, 'wobble', 'wobbles')}  ·  ` +
+    `${winRatePct}% wobble rate`;
+
+  ctx.fillStyle = rgba(palette.cream, 0.55);
+  ctx.font = `500 12px ${fonts.sans}`;
+  // Sit between the subtitle (h*0.38 + 64) and the BEGIN button (h*0.62).
+  const headY = h * 0.51;
+  ctx.fillText(head, w / 2, headY);
+
+  // Second line: bests, only when we have any WIN to brag about.
+  const parts: string[] = [];
+  if (s.byOutcome.lose_escape || s.byOutcome.lose_slingshot) {
+    parts.push(
+      `${s.byOutcome.lose_escape + s.byOutcome.lose_slingshot} drifted`,
+    );
+  }
+  if (s.byOutcome.lose_collision) {
+    parts.push(`${s.byOutcome.lose_collision} collided`);
+  }
+  if (s.best.mostOrbits !== null && s.best.mostOrbits > 0) {
+    parts.push(`best wobble ${s.best.mostOrbits} orbits`);
+  }
+  if (parts.length > 0) {
+    ctx.fillStyle = rgba(palette.rose, 0.55);
+    ctx.font = `italic 400 13px ${fonts.serif}`;
+    ctx.fillText(parts.join('  ·  '), w / 2, headY + 22);
+  }
   ctx.restore();
 }
 
