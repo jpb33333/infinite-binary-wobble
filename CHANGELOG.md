@@ -6,6 +6,8 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-03
+
 ### Added
 - **Escape** key returns to the title screen from any state. Resets specs,
   trails, sim, classifier, outcome, and the supernova animation. A way out
