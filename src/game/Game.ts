@@ -4,7 +4,7 @@ import { Renderer } from '../render/Renderer.ts';
 import { PositionControl } from '../ui/PositionControl.ts';
 import { MassControl } from '../ui/MassControl.ts';
 import { ArrowControl } from '../ui/ArrowControl.ts';
-import { eventToCanvas, inRect } from '../ui/input.ts';
+import { inRect } from '../ui/input.ts';
 import { Simulation, PHYSICS } from '../physics/Simulation.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
@@ -86,6 +86,13 @@ export class Game {
     // Escape returns to the title screen from any other state. A way out
     // without forcing the player to wait for a resolve they don't want.
     window.addEventListener('keydown', e => this.onKeyDown(e));
+    // Refit the canvas whenever the window changes — resized, rotated, or
+    // dragged to a monitor with a different pixel density. The rAF loop runs
+    // continuously, so the next frame repaints at the new size; resize() only
+    // needs to update the device buffer and the fit transform.
+    window.addEventListener('resize', () =>
+      this.renderer.resize(window.innerWidth, window.innerHeight),
+    );
   }
 
   private onKeyDown(e: KeyboardEvent): void {
@@ -96,12 +103,7 @@ export class Game {
 
   private onPointerDown(e: PointerEvent): void {
     e.preventDefault();
-    const p = eventToCanvas(
-      e,
-      this.renderer.canvas,
-      this.renderer.layout.canvas.width,
-      this.renderer.layout.canvas.height,
-    );
+    const p = this.renderer.screenToLogical(e);
     this.hover = p;
 
     // Button clicks first
@@ -171,12 +173,7 @@ export class Game {
     if (this.posControl.isGrabbing || this.arrowControl.isGrabbing) {
       e.preventDefault();
     }
-    const p = eventToCanvas(
-      e,
-      this.renderer.canvas,
-      this.renderer.layout.canvas.width,
-      this.renderer.layout.canvas.height,
-    );
+    const p = this.renderer.screenToLogical(e);
     this.hover = p;
 
     if (this.state === 'setup_p1' || this.state === 'setup_p2') {
@@ -200,12 +197,7 @@ export class Game {
     const spec = this.activeSpec();
     if (!spec) return;
     // Only adjust mass if the wheel is over the active player's region.
-    const p = eventToCanvas(
-      e,
-      this.renderer.canvas,
-      this.renderer.layout.canvas.width,
-      this.renderer.layout.canvas.height,
-    );
+    const p = this.renderer.screenToLogical(e);
     const region = spec.player === 1 ? this.renderer.layout.p1Region : this.renderer.layout.p2Region;
     if (!inRect(p, region)) return;
     e.preventDefault();

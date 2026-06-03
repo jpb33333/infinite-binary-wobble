@@ -6,7 +6,17 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.2.0] — 2026-06-03
+### Fixed
+- **Canvas now fills any viewport (responsive resize).** The stage was a
+  fixed 1280×800 surface — above 1300px wide it just sat centered with dead
+  margins, and nothing re-rendered on window resize. The game still renders
+  in a fixed 1280×800 *design space* (so the pixel-tuned physics and win/lose
+  thresholds never shift with screen size), but the Renderer now applies a
+  uniform contain-fit transform — centered, letterboxed, DPR-sharp — sized to
+  the live viewport, and refits on every `resize` (re-reading
+  `devicePixelRatio`, so dragging between monitors stays crisp). Pointer hit
+  tests invert the same transform via `Renderer.screenToLogical`. New
+  `computeFit` helper with unit coverage (`tests/fit.test.ts`).
 
 ### Added
 - **Escape** key returns to the title screen from any state. Resets specs,

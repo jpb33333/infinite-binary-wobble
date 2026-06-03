@@ -2,6 +2,7 @@ import { palette, fonts, rgba, blendHex } from '../theme.ts';
 import type { CourtLayout, BodySpec, GameStateKind } from '../game/states.ts';
 import { DEFAULT_LAYOUT, LIMITS } from '../game/states.ts';
 import { generateStarfield, drawStarfield, type StarSpec } from './starfield.ts';
+import { computeFit, type Fit } from './fit.ts';
 import { drawCourt } from './court.ts';
 import { drawStar, dimmed, STYLE_P1, STYLE_P2, type StarStyle } from './star.ts';
 import { Trail, drawTrail } from './trail.ts';
@@ -60,6 +61,13 @@ export class Renderer {
   private particlesLayer: Particles;
   readonly buttons: Map<string, CanvasButton> = new Map();
 
+  // The game draws in a fixed design space (layout.canvas, 1280×800) so the
+  // pixel-tuned physics never shift with screen size. `fit` maps that design
+  // space into the live viewport: a uniform scale plus centering offsets,
+  // recomputed on every resize. `dpr` keeps the device buffer sharp.
+  private dpr = 1;
+  private fit: Fit = { scale: 1, offsetX: 0, offsetY: 0 };
+
   constructor(canvas: HTMLCanvasElement, layout: CourtLayout = DEFAULT_LAYOUT) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d');
@@ -67,20 +75,41 @@ export class Renderer {
     this.ctx = ctx;
     this.layout = layout;
 
-    // Scale the internal pixel buffer by devicePixelRatio so the canvas
-    // renders sharp on retina / high-DPI displays. CSS keeps the LOGICAL
-    // size (1280×800), and we ctx.scale() once so all subsequent drawing
-    // calls work in logical pixels — render code is unaware of the DPR.
-    // (Caught by /qa Layer 3 — was soft on retina.)
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    canvas.width = Math.round(layout.canvas.width * dpr);
-    canvas.height = Math.round(layout.canvas.height * dpr);
-    canvas.style.width = `${layout.canvas.width}px`;
-    canvas.style.height = `${layout.canvas.height}px`;
-    ctx.scale(dpr, dpr);
-
     this.starfield = generateStarfield(layout.canvas.width, layout.canvas.height);
     this.particlesLayer = new Particles();
+
+    // Size the device buffer to the current viewport. render() applies the
+    // fit transform every frame, so no persistent ctx.scale() is needed here.
+    this.resize(window.innerWidth, window.innerHeight);
+  }
+
+  // Resize the device buffer to fill the given CSS viewport and recompute the
+  // contain-fit transform. devicePixelRatio is re-read each call so dragging
+  // the window between a retina laptop and an external monitor stays sharp.
+  resize(cssW: number, cssH: number): void {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    this.dpr = dpr;
+    const { width: dw, height: dh } = this.layout.canvas;
+    this.fit = computeFit(cssW, cssH, dw, dh);
+    // Setting width/height resets all context state; render() re-establishes
+    // the transform each frame, so that's fine.
+    this.canvas.width = Math.round(cssW * dpr);
+    this.canvas.height = Math.round(cssH * dpr);
+    this.canvas.style.width = `${cssW}px`;
+    this.canvas.style.height = `${cssH}px`;
+  }
+
+  // Map a browser pointer event to design-space (logical) coordinates,
+  // inverting the uniform contain-fit (and its centering offsets). Used by
+  // every hit test so controls line up with what's drawn at any window size.
+  screenToLogical(event: MouseEvent): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    const xCss = event.clientX - rect.left;
+    const yCss = event.clientY - rect.top;
+    return {
+      x: (xCss - this.fit.offsetX) / this.fit.scale,
+      y: (yCss - this.fit.offsetY) / this.fit.scale,
+    };
   }
 
   burst(x: number, y: number, count: number, color: string, speed?: number): void {
@@ -102,7 +131,19 @@ export class Renderer {
     const { ctx } = this;
     const { width: w, height: h } = this.layout.canvas;
 
-    // Wipe + always-on backdrop
+    // Fill the ENTIRE device buffer — including the letterbox margins outside
+    // the fit-rect — with the void color, in raw device pixels.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = palette.voidDeep;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Map the fixed design space into the centered, uniformly-scaled fit-rect,
+    // pre-multiplied by DPR so all drawing below stays sharp. Every render
+    // helper works in design-space (1280×800) pixels and is unaware of this.
+    const m = this.dpr * this.fit.scale;
+    ctx.setTransform(m, 0, 0, m, this.dpr * this.fit.offsetX, this.dpr * this.fit.offsetY);
+
+    // Court backdrop (design-space)
     ctx.fillStyle = palette.voidDeep;
     ctx.fillRect(0, 0, w, h);
     this.particlesLayer.ambient(w, h, input.dt);

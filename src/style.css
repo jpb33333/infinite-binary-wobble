@@ -50,13 +50,16 @@ body {
   justify-content: center;
 }
 
+/* The canvas fills the whole viewport. The game renders in a fixed 1280×800
+   design space and the Renderer applies a uniform contain-fit transform
+   (centered, letterboxed) sized to this box, so the court scales to any
+   window without distorting the pixel-tuned physics. JS sets the exact px
+   dimensions on resize; 100vw/100vh is the pre-script fallback. */
 #stage {
   display: block;
   background: #1a0f14;
-  max-width: 100vw;
-  max-height: 100vh;
-  width: 1280px;
-  height: 800px;
+  width: 100vw;
+  height: 100vh;
   cursor: crosshair;
   image-rendering: optimizeQuality;
   /* On touch devices: claim every gesture as game input — disable browser
@@ -67,16 +70,9 @@ body {
   -webkit-user-select: none;
 }
 
-@media (max-width: 1300px) {
-  #stage {
-    width: 100vw;
-    height: calc(100vw * 800 / 1280);
-  }
-}
-
-/* On a narrow portrait viewport (a phone held upright) the 1280×800 canvas
-   shrinks to maybe 390×244 — too small for finger-sized controls. Nudge the
-   player to rotate instead of forcing them to fight cramped buttons. */
+/* On a narrow portrait viewport (a phone held upright) the court would shrink
+   to a sliver — too small for finger-sized controls. Nudge the player to
+   rotate instead of forcing them to fight cramped buttons. */
 @media (max-width: 700px) and (orientation: portrait) {
   body {
     flex-direction: column;
