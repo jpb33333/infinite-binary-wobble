@@ -18,6 +18,19 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   tests invert the same transform via `Renderer.screenToLogical`. New
   `computeFit` helper with unit coverage (`tests/fit.test.ts`).
 
+### Changed
+- **Full-bleed starfield + ambient drift.** With the canvas now filling the
+  viewport, the atmosphere followed: the starfield and the ambient stardust
+  render in screen space across the entire window — letterbox margins
+  included — instead of being confined to the 1280×800 court rect. Star
+  positions are stored normalized and scaled to the live viewport, so the
+  field reflows smoothly on resize (deterministic, order-stable generation
+  means a bigger window only *appends* stars; existing ones never jump), and
+  the count scales with viewport area to hold density constant. The particle
+  system split into an ambient layer (full-bleed) and a burst layer
+  (collision debris, kept in design space at world coordinates). Covered by
+  `tests/starfield.test.ts`.
+
 ### Added
 - **Escape** key returns to the title screen from any state. Resets specs,
   trails, sim, classifier, outcome, and the supernova animation. A way out
