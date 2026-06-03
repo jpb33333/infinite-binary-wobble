@@ -1,7 +1,12 @@
 import { palette, fonts, rgba, blendHex } from '../theme.ts';
 import type { CourtLayout, BodySpec, GameStateKind } from '../game/states.ts';
 import { DEFAULT_LAYOUT, LIMITS } from '../game/states.ts';
-import { generateStarfield, drawStarfield, type StarSpec } from './starfield.ts';
+import {
+  generateStarfield,
+  drawStarfield,
+  starCountForViewport,
+  type StarSpec,
+} from './starfield.ts';
 import { computeFit, type Fit } from './fit.ts';
 import { drawCourt } from './court.ts';
 import { drawStar, dimmed, STYLE_P1, STYLE_P2, type StarStyle } from './star.ts';
@@ -58,15 +63,24 @@ export class Renderer {
   readonly ctx: CanvasRenderingContext2D;
   readonly layout: CourtLayout;
   private starfield: StarSpec[];
-  private particlesLayer: Particles;
+  // Atmosphere (full-bleed, screen space) vs world events (design space). The
+  // ambient drift fills the whole viewport like the starfield; collision
+  // bursts are positioned at design-space world coordinates, so they ride the
+  // fit transform with the rest of the scene. Two layers keep the coordinate
+  // systems from colliding.
+  private ambientLayer: Particles;
+  private burstLayer: Particles;
   readonly buttons: Map<string, CanvasButton> = new Map();
 
   // The game draws in a fixed design space (layout.canvas, 1280×800) so the
   // pixel-tuned physics never shift with screen size. `fit` maps that design
   // space into the live viewport: a uniform scale plus centering offsets,
-  // recomputed on every resize. `dpr` keeps the device buffer sharp.
+  // recomputed on every resize. `dpr` keeps the device buffer sharp. `viewW`
+  // / `viewH` are the live CSS viewport size, used for the full-bleed backdrop.
   private dpr = 1;
   private fit: Fit = { scale: 1, offsetX: 0, offsetY: 0 };
+  private viewW = 1;
+  private viewH = 1;
 
   constructor(canvas: HTMLCanvasElement, layout: CourtLayout = DEFAULT_LAYOUT) {
     this.canvas = canvas;
@@ -75,22 +89,31 @@ export class Renderer {
     this.ctx = ctx;
     this.layout = layout;
 
-    this.starfield = generateStarfield(layout.canvas.width, layout.canvas.height);
-    this.particlesLayer = new Particles();
+    this.starfield = [];
+    this.ambientLayer = new Particles();
+    this.burstLayer = new Particles();
 
-    // Size the device buffer to the current viewport. render() applies the
-    // fit transform every frame, so no persistent ctx.scale() is needed here.
+    // Size the device buffer to the current viewport (this also seeds the
+    // starfield for the viewport). render() applies transforms every frame, so
+    // no persistent ctx.scale() is needed here.
     this.resize(window.innerWidth, window.innerHeight);
   }
 
-  // Resize the device buffer to fill the given CSS viewport and recompute the
-  // contain-fit transform. devicePixelRatio is re-read each call so dragging
-  // the window between a retina laptop and an external monitor stays sharp.
+  // Resize the device buffer to fill the given CSS viewport, recompute the
+  // contain-fit transform, and re-seed the full-bleed starfield to the new
+  // size. devicePixelRatio is re-read each call so dragging the window between
+  // a retina laptop and an external monitor stays sharp.
   resize(cssW: number, cssH: number): void {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     this.dpr = dpr;
+    this.viewW = cssW;
+    this.viewH = cssH;
     const { width: dw, height: dh } = this.layout.canvas;
     this.fit = computeFit(cssW, cssH, dw, dh);
+    // Re-seed the starfield at the density the new viewport calls for. The
+    // generator is deterministic and order-stable, so existing stars keep
+    // their normalized positions — the field reflows, it doesn't reshuffle.
+    this.starfield = generateStarfield(starCountForViewport(cssW, cssH));
     // Setting width/height resets all context state; render() re-establishes
     // the transform each frame, so that's fine.
     this.canvas.width = Math.round(cssW * dpr);
@@ -113,7 +136,9 @@ export class Renderer {
   }
 
   burst(x: number, y: number, count: number, color: string, speed?: number): void {
-    this.particlesLayer.burst(x, y, count, color, speed);
+    // Bursts are world events at design-space coordinates — they render with
+    // the scene under the fit transform, not as full-bleed atmosphere.
+    this.burstLayer.burst(x, y, count, color, speed);
   }
 
   // Returns the button (in canvas-space) hovered by the pointer, if any.
@@ -129,25 +154,25 @@ export class Renderer {
 
   render(input: RenderInput): void {
     const { ctx } = this;
-    const { width: w, height: h } = this.layout.canvas;
 
-    // Fill the ENTIRE device buffer — including the letterbox margins outside
-    // the fit-rect — with the void color, in raw device pixels.
+    // ── Full-bleed backdrop (screen space) ──
+    // Void fills the entire raw buffer — court area and letterbox margins
+    // alike, with no seam at the fit-rect edge.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = palette.voidDeep;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    // Starfield + ambient drift cover the whole viewport (CSS-pixel space,
+    // scaled by DPR only — no fit transform), so the atmosphere bleeds to
+    // every edge regardless of the letterbox.
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    drawStarfield(ctx, this.starfield, input.time, this.viewW, this.viewH);
+    this.ambientLayer.ambient(this.viewW, this.viewH, input.dt);
 
-    // Map the fixed design space into the centered, uniformly-scaled fit-rect,
-    // pre-multiplied by DPR so all drawing below stays sharp. Every render
+    // ── Scene (design space via the contain-fit transform) ──
+    // Pre-multiplied by DPR so all drawing below stays sharp. Every render
     // helper works in design-space (1280×800) pixels and is unaware of this.
     const m = this.dpr * this.fit.scale;
     ctx.setTransform(m, 0, 0, m, this.dpr * this.fit.offsetX, this.dpr * this.fit.offsetY);
-
-    // Court backdrop (design-space)
-    ctx.fillStyle = palette.voidDeep;
-    ctx.fillRect(0, 0, w, h);
-    this.particlesLayer.ambient(w, h, input.dt);
-    drawStarfield(ctx, this.starfield, input.time);
 
     this.buttons.clear();
 
@@ -170,7 +195,13 @@ export class Renderer {
         break;
     }
 
-    this.particlesLayer.draw(ctx);
+    // Collision debris is positioned in design space — render it with the scene.
+    this.burstLayer.draw(ctx);
+
+    // Ambient motes paint last, on top, full-bleed (back to screen space) so
+    // they keep the original "drifting in front" feel across the whole window.
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.ambientLayer.draw(ctx);
   }
 
   // ─────────────────────────────────────────────────────────────── states
