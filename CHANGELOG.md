@@ -6,7 +6,20 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+- **Security hardening** — strict Content-Security-Policy (`default-src 'none'`) +
+  Trusted Types, no inline scripts/styles, supply-chain gates (Dependabot,
+  `npm audit`, `persist-credentials: false`), and disclosure (`SECURITY.md`,
+  `/.well-known/security.txt`).
+- **Cloudflare Worker backend scaffold** (`api-worker/`) — the metering + payments
+  trust root: router, CORS, signed web token, gate, D1 counter, Turnstile session,
+  and **Stripe webhook signature verification** (payment/attest verification still
+  stubbed). Not deployed.
+- **Web metering client** (`src/net/*`, `paywall` state) — 100-free-plays gate +
+  Stripe pay-what-you-want, **inert + fail-open** until `VITE_API_BASE_URL` is set,
+  so the live game is unchanged.
+- **Roadmap + plan docs** — `docs/ROADMAP.md` (sequenced work, provisioning,
+  new-machine bootstrap) and `docs/MONETIZATION_PLAN.md`.
 
 ## [0.3.0] — 2026-06-03
 

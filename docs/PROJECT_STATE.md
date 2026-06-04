@@ -4,6 +4,8 @@ The single cold-start handoff document. If you are an engineer (or Claude) picki
 
 Companion docs: [`README.md`](../README.md) (public-facing), [`CLAUDE.md`](../CLAUDE.md) (working rules + architecture), [`CHANGELOG.md`](../CHANGELOG.md) (history), and [`IOS_NATIVE_APP_PLAN.md`](./IOS_NATIVE_APP_PLAN.md) (future direction).
 
+> **In progress (2026-06-04):** the game is being extended into a metered, monetized product (100 free plays → pay) with a Cloudflare backend. See [`ROADMAP.md`](./ROADMAP.md) (sequenced work + provisioning + new-machine bootstrap) and [`MONETIZATION_PLAN.md`](./MONETIZATION_PLAN.md). The `api-worker/` backend scaffold and the web metering client (`src/net/`, dark until `VITE_API_BASE_URL` is set) have landed; nothing is wired or deployed yet.
+
 ---
 
 ## 1. The mental model (read this first)
