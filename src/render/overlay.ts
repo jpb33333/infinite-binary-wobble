@@ -392,3 +392,56 @@ function drawSpacedText(
     cx += widths[i] + spacing;
   }
 }
+
+// Paywall card — shown when a metered player has used their free plays. Mirrors
+// the outcome card's construction (dim backdrop + centred rounded card) so it
+// reads as part of the same family. Returns the Y for the caller's button.
+export function drawPaywallCard(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  meter: { remaining: number | null; unlocked: boolean; limit: number },
+): { buttonY: number } {
+  ctx.save();
+  ctx.fillStyle = rgba(palette.voidDeep, 0.6);
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+
+  const cardW = 640;
+  const cardH = 268;
+  const cx = (w - cardW) / 2;
+  const cy = (h - cardH) / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  roundedRectPath(ctx, cx, cy, cardW, cardH, 18);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.92);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(palette.cream, 0.55);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle = palette.cream;
+  ctx.font = `400 38px ${fonts.serif}`;
+  ctx.fillText('A hundred wobbles in.', w / 2, cy + 72);
+
+  ctx.fillStyle = palette.rose;
+  ctx.font = `italic 400 18px ${fonts.serif}`;
+  ctx.fillText(`You’ve watched ${meter.limit} free plays unfold.`, w / 2, cy + 116);
+
+  ctx.fillStyle = rgba(palette.cream, 0.65);
+  ctx.font = `500 13px ${fonts.sans}`;
+  ctx.fillText(
+    'Pay what it’s worth to you — from $1 — to keep playing, forever.',
+    w / 2,
+    cy + 150,
+  );
+  ctx.restore();
+
+  return { buttonY: cy + cardH - 70 };
+}

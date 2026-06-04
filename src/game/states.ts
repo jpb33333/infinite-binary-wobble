@@ -4,7 +4,10 @@ export type GameStateKind =
   | 'setup_p2'
   | 'countdown'
   | 'simulate'
-  | 'resolved';
+  | 'resolved'
+  // Shown when a metered player has used their free plays (web only; inert
+  // unless a backend is configured). Reached from toSetup1's gate.
+  | 'paywall';
 
 export type PlayerId = 1 | 2;
 

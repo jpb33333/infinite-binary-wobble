@@ -22,12 +22,14 @@ import {
   drawTooltip,
   drawOutcomeCard,
   drawCloseButton,
+  drawPaywallCard,
   type CanvasButton,
 } from './overlay.ts';
 import { bodyRadius } from '../physics/Body.ts';
 import type { Body } from '../physics/Body.ts';
 import type { Simulation } from '../physics/Simulation.ts';
 import type { OutcomeClassifier, Outcome } from '../game/outcomes.ts';
+import type { MeterView } from '../net/meter.ts';
 
 export interface RenderInput {
   state: GameStateKind;
@@ -61,6 +63,8 @@ export interface RenderInput {
   // the AGAIN button on each resolve. The Game owns the cookie; the Renderer
   // just paints the summary.
   stats: import('../game/stats.ts').StatsSummary;
+  // Web metering view (paywall + free-plays meter). enabled=false → inert.
+  meter: MeterView;
 }
 
 export class Renderer {
@@ -198,6 +202,9 @@ export class Renderer {
       case 'resolved':
         this.renderResolved(input);
         break;
+      case 'paywall':
+        this.renderPaywall(input);
+        break;
     }
 
     // Persistent corner controls (touch-friendly ESC + post-dismiss AGAIN).
@@ -233,6 +240,32 @@ export class Renderer {
     const hovered = this.hoveredButton(input.hover) === 'begin';
     drawButton(ctx, beginBtn, { primary: palette.cream, hovered });
     this.buttons.set('begin', beginBtn);
+
+    // Free-plays meter — only when metering is on and the player hasn't paid.
+    if (input.meter.enabled && !input.meter.unlocked && input.meter.remaining !== null) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = rgba(palette.cream, 0.4);
+      ctx.font = `500 12px ${fonts.sans}`;
+      ctx.fillText(`${Math.max(0, input.meter.remaining)} free plays left`, w / 2, h * 0.62 + 72);
+      ctx.restore();
+    }
+  }
+
+  private renderPaywall(input: RenderInput): void {
+    const { ctx } = this;
+    const { width: w, height: h } = this.layout.canvas;
+    const card = drawPaywallCard(ctx, w, h, input.meter);
+    const btn: CanvasButton = {
+      label: 'Support & Continue',
+      x: w / 2 - 130,
+      y: card.buttonY,
+      width: 260,
+      height: 46,
+    };
+    const hovered = this.hoveredButton(input.hover) === 'support';
+    drawButton(ctx, btn, { primary: palette.cream, hovered });
+    this.buttons.set('support', btn);
   }
 
   private renderSetup(input: RenderInput): void {

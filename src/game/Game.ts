@@ -11,6 +11,7 @@ import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outco
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
 import { palette } from '../theme.ts';
+import { Meter } from '../net/meter.ts';
 
 const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
@@ -52,6 +53,10 @@ export class Game {
   // Reading the cookie every frame would be silly at 60Hz.
   private statsSummary: StatsSummary = summarize(loadStats());
 
+  // Web metering (100 free plays → paywall). Inert unless a backend is
+  // configured (VITE_API_BASE_URL); fail-open on any error.
+  private meter = new Meter();
+
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas, DEFAULT_LAYOUT);
     this.specs = {
@@ -68,6 +73,8 @@ export class Game {
   start(): void {
     if (this.running) return;
     this.running = true;
+    // Sync metering state in the background (no-op when metering is disabled).
+    void this.meter.init();
     this.lastFrameTime = performance.now();
     requestAnimationFrame(this.tick);
   }
@@ -137,6 +144,11 @@ export class Game {
     }
     if (btn === 'again' && this.state === 'resolved') {
       this.toSetup1();
+      return;
+    }
+    // Paywall: tap Support to pay-what-you-want via Stripe (redirects away).
+    if (btn === 'support' && this.state === 'paywall') {
+      void this.meter.startCheckout();
       return;
     }
     // Touch-friendly mass control: tap the [−] or [+] pill to step.
@@ -242,6 +254,12 @@ export class Game {
   }
 
   private toSetup1(): void {
+    // Metering gate: out of free plays and unpaid → paywall instead of setup.
+    // shouldGate() is false whenever metering is disabled/uncertain (fail-open).
+    if (this.meter.shouldGate()) {
+      this.toPaywall();
+      return;
+    }
     // Fresh specs each time. Avoid carrying over previous-round state.
     this.specs = {
       p1: defaultSpec(1, this.renderer.layout),
@@ -259,6 +277,17 @@ export class Game {
     this.posControl.release();
     this.arrowControl.release();
     this.state = 'setup_p1';
+  }
+
+  private toPaywall(): void {
+    this.posControl.release();
+    this.arrowControl.release();
+    this.state = 'paywall';
+    // Re-check the server in the background; if the count was stale or a
+    // purchase has just landed, drop straight into setup.
+    void this.meter.refresh().then(() => {
+      if (this.state === 'paywall' && !this.meter.shouldGate()) this.toSetup1();
+    });
   }
 
   private toSetup2(): void {
@@ -292,6 +321,9 @@ export class Game {
     this.simAccum = 0;
     this.supernova = null;
     this.winCardDismissed = false;
+    // Count this play (a simulation actually started). Optimistic + async;
+    // no-op when metering is disabled or the player is already unlocked.
+    this.meter.consumePlay();
     this.state = 'simulate';
   }
 
@@ -454,6 +486,7 @@ export class Game {
       arrowGrabbing: this.arrowControl.isGrabbing,
       winCardDismissed: this.winCardDismissed,
       stats: this.statsSummary,
+      meter: this.meter.view,
       supernova: this.supernova
         ? {
             x: this.supernova.x,
