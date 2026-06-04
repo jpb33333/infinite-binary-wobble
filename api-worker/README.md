@@ -25,10 +25,10 @@ operational summary.
 
 | Implemented (pure logic, testable) | Stubbed (needs secrets/SDKs — marked `TODO`) |
 |---|---|
-| Router, CORS lock, security headers, error wrapper | Stripe webhook signature verification + Checkout |
+| Router, CORS lock, security headers, error wrapper | Stripe Checkout creation + webhook→D1 persistence |
 | `gate.ts` free/locked decision | App Attest attestation + assertion verification |
-| `token.ts` HMAC sign/verify (Web Crypto) | StoreKit 2 JWS + App Store Server API + ASSN V2 |
-| `counter.ts` D1 atomic increment | Turnstile siteverify |
+| `token.ts` HMAC sign/verify; **Stripe webhook signature verify** | StoreKit 2 JWS + App Store Server API + ASSN V2 |
+| `counter.ts` D1 atomic increment; Turnstile siteverify + web session | — |
 | D1 `schema.sql`, `/health`, `/v1/status` | — |
 
 Stubs return `501 Not Implemented` with the exact verification steps documented
@@ -48,7 +48,7 @@ inline, so the contract is real and the clients can be built against it.
 | `POST /v1/iap/verify` | assertion + JWS | Instant iOS unlock. |
 | `POST /v1/apple/notifications` | Apple JWS | Authoritative iOS entitlement. |
 
-## Deploy (you provision these — see also `../.claude/plans/`)
+## Deploy (you provision these — see also [`../docs/ROADMAP.md`](../docs/ROADMAP.md))
 
 Prerequisites: a **Cloudflare account**, a **custom domain** on Cloudflare, a
 **Stripe account**, and **Apple** App Store Connect IAP key + App Attest.

@@ -11,7 +11,7 @@
 
 Infinite Binary Wobble is a **static website** hosted on GitHub Pages: just
 HTML/CSS/JS files that run entirely in the player's browser. There is **no server
-and no database**, and the full source is already public.
+and no database**, and the shipped game runs entirely in the browser — fully inspectable, even though the repo itself is private.
 
 Secure "Sign in with Google / Apple" or "create an account with a valid email"
 **cannot be done on a static site** — all three need a **backend** (a server +
@@ -36,7 +36,7 @@ Login is a means, not a goal. It's worth it only if you want one of these:
 | **Save scores / stats across devices** | Yes | The clearest reason. Today stats are per-session only. |
 | **Online two-player (play over the internet)** | Yes + realtime | The big one. Accounts are the *small* part; realtime matchmaking is the hard part. |
 | **Leaderboards tied to a name** | Yes | Needs accounts to prevent fake entries. |
-| **"Stop random people playing"** | **No — impossible here** | The game is free, public, open-source. A login screen wouldn't secure it (see §2). |
+| **"Stop random people playing"** | **No — impossible here** | The game is free and publicly playable. A login screen wouldn't secure it (see §2). |
 
 **If none of the "Yes" rows apply, the right move is to skip auth** and instead do
 the static-site hardening (CSP, Subresource Integrity, dependency audit). That's
@@ -58,9 +58,9 @@ That breaks all three login methods:
 - **Email signup** needs a **database** to store accounts and a **mail service**
   to send verification emails. Neither exists on Pages.
 - **A login screen added only in the frontend = security theater.** The entire
-  game is already downloaded to the browser and the repo is public — anyone can
-  View Source, open DevTools, or clone it and run the game with the login removed.
-  It would *look* locked while the door is wide open.
+  game is already downloaded to the browser — anyone can View Source, open
+  DevTools, or save the bundle and run the game with the login removed. It would
+  *look* locked while the door is wide open.
 
 ---
 
