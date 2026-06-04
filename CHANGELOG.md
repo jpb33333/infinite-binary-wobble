@@ -4,11 +4,6 @@ All notable changes to **Infinite Binary Wobble** are recorded here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
-> Versioning note: `package.json` is at `0.2.0`. The `0.3.0` work below
-> shipped to the live site after the `0.2.0` tag without its own version cut,
-> so this changelog currently leads the manifest. Bump `package.json` to
-> `0.3.0` at the next release cut so the two agree.
-
 ## [Unreleased]
 
 Nothing yet.
