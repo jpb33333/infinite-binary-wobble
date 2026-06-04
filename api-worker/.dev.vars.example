@@ -1,0 +1,11 @@
+# Copy to `.dev.vars` for local `wrangler dev` (that file is gitignored).
+# In production these go to Cloudflare via `wrangler secret put <NAME>` —
+# NEVER commit real values.
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+TURNSTILE_SECRET=0x_xxx
+# 32+ random bytes, base64. Generate: openssl rand -base64 32
+TOKEN_SIGNING_KEY=CHANGE_ME_base64_32_bytes
+APPLE_IAP_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+APPLE_KEY_ID=ABCDE12345
+APPLE_ISSUER_ID=00000000-0000-0000-0000-000000000000
