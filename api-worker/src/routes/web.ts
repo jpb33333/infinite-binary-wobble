@@ -1,6 +1,7 @@
 import type { Env } from '../env.ts';
 import { json, jsonError, notImplemented } from '../middleware.ts';
 import { signToken } from '../lib/token.ts';
+import { verifyStripeSignature } from '../lib/stripe.ts';
 
 const TOKEN_TTL_SEC = 60 * 60 * 24 * 30; // 30 days
 
@@ -51,12 +52,30 @@ export async function handleStripeCheckout(_req: Request, _env: Env): Promise<Re
   return notImplemented('Stripe Checkout Session creation');
 }
 
-export async function handleStripeWebhook(_req: Request, _env: Env): Promise<Response> {
-  // TODO(stripe): read the RAW request body; verify the `Stripe-Signature` header
-  // against STRIPE_WEBHOOK_SECRET (HMAC-SHA256 with a ≤5-min timestamp tolerance);
-  // on `checkout.session.completed` with livemode, dedupe `event.id` in
-  // processed_events, then UPSERT entitlements(device_id from client_reference_id,
-  // status='unlocked', source='stripe'). On charge.refunded / dispute.created →
-  // status='locked'. Unlock happens ONLY here — never on the success_url redirect.
-  return notImplemented('Stripe webhook signature verification');
+export async function handleStripeWebhook(req: Request, env: Env): Promise<Response> {
+  // Verify authenticity from the RAW body before trusting any field — a forged
+  // webhook must never unlock the game (threat-model P0). Implemented +
+  // unit-tested (src/lib/stripe.ts, test/stripe.test.ts).
+  const raw = await req.text();
+  const valid = await verifyStripeSignature(
+    raw,
+    req.headers.get('Stripe-Signature'),
+    env.STRIPE_WEBHOOK_SECRET,
+  );
+  if (!valid) return jsonError(400, 'invalid_signature');
+
+  let event: { id?: string; type?: string };
+  try {
+    event = JSON.parse(raw);
+  } catch {
+    return jsonError(400, 'invalid_json');
+  }
+
+  // TODO(stripe persistence): dedupe event.id in processed_events; on
+  // checkout.session.completed (livemode) UPSERT entitlements(device_id from
+  // client_reference_id → 'unlocked'); on charge.refunded / dispute.created →
+  // 'locked'. Needs the D1 writes — the signature gate above is the
+  // security-critical part and is done. Unlock happens ONLY here, never on the
+  // client success_url redirect.
+  return json({ received: true, verified: true, type: event.type ?? null });
 }
