@@ -112,7 +112,7 @@ Dependency graph: `Vec2` (leaf) ← `Body`; `gravity`←`Body`; `integrator`←`
 | File | Role |
 |---|---|
 | `index.html` | Single page: `<canvas id="stage" width="1280" height="800">` + module script + CSP meta. |
-| `package.json` | `name`, `version 0.2.0`, scripts, three devDependencies, zero runtime deps. |
+| `package.json` | `name`, `version 0.3.0`, scripts, three devDependencies, zero runtime deps. |
 | `vite.config.ts` | Vite + Vitest config + the dev-only CSP-stripping plugin. |
 | `tsconfig.json` | Type-check-only config (`noEmit`). |
 | `.github/workflows/deploy.yml` | test → build → deploy to GitHub Pages. |
@@ -272,7 +272,7 @@ Toolchain: `typescript ~6.0.2` (resolved 6.0.3), `vite ^8.0.12` (8.0.15), `vites
 
 ## 9. Version & changelog state
 
-`package.json` is at **`0.2.0`**. As of this handoff the `CHANGELOG.md` cuts the responsive-resize and full-bleed-starfield work (plus ESC, scoreboard, contextual cursor, and ISSUE-006…010) into a dated **`0.3.0`** section, with `0.2.0` and `0.1.0` below it. That work shipped to the live site after the 0.2.0 tag without its own version cut, which is why the changelog now leads the manifest. **Action for the next release cut: bump `package.json` to `0.3.0`** so the manifest and changelog agree before the next deploy. Going forward, cut a dated section and bump the manifest in the same change.
+`package.json` is at **`0.3.0`**, matching the dated **`0.3.0`** section in `CHANGELOG.md` (responsive-resize + full-bleed-starfield, plus ESC, scoreboard, contextual cursor, and ISSUE-006…010), with `0.2.0` and `0.1.0` below it. The 0.3.0 work shipped to the live site after the 0.2.0 tag, and the manifest was aligned in a follow-up bump (2026-06-04) so the two now agree. Going forward, cut a dated changelog section and bump the manifest in the **same** change so they never diverge again.
 
 ---
 
