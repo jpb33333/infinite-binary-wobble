@@ -1,0 +1,38 @@
+# Infinite Binary Wobble — Cloudflare Worker config.
+# Placeholders marked REPLACE_ME / CHANGE_ME are filled in during deploy (see README.md).
+name = "ibw-api-worker"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Lock CORS + cookie scope to your web origin once the domain is chosen.
+WEB_ORIGIN = "https://play.example.com"   # CHANGE_ME
+FREE_PLAY_LIMIT = "100"
+ENVIRONMENT = "production"
+
+# --- D1: entitlements/purchases + the free-tier play counter ---
+[[d1_databases]]
+binding = "DB"
+database_name = "ibw"
+database_id = "REPLACE_ME"                 # `wrangler d1 create ibw`
+
+# --- KV: idempotency keys + single-use nonces ---
+[[kv_namespaces]]
+binding = "KV"
+id = "REPLACE_ME"                          # `wrangler kv namespace create ibw-kv`
+
+# --- Durable Objects: OPTIONAL strongly-consistent counter upgrade. ---
+# Requires the Workers Paid plan ($5/mo). The free path uses a D1 atomic
+# UPDATE (src/lib/counter.ts) and needs none of this. Uncomment to enable.
+# [[durable_objects.bindings]]
+# name = "COUNTER"
+# class_name = "PlayCounter"
+#
+# [[migrations]]
+# tag = "v1"
+# new_classes = ["PlayCounter"]
+
+# Secrets are NEVER in this file. Set each via `wrangler secret put <NAME>`:
+#   STRIPE_SECRET_KEY  STRIPE_WEBHOOK_SECRET  TURNSTILE_SECRET
+#   TOKEN_SIGNING_KEY  APPLE_IAP_KEY  APPLE_KEY_ID  APPLE_ISSUER_ID
