@@ -6,14 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="A two-player gravitational binary-star game." />
     <title>Infinite Binary Wobble</title>
-    <!-- Tight content security policy. frame-ancestors is silently
-         ignored when delivered via <meta> (header-only), so iframe-busting
-         is handled in main.ts instead. The directives below DO work via
-         meta and restrict every resource type to same-origin. -->
+    <!-- Strict Content-Security-Policy. default-src 'none' denies every
+         resource type by default; only same-origin script/style/img/font are
+         re-allowed, and the game makes zero network requests (connect falls
+         back to 'none'). require-trusted-types-for neutralises DOM-XSS sinks.
+         Delivered via <meta> because GitHub Pages can't set HTTP headers, so
+         the header-only protections (frame-ancestors, X-Frame-Options, etc.)
+         are documented in SECURITY.md and clickjacking is blocked by the JS
+         frame-buster in main.ts. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self';"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'"
     />
+    <!-- Don't leak the game's URL to any site a player navigates to from here. -->
+    <meta name="referrer" content="no-referrer" />
     <!-- Fonts are self-hosted from /fonts/ via @font-face in style.css —
          no Google Fonts request on every page load, no IP/UA leak. -->
   </head>

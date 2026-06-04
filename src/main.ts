@@ -10,8 +10,16 @@ if (window.top !== window.self) {
   try {
     window.top!.location.href = window.self.location.href;
   } catch {
-    document.body.innerHTML =
-      '<p style="font:18px/1.5 serif; color:#FFC89B; background:#1A0F14; padding:2em; margin:0;">Infinite Binary Wobble does not run inside iframes. Open it at <a style="color:#E8956F" href="https://jpb33333.github.io/infinite-binary-wobble/">its own URL</a>.</p>';
+    // Build the refusal with DOM APIs (no innerHTML, no inline styles) so the
+    // page needs no 'unsafe-inline' in its CSP and stays Trusted-Types-safe.
+    const notice = document.createElement('p');
+    notice.className = 'iframe-refusal';
+    notice.append('Infinite Binary Wobble does not run inside iframes. Open it at ');
+    const link = document.createElement('a');
+    link.href = 'https://jpb33333.github.io/infinite-binary-wobble/';
+    link.textContent = 'its own URL';
+    notice.append(link, '.');
+    document.body.replaceChildren(notice);
     throw new Error('Refused to run inside a cross-origin iframe');
   }
 }
