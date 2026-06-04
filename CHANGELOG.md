@@ -4,7 +4,16 @@ All notable changes to **Infinite Binary Wobble** are recorded here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+> Versioning note: `package.json` is at `0.2.0`. The `0.3.0` work below
+> shipped to the live site after the `0.2.0` tag without its own version cut,
+> so this changelog currently leads the manifest. Bump `package.json` to
+> `0.3.0` at the next release cut so the two agree.
+
 ## [Unreleased]
+
+Nothing yet.
+
+## [0.3.0] — 2026-06-03
 
 ### Fixed
 - **Canvas now fills any viewport (responsive resize).** The stage was a
@@ -15,30 +24,34 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   uniform contain-fit transform — centered, letterboxed, DPR-sharp — sized to
   the live viewport, and refits on every `resize` (re-reading
   `devicePixelRatio`, so dragging between monitors stays crisp). Pointer hit
-  tests invert the same transform via `Renderer.screenToLogical`. New
-  `computeFit` helper with unit coverage (`tests/fit.test.ts`).
+  tests invert the same transform via `Renderer.screenToLogical` (CSS pixels
+  in, design-space coordinates out; DPR is intentionally not part of the
+  inverse because `getBoundingClientRect` already returns CSS pixels). New
+  `computeFit` helper with unit coverage (`tests/fit.test.ts`, 6 tests).
 
 ### Changed
 - **Full-bleed starfield + ambient drift.** With the canvas now filling the
   viewport, the atmosphere followed: the starfield and the ambient stardust
   render in screen space across the entire window — letterbox margins
   included — instead of being confined to the 1280×800 court rect. Star
-  positions are stored normalized and scaled to the live viewport, so the
-  field reflows smoothly on resize (deterministic, order-stable generation
-  means a bigger window only *appends* stars; existing ones never jump), and
-  the count scales with viewport area to hold density constant. The particle
-  system split into an ambient layer (full-bleed) and a burst layer
-  (collision debris, kept in design space at world coordinates). Covered by
-  `tests/starfield.test.ts`.
+  positions are stored normalized `[0,1]` and scaled to the live viewport, so
+  the field reflows smoothly on resize (deterministic, order-stable
+  generation means a bigger window only *appends* stars; existing ones never
+  jump), and the count scales with viewport area to hold density constant
+  (`STAR_DENSITY = 140/(1280·800)`, clamped to 60–600 stars). The particle
+  system split into an ambient layer (full-bleed, screen space) and a burst
+  layer (collision debris, kept in design space at world coordinates so it
+  rides the fit). Covered by `tests/starfield.test.ts` (6 tests).
 
 ### Added
 - **Escape** key returns to the title screen from any state. Resets specs,
   trails, sim, classifier, outcome, and the supernova animation. A way out
   without forcing the player to wait for a resolve they don't want.
 - **Per-session scoreboard** on the title screen, persisted in a session
-  cookie (`ibw-stats-v1`, no `Expires` → clears with the browser session).
-  Shows total plays, wobble count, win rate, drift / collision breakdown,
-  and best wobble in orbits.
+  cookie (`ibw-stats-v1`, no `Expires`/`Max-Age` → clears with the browser
+  session; `SameSite=Lax`; capped at the last 100 games). Shows total plays,
+  wobble count, wobble rate, drift / collision breakdown, and best wobble
+  in orbits.
 - **Per-play stats line** on every resolved card. WIN reads
   *"19s · 2 orbits · ecc 0.79"* and keeps ticking as the wobble continues;
   LOSE cards show duration + eccentricity, or for collision, the relative
@@ -93,6 +106,16 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 - Mobile portrait nudge + landscape canvas at 390×844 / 844×390.
 - Production CSP remains intact in `dist/index.html` after the dev-server
   plugin change.
+
+## [0.2.0]
+
+Off-canvas detection moved from absolute canvas/court bounds to
+**barycenter distance** so the camera can follow the system. The outcome
+classifier measures each body's distance from the mass-weighted barycenter
+(`maxBodyDistanceFromBarycenter 820`) instead of testing against the court
+rectangle; `outcomeConfigForLayout` keeps its layout parameter only for API
+stability and no longer derives bounds from the layout. Camera-follow keeps
+the barycenter centered while the court, HUD, and starfield stay fixed.
 
 ## [0.1.0] — initial release
 
