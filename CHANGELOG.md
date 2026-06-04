@@ -39,6 +39,16 @@ Nothing yet.
   rides the fit). Covered by `tests/starfield.test.ts` (6 tests).
 
 ### Added
+- **Dismissible WIN card.** The victory card is now closable via a ✕ in its
+  top-right corner, so the infinite wobble can be watched unobstructed — the
+  orbit keeps advancing underneath while the card is hidden. AGAIN doesn't
+  disappear with it: once dismissed, it reappears in the top-right control
+  cluster, one tap from restarting.
+- **On-screen EXIT control (touch-friendly ESC).** A persistent EXIT pill
+  sits in the top-right corner during every non-title state and does exactly
+  what the ESC key does — return to the title screen. Until now touch players
+  (phone / tablet / the iOS app) had no way out of a round without a keyboard;
+  this is their escape hatch. Desktop keeps the ESC key in parallel.
 - **Escape** key returns to the title screen from any state. Resets specs,
   trails, sim, classifier, outcome, and the supernova animation. A way out
   without forcing the player to wait for a resolve they don't want.

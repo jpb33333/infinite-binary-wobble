@@ -175,6 +175,39 @@ export function hitTest(btn: CanvasButton, x: number, y: number): boolean {
   return x >= btn.x && x <= btn.x + btn.width && y >= btn.y && y <= btn.y + btn.height;
 }
 
+// A small circular ✕ button — used to dismiss the WIN card so the wobble can
+// be watched unobstructed. Drawn as a translucent disc with an accent-tinted
+// glyph; the caller owns the (larger, finger-friendly) hit rectangle.
+export function drawCloseButton(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  color: string,
+  hovered: boolean,
+): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = rgba(palette.voidDeep, hovered ? 0.9 : 0.55);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(color, hovered ? 0.9 : 0.5);
+  ctx.stroke();
+
+  const k = r * 0.42;
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = rgba(color, hovered ? 1 : 0.8);
+  ctx.beginPath();
+  ctx.moveTo(cx - k, cy - k);
+  ctx.lineTo(cx + k, cy + k);
+  ctx.moveTo(cx + k, cy - k);
+  ctx.lineTo(cx - k, cy + k);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function drawTooltip(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -215,7 +248,16 @@ export function drawOutcomeCard(
   w: number,
   h: number,
   statsLine: string | null = null,
-): { titleColor: string; titleText: string; bodyText: string; buttonY: number; carseY: number } {
+): {
+  titleColor: string;
+  titleText: string;
+  bodyText: string;
+  buttonY: number;
+  carseY: number;
+  x: number;
+  y: number;
+  width: number;
+} {
   const card = outcomeText(outcome);
   const isWin = outcome.kind === 'win';
 
@@ -275,7 +317,7 @@ export function drawOutcomeCard(
   const buttonY = (isWin ? cy + 96 : cy + 156) + statsExtra;
   // Carse footer goes below the button, still inside the card.
   const carseY = buttonY + 44 + 8; // button height + small gap
-  return { ...card, buttonY, carseY };
+  return { ...card, buttonY, carseY, x: cx, y: cy, width: cardW };
 }
 
 function outcomeText(outcome: Outcome): {
