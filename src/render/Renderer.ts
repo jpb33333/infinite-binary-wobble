@@ -21,6 +21,7 @@ import {
   drawButton,
   drawTooltip,
   drawOutcomeCard,
+  drawCloseButton,
   type CanvasButton,
 } from './overlay.ts';
 import { bodyRadius } from '../physics/Body.ts';
@@ -41,6 +42,10 @@ export interface RenderInput {
   trails: { p1: Trail; p2: Trail };
   posGrabbing: boolean;
   arrowGrabbing: boolean;
+  // True once the player has dismissed the WIN card (tapped its ✕). The card
+  // and its AGAIN button are then suppressed so the orbit fills the screen;
+  // AGAIN reappears in the top-right control cluster instead.
+  winCardDismissed: boolean;
   // Set when the two bodies have merged; carries the merger location,
   // wall-time elapsed since the collision, and the combined mass. The
   // Renderer uses this to animate flash → shockwave → persistent remnant
@@ -194,6 +199,11 @@ export class Renderer {
         this.renderResolved(input);
         break;
     }
+
+    // Persistent corner controls (touch-friendly ESC + post-dismiss AGAIN).
+    // Drawn after the per-state scene so they always sit on top, but still in
+    // design space (before we drop back to screen space for the motes).
+    if (input.state !== 'title') this.drawCornerControls(input);
 
     // Collision debris is positioned in design space — render it with the scene.
     this.burstLayer.draw(ctx);
@@ -697,11 +707,61 @@ export class Renderer {
     }
   }
 
+  // Top-right control cluster, shown in every non-title state. The EXIT pill
+  // is the on-screen counterpart of the ESC key (the only way back to title
+  // for touch players). Once a WIN card has been dismissed, AGAIN joins it
+  // here so restarting stays one tap away without re-cluttering the orbit.
+  private drawCornerControls(input: RenderInput): void {
+    const { ctx } = this;
+    const w = this.layout.canvas.width;
+    const pillH = 44;
+    const top = 14;
+    const rightMargin = 16;
+    const hoveredName = this.hoveredButton(input.hover);
+
+    const exitW = 96;
+    const exitBtn: CanvasButton = {
+      label: 'Exit',
+      x: w - rightMargin - exitW,
+      y: top,
+      width: exitW,
+      height: pillH,
+    };
+    drawButton(ctx, exitBtn, {
+      primary: palette.terracotta,
+      hovered: hoveredName === 'to_title',
+    });
+    this.buttons.set('to_title', exitBtn);
+
+    if (
+      input.state === 'resolved' &&
+      input.outcome?.kind === 'win' &&
+      input.winCardDismissed
+    ) {
+      const againW = 110;
+      const againBtn: CanvasButton = {
+        label: 'Again',
+        x: exitBtn.x - 12 - againW,
+        y: top,
+        width: againW,
+        height: pillH,
+      };
+      drawButton(ctx, againBtn, {
+        primary: palette.cream,
+        hovered: hoveredName === 'again',
+      });
+      this.buttons.set('again', againBtn);
+    }
+  }
+
   private renderResolved(input: RenderInput): void {
     // Always draw the underlying scene first so the card sits on top
     this.renderSimulate(input);
 
     if (!input.outcome) return;
+    // Player tapped the ✕ on a WIN card: leave the wobble unobstructed. The
+    // orbit keeps advancing in update(); AGAIN/EXIT live in the corner cluster.
+    if (input.outcome.kind === 'win' && input.winCardDismissed) return;
     const statsLine = this.formatPlayStats(input);
     const card = drawOutcomeCard(
       this.ctx,
@@ -729,6 +789,25 @@ export class Renderer {
     const hovered = this.hoveredButton(input.hover) === 'again';
     drawButton(this.ctx, btn, { primary: card.titleColor, hovered });
     this.buttons.set('again', btn);
+
+    // WIN cards get a ✕ in their top-right corner: tap to dismiss the card and
+    // watch the infinite wobble unobstructed. The visible disc is small, but
+    // the hit rectangle is finger-sized (40px) for touch.
+    if (input.outcome.kind === 'win') {
+      const closeR = 13;
+      const ccx = card.x + card.width - 26;
+      const ccy = card.y + 26;
+      const closeHovered = this.hoveredButton(input.hover) === 'dismiss_win';
+      drawCloseButton(this.ctx, ccx, ccy, closeR, card.titleColor, closeHovered);
+      const hit = 20;
+      this.buttons.set('dismiss_win', {
+        label: '',
+        x: ccx - hit,
+        y: ccy - hit,
+        width: hit * 2,
+        height: hit * 2,
+      });
+    }
 
     // The Carse footer — same on every outcome, drawn INSIDE the card at
     // the position drawOutcomeCard computed. The finite-game / infinite-game

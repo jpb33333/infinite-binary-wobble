@@ -40,6 +40,10 @@ export class Game {
   private simAccum = 0;
   private burstedOnResolve = false;
   private running = false;
+  // True once the player taps the ✕ on a WIN card. Hides the card so the
+  // infinite wobble can be watched unobstructed; the orbit keeps advancing
+  // underneath. Reset whenever a fresh play begins (or we return to title).
+  private winCardDismissed = false;
   // Supernova scene: { x, y } of the merger point, plus the elapsed-time
   // marker at the moment of collision so Renderer can animate the flash,
   // shockwave and remnant in real time. null at all other times.
@@ -110,6 +114,17 @@ export class Game {
     const btn = this.renderer.hoveredButton(p);
     if (btn === 'begin' && this.state === 'title') {
       this.toSetup1();
+      return;
+    }
+    // On-screen equivalent of the ESC key — the only way out for touch
+    // players, who have no keyboard to escape with.
+    if (btn === 'to_title' && this.state !== 'title') {
+      this.toTitle();
+      return;
+    }
+    // ✕ on the WIN card: dismiss it and let the wobble fill the screen.
+    if (btn === 'dismiss_win' && this.state === 'resolved' && this.outcome?.kind === 'win') {
+      this.winCardDismissed = true;
       return;
     }
     if (btn === 'lock_in' && (this.state === 'setup_p1' || this.state === 'setup_p2')) {
@@ -220,6 +235,7 @@ export class Game {
     this.simAccum = 0;
     this.supernova = null;
     this.countdownRemaining = COUNTDOWN_SECONDS;
+    this.winCardDismissed = false;
     this.posControl.release();
     this.arrowControl.release();
     this.state = 'title';
@@ -239,6 +255,7 @@ export class Game {
     this.burstedOnResolve = false;
     this.simAccum = 0;
     this.supernova = null;
+    this.winCardDismissed = false;
     this.posControl.release();
     this.arrowControl.release();
     this.state = 'setup_p1';
@@ -274,6 +291,7 @@ export class Game {
     this.burstedOnResolve = false;
     this.simAccum = 0;
     this.supernova = null;
+    this.winCardDismissed = false;
     this.state = 'simulate';
   }
 
@@ -434,6 +452,7 @@ export class Game {
       trails: this.trails,
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
+      winCardDismissed: this.winCardDismissed,
       stats: this.statsSummary,
       supernova: this.supernova
         ? {
