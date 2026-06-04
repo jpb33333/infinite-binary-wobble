@@ -100,3 +100,18 @@ body {
     line-height: 1.5;
   }
 }
+
+/* Shown only if the page is opened inside a cross-origin iframe and the
+   frame-buster in main.ts can't redirect the top window. Styled via this
+   class (not inline) so the strict CSP needs no 'unsafe-inline'. */
+.iframe-refusal {
+  margin: 0;
+  padding: 2em;
+  font: 18px/1.5 'Cardo', Georgia, serif;
+  color: #ffc89b;
+  background: #1a0f14;
+}
+
+.iframe-refusal a {
+  color: #e8956f;
+}

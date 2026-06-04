@@ -1,0 +1,23 @@
+# Automated dependency + GitHub Actions updates.
+# Keeps npm packages patched and the SHA-pinned actions in deploy.yml current,
+# so security fixes arrive as reviewable PRs instead of silently going stale.
+# (The deploy workflow's own comment asks for exactly this — now it exists.)
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      # Collapse routine dev-dependency bumps into one PR to cut review noise;
+      # security updates still surface promptly.
+      dev-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

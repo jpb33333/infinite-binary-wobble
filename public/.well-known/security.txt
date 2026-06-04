@@ -1,0 +1,8 @@
+# Security contact for Infinite Binary Wobble
+# https://jpb33333.github.io/infinite-binary-wobble/
+# Static browser game — no backend, no accounts, no personal data collected.
+Contact: https://github.com/jpb33333/infinite-binary-wobble/security/advisories/new
+Expires: 2027-06-04T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://jpb33333.github.io/infinite-binary-wobble/.well-known/security.txt
+Policy: https://github.com/jpb33333/infinite-binary-wobble/blob/main/SECURITY.md
