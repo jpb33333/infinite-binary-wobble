@@ -471,6 +471,10 @@ export class Game {
   }
 
   private render(dt: number): void {
+    // Reflect the state machine onto the DOM so CSS can scope the homepage
+    // dedication overlay (in style.css) to the title screen — it fades out the
+    // moment play begins. Idempotent string write; the browser no-ops if equal.
+    document.body.dataset.screen = this.state;
     this.renderer.render({
       state: this.state,
       time: this.elapsed,

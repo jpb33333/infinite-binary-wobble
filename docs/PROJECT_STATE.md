@@ -118,7 +118,7 @@ Dependency graph: `Vec2` (leaf) ← `Body`; `gravity`←`Body`; `integrator`←`
 | `vite.config.ts` | Vite + Vitest config + the dev-only CSP-stripping plugin. |
 | `tsconfig.json` | Type-check-only config (`noEmit`). |
 | `.github/workflows/deploy.yml` | test → build → deploy to GitHub Pages. |
-| `public/favicon.svg`, `public/fonts/` | Favicon (two-star SVG) and self-hosted Cardo + Inter woff2 (~82 KB). |
+| `public/favicon.svg`, `public/fonts/` | Favicon (two-star SVG) and self-hosted fonts: Cardo + Inter woff2 (~82 KB) plus Great Vibes (the homepage dedication's cursive script) shipped as upstream TTF (~447 KB, no local woff2 converter). Great Vibes is SIL OFL 1.1 — `GreatVibes-OFL.txt` ships alongside it; fetched from `raw.githubusercontent.com/google/fonts/main/ofl/greatvibes/GreatVibes-Regular.ttf`, SHA-256 `8d509802186f1b51572531ecf313e8098f9a5bfdfaca93f0c9b34467f9982d15`. |
 | `tests/` | Six Vitest files, 25 tests. |
 | `docs/` | `IOS_NATIVE_APP_PLAN.md` and this file. |
 

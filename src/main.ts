@@ -27,5 +27,22 @@ if (window.top !== window.self) {
 const canvas = document.querySelector<HTMLCanvasElement>('#stage');
 if (!canvas) throw new Error('Stage canvas not found in index.html');
 
+// Homepage dedication. The game is canvas-drawn, so this is a DOM overlay
+// pinned to the bottom of the viewport (styled in style.css, shown only on the
+// title screen). Built with DOM APIs — no innerHTML, no inline styles — so the
+// page needs no 'unsafe-inline' in its CSP and stays Trusted-Types-safe, just
+// like the iframe-refusal notice above. Appended after the frame-buster so it
+// is never created inside a refused iframe (that path replaces the body).
+const dedication = document.createElement('footer');
+dedication.className = 'dedication';
+const love = document.createElement('p');
+love.className = 'dedication__line';
+love.textContent = 'A love letter to Natalia';
+const copyright = document.createElement('p');
+copyright.className = 'dedication__copyright';
+copyright.textContent = '© JP Bowditch 2026';
+dedication.append(love, copyright);
+document.body.append(dedication);
+
 const game = new Game(canvas);
 game.start();
