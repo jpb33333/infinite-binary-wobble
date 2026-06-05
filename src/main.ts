@@ -37,11 +37,14 @@ const dedication = document.createElement('footer');
 dedication.className = 'dedication';
 const love = document.createElement('p');
 love.className = 'dedication__line';
-love.textContent = 'A love letter to Natalia';
+love.textContent = 'For Natalia';
+const from = document.createElement('p');
+from.className = 'dedication__line dedication__line--from';
+from.textContent = 'From JP';
 const copyright = document.createElement('p');
 copyright.className = 'dedication__copyright';
-copyright.textContent = '© JP Bowditch 2026';
-dedication.append(love, copyright);
+copyright.textContent = '© Carousella Gaming 2026';
+dedication.append(love, from, copyright);
 document.body.append(dedication);
 
 const game = new Game(canvas);

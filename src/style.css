@@ -171,6 +171,12 @@ body[data-screen]:not([data-screen='title']) .dedication {
   text-shadow: 0 0 12px rgba(244, 165, 141, 0.22);
 }
 
+/* The second line of the couplet sits close under the first — one breath, not
+   two paragraphs. */
+.dedication__line--from {
+  margin-top: 0.1rem;
+}
+
 .dedication__copyright {
   margin: 0.35rem 0 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
