@@ -62,7 +62,7 @@ Source: see `src/physics/` and `src/game/outcomes.ts`. Gameplay limits (mass 1.0
 
 Warm-toned, retro-futurist, soft. Inspired by Spike Jonze's *Her* (production design K.K. Barrett, cinematography Hoyte van Hoytema). No blues, no neon, no harsh edges. Cardo for the wordmark and victory text, Inter for the UI. A full-bleed, deterministic starfield twinkles behind everything across the entire window, with ambient stardust drifting on top and burst debris when stars collide.
 
-Palette lives in `src/theme.ts`. Fonts (Cardo + Inter, plus Great Vibes for the homepage dedication's cursive line) are self-hosted from `public/fonts/`.
+Palette lives in `src/theme.ts`. Fonts (Cardo + Inter) are self-hosted from `public/fonts/`.
 
 ## Build, test, deploy
 

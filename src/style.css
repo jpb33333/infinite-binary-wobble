@@ -28,21 +28,6 @@
   src: url('/fonts/inter-variable.woff2') format('woff2');
 }
 
-/* Great Vibes — the cursive script for the homepage dedication. Self-hosted
-   like the others (CSP font-src 'self'; never a CDN). Shipped as the upstream
-   TrueType rather than woff2 because no woff2 converter/subsetter was available
-   locally and adding one would have meant a new dependency (forbidden here).
-   Source:  https://raw.githubusercontent.com/google/fonts/main/ofl/greatvibes/GreatVibes-Regular.ttf
-   SHA-256: 8d509802186f1b51572531ecf313e8098f9a5bfdfaca93f0c9b34467f9982d15
-   License: SIL OFL 1.1 — see /fonts/GreatVibes-OFL.txt. */
-@font-face {
-  font-family: 'Great Vibes';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/GreatVibes-Regular.ttf') format('truetype');
-}
-
 html,
 body {
   margin: 0;
@@ -172,17 +157,18 @@ body[data-screen]:not([data-screen='title']) .dedication {
 
 .dedication__line {
   margin: 0;
-  font-family: 'Great Vibes', 'Cardo', cursive;
+  /* The title screen's subtitle voice — Cardo italic — one step smaller, so the
+     dedication reads as a quiet signature rather than a second subtitle. */
+  font-family: 'Cardo', serif;
+  font-style: italic;
   font-weight: 400;
-  /* Cursive scripts join letter-to-letter; tracking would break the connections,
-     so none. */
-  letter-spacing: 0;
-  font-size: 1.65rem;
+  letter-spacing: 0.02em;
+  font-size: 1.1rem;
   line-height: 1.2;
   color: #f4a58d; /* palette.rose */
-  /* A whisper of glow so the script reads as warm light, not flat text, against
-     the deep-void backdrop — same family as the canvas halos. */
-  text-shadow: 0 0 18px rgba(244, 165, 141, 0.25);
+  /* A whisper of glow so it reads as warm light, not flat text, against the
+     deep-void backdrop — same family as the canvas halos. */
+  text-shadow: 0 0 12px rgba(244, 165, 141, 0.22);
 }
 
 .dedication__copyright {
