@@ -1,0 +1,135 @@
+/* Styles for the static privacy + support pages.
+ *
+ * These pages live in public/ and Vite copies them to the build root verbatim
+ * (no bundling, no URL rewriting), so this file uses RELATIVE paths only: it
+ * sits next to /fonts/ at the deployed root, so ./fonts/* resolves correctly
+ * under any GitHub Pages subpath. The site's CSP is style-src 'self' (no
+ * 'unsafe-inline'), so the pages carry no inline <style> or style="" — every
+ * rule lives here and is pulled in as a same-origin stylesheet.
+ *
+ * Fonts and palette mirror the game (src/style.css, src/theme.ts) so the pages
+ * read as part of the same product without re-fetching anything off-origin. */
+
+@font-face {
+  font-family: 'Cardo';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/cardo-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Cardo';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/cardo-400-italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-variable.woff2') format('woff2');
+}
+
+/* Palette from src/theme.ts: deep wine-black void, warm "Her"-inspired tones. */
+:root {
+  --void: #1a0f14;
+  --cream: #ffc89b;
+  --rose: #f4a58d;
+  --terracotta: #a3685c;
+  --peach: #e8956f;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--void);
+  color: var(--cream);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+}
+
+main {
+  width: 100%;
+  max-width: 42rem;
+  box-sizing: border-box;
+  padding: 3rem 1.5rem 4rem;
+  line-height: 1.65;
+}
+
+h1 {
+  font-family: 'Cardo', Georgia, serif;
+  font-weight: 400;
+  font-size: 2rem;
+  line-height: 1.2;
+  margin: 0 0 0.25rem;
+  color: var(--cream);
+}
+
+h2 {
+  font-family: 'Cardo', Georgia, serif;
+  font-weight: 400;
+  font-size: 1.35rem;
+  margin: 2rem 0 0.5rem;
+  color: var(--rose);
+}
+
+p,
+li {
+  color: var(--rose);
+  font-size: 1.0625rem;
+}
+
+ul {
+  padding-left: 1.25rem;
+}
+
+li {
+  margin: 0.35rem 0;
+}
+
+a {
+  color: var(--peach);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+a:hover,
+a:focus {
+  color: var(--cream);
+}
+
+.meta {
+  color: var(--terracotta);
+  font-size: 0.95rem;
+  margin: 0 0 1.5rem;
+}
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--terracotta);
+  color: var(--terracotta);
+  font-size: 0.95rem;
+}
+
+footer a {
+  color: var(--terracotta);
+}
+
+footer a:hover,
+footer a:focus {
+  color: var(--rose);
+}
