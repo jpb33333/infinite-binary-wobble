@@ -23,6 +23,8 @@ import {
   drawOutcomeCard,
   drawCloseButton,
   drawPaywallCard,
+  drawTitleExplainerLink,
+  drawExplainerCard,
   type CanvasButton,
 } from './overlay.ts';
 import { bodyRadius } from '../physics/Body.ts';
@@ -65,6 +67,10 @@ export interface RenderInput {
   stats: import('../game/stats.ts').StatsSummary;
   // Web metering view (paywall + free-plays meter). enabled=false → inert.
   meter: MeterView;
+  // True while the optional "what is a binary star?" explainer card is open
+  // over the title screen. Modal: BEGIN is suppressed underneath so the card
+  // owns the input. Only ever true in the 'title' state.
+  explainerOpen: boolean;
 }
 
 export class Renderer {
@@ -230,25 +236,51 @@ export class Renderer {
     drawWordmark(ctx, w, h);
     drawSessionStats(ctx, input.stats, w, h);
 
-    const beginBtn: CanvasButton = {
-      label: 'Begin',
-      x: w / 2 - 90,
-      y: h * 0.62,
-      width: 180,
-      height: 44,
-    };
-    const hovered = this.hoveredButton(input.hover) === 'begin';
-    drawButton(ctx, beginBtn, { primary: palette.cream, hovered });
-    this.buttons.set('begin', beginBtn);
+    // BEGIN is suppressed while the explainer is open: not drawn and, crucially,
+    // not registered as a button — so the modal card truly owns all input.
+    if (!input.explainerOpen) {
+      const beginBtn: CanvasButton = {
+        label: 'Begin',
+        x: w / 2 - 90,
+        y: h * 0.62,
+        width: 180,
+        height: 44,
+      };
+      const hovered = this.hoveredButton(input.hover) === 'begin';
+      drawButton(ctx, beginBtn, { primary: palette.cream, hovered });
+      this.buttons.set('begin', beginBtn);
 
-    // Free-plays meter — only when metering is on and the player hasn't paid.
-    if (input.meter.enabled && !input.meter.unlocked && input.meter.remaining !== null) {
-      ctx.save();
-      ctx.textAlign = 'center';
-      ctx.fillStyle = rgba(palette.cream, 0.4);
-      ctx.font = `500 12px ${fonts.sans}`;
-      ctx.fillText(`${Math.max(0, input.meter.remaining)} free plays left`, w / 2, h * 0.62 + 72);
-      ctx.restore();
+      // Free-plays meter — only when metering is on and the player hasn't paid.
+      if (input.meter.enabled && !input.meter.unlocked && input.meter.remaining !== null) {
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = rgba(palette.cream, 0.4);
+        ctx.font = `500 12px ${fonts.sans}`;
+        ctx.fillText(`${Math.max(0, input.meter.remaining)} free plays left`, w / 2, h * 0.62 + 72);
+        ctx.restore();
+      }
+
+      // The quiet, optional explainer affordance. Hidden while the card is open
+      // (the card is the explainer); a finger-sized hit rect is registered so
+      // taps and the hover cursor line up with the text.
+      const linkHovered = this.hoveredButton(input.hover) === 'explainer';
+      const linkBtn = drawTitleExplainerLink(ctx, w, linkHovered);
+      this.buttons.set('explainer', linkBtn);
+    }
+
+    // Modal explainer card, painted last so it sits above the title. Registers
+    // only the ✕ dismiss hit rect (finger-sized), matching the WIN card.
+    if (input.explainerOpen) {
+      const closeHovered = this.hoveredButton(input.hover) === 'dismiss_explainer';
+      const close = drawExplainerCard(ctx, w, h, closeHovered);
+      const hit = 22;
+      this.buttons.set('dismiss_explainer', {
+        label: '',
+        x: close.closeX - hit,
+        y: close.closeY - hit,
+        width: hit * 2,
+        height: hit * 2,
+      });
     }
   }
 

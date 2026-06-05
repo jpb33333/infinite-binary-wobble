@@ -45,6 +45,11 @@ export class Game {
   // infinite wobble can be watched unobstructed; the orbit keeps advancing
   // underneath. Reset whenever a fresh play begins (or we return to title).
   private winCardDismissed = false;
+  // True while the optional "what is a binary star?" explainer card is open on
+  // the title screen. A simple boolean rather than a new GameStateKind: it's a
+  // modal aside over the existing title, not a distinct phase of the game.
+  // Always reset to false on entering the title (toTitle / toSetup1).
+  private explainerOpen = false;
   // Supernova scene: { x, y } of the merger point, plus the elapsed-time
   // marker at the moment of collision so Renderer can animate the flash,
   // shockwave and remnant in real time. null at all other times.
@@ -107,9 +112,14 @@ export class Game {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    if (e.key === 'Escape' && this.state !== 'title') {
-      this.toTitle();
+    if (e.key !== 'Escape') return;
+    // On the title, Esc closes the explainer card if it's open (mirrors the ✕);
+    // there's nothing else to escape to. Elsewhere it returns to the title.
+    if (this.state === 'title') {
+      if (this.explainerOpen) this.explainerOpen = false;
+      return;
     }
+    this.toTitle();
   }
 
   private onPointerDown(e: PointerEvent): void {
@@ -119,6 +129,17 @@ export class Game {
 
     // Button clicks first
     const btn = this.renderer.hoveredButton(p);
+    // Title-screen explainer: open on the quiet link, dismiss on its ✕. While
+    // open it's modal (BEGIN isn't registered underneath), so these are the
+    // only title buttons the renderer exposes.
+    if (btn === 'explainer' && this.state === 'title' && !this.explainerOpen) {
+      this.explainerOpen = true;
+      return;
+    }
+    if (btn === 'dismiss_explainer' && this.state === 'title' && this.explainerOpen) {
+      this.explainerOpen = false;
+      return;
+    }
     if (btn === 'begin' && this.state === 'title') {
       this.toSetup1();
       return;
@@ -248,6 +269,7 @@ export class Game {
     this.supernova = null;
     this.countdownRemaining = COUNTDOWN_SECONDS;
     this.winCardDismissed = false;
+    this.explainerOpen = false;
     this.posControl.release();
     this.arrowControl.release();
     this.state = 'title';
@@ -274,6 +296,7 @@ export class Game {
     this.simAccum = 0;
     this.supernova = null;
     this.winCardDismissed = false;
+    this.explainerOpen = false;
     this.posControl.release();
     this.arrowControl.release();
     this.state = 'setup_p1';
@@ -485,6 +508,7 @@ export class Game {
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
       winCardDismissed: this.winCardDismissed,
+      explainerOpen: this.explainerOpen,
       stats: this.statsSummary,
       meter: this.meter.view,
       supernova: this.supernova
