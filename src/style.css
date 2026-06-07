@@ -115,3 +115,82 @@ body {
 .iframe-refusal a {
   color: #e8956f;
 }
+
+/* Homepage dedication. A DOM overlay (the game itself is canvas-drawn) pinned
+   to the very bottom of the viewport, layered over the full-bleed canvas. It
+   sits in the lower letterbox band beneath the 1280×800 court, so it never
+   collides with the canvas scene at any aspect ratio.
+
+   pointer-events: none — it is purely a signature: every click, drag and wheel
+   passes straight through to the canvas, so game input / hit-testing is
+   untouched. position: fixed keeps it out of flow (no scroll, no layout shift;
+   body stays overflow: hidden). Colours mirror the palette in src/theme.ts the
+   same way the portrait prompt and iframe-refusal above do — CSS can't import
+   the TS tokens, so the rose / cream hexes are duplicated verbatim. Styled here
+   in the stylesheet (never inline) so the strict CSP needs no 'unsafe-inline'.
+
+   Shown only on the title screen. Game.render() reflects the state machine onto
+   <body data-screen>; the dedication is visible at boot (before the first frame
+   sets the attribute) and whenever the screen is the title, and fades out the
+   moment play begins so it never competes with the HUD. */
+.dedication {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 1.6rem;
+  margin: 0;
+  padding: 0 1.5rem;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 1;
+  opacity: 1;
+  transition: opacity 600ms ease;
+}
+
+/* Hidden on every screen except the title. The :not() covers all in-play
+   states; the dedication is only ever shown at rest on the homepage. */
+body[data-screen]:not([data-screen='title']) .dedication {
+  opacity: 0;
+}
+
+.dedication__line {
+  margin: 0;
+  /* The title screen's subtitle voice — Cardo italic — one step smaller, so the
+     dedication reads as a quiet signature rather than a second subtitle. */
+  font-family: 'Cardo', serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  font-size: 1.1rem;
+  line-height: 1.2;
+  color: #f4a58d; /* palette.rose */
+  /* A whisper of glow so it reads as warm light, not flat text, against the
+     deep-void backdrop — same family as the canvas halos. */
+  text-shadow: 0 0 12px rgba(244, 165, 141, 0.22);
+}
+
+/* The second line of the couplet sits close under the first — one breath, not
+   two paragraphs. */
+.dedication__line--from {
+  margin-top: 0.1rem;
+}
+
+.dedication__copyright {
+  margin: 0.35rem 0 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-weight: 400;
+  /* Subordinate to the script above: smaller, dimmer, quietly tracked. */
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: rgba(255, 200, 155, 0.4); /* palette.cream @ 0.4 */
+}
+
+/* The portrait "rotate your phone" prompt replaces the whole screen; the
+   dedication would just clutter it. Hide it there. */
+@media (max-width: 700px) and (orientation: portrait) {
+  .dedication {
+    display: none;
+  }
+}
