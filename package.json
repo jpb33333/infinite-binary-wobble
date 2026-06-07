@@ -9,7 +9,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "export:fixtures": "node --experimental-strip-types scripts/export-golden-fixtures.mjs"
   },
   "devDependencies": {
     "typescript": "~6.0.2",
