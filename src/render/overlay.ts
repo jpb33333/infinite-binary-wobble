@@ -355,6 +355,171 @@ function outcomeText(outcome: Outcome): {
   }
 }
 
+// The optional title-screen affordance: a quiet, lowercase text link in the
+// site's voice. Drawn as plain prose (not a pill) so it reads as an aside, not
+// a control — but the caller registers a finger-sized hit rect around it. A
+// faint underline appears on hover to confirm it's tappable, matching the
+// restraint of the rest of the title screen.
+const EXPLAINER_LINK_TEXT = 'what is a binary star?';
+
+export function drawTitleExplainerLink(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  hovered: boolean,
+): CanvasButton {
+  ctx.save();
+  ctx.font = `italic 400 15px ${fonts.serif}`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'right';
+
+  const margin = 28;
+  const baselineY = 30;
+  const textW = ctx.measureText(EXPLAINER_LINK_TEXT).width;
+  const rightX = w - margin;
+
+  ctx.fillStyle = rgba(palette.rose, hovered ? 0.85 : 0.5);
+  ctx.fillText(EXPLAINER_LINK_TEXT, rightX, baselineY);
+
+  if (hovered) {
+    ctx.strokeStyle = rgba(palette.rose, 0.6);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(rightX - textW, baselineY + 11);
+    ctx.lineTo(rightX, baselineY + 11);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Finger-sized hit rect (≥44px tall, per the repo's touch-target precedent),
+  // centred on the rendered text. Pad horizontally so the whole phrase is easy
+  // to tap.
+  const hitH = 44;
+  const padX = 12;
+  return {
+    label: '',
+    x: rightX - textW - padX,
+    y: baselineY - hitH / 2,
+    width: textW + padX * 2,
+    height: hitH,
+  };
+}
+
+// The explainer card. Styled to match the outcome/paywall card family — dim
+// backdrop, centred rounded panel, Cardo serif prose — and modal: while it's
+// open the title screen behind it is inert. Returns the ✕ geometry so the
+// caller can register a finger-sized dismiss hit rect (mirroring the WIN card).
+const EXPLAINER_TITLE = 'binary stars';
+const EXPLAINER_BODY: readonly string[] = [
+  'Most stars are not alone.',
+  'Perhaps half the stars you can see are two — bound to each other, circling a point between them that belongs to neither and to both. Astronomers call them binary stars.',
+  'Neither star leads. Neither follows. Each bends the other’s path — and when the balance is right, the dance holds for billions of years.',
+  'When it isn’t, they fall together, or fly apart.',
+  'You are about to be such a pair.',
+];
+
+export function drawExplainerCard(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  closeHovered: boolean,
+): { closeX: number; closeY: number; closeR: number } {
+  // Dim the title behind the card so it reads as modal (same backdrop alpha as
+  // the LOSE outcome / paywall cards).
+  ctx.save();
+  ctx.fillStyle = rgba(palette.voidDeep, 0.6);
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+
+  const cardW = 640;
+  const padX = 56; // inner horizontal padding
+  const textW = cardW - padX * 2;
+  const paraGap = 14; // blank space between paragraphs
+  const bodyLineH = 24;
+  const bodySize = 17;
+
+  // Measure the wrapped body up front so the card height fits the prose exactly
+  // — no clipped lines, no dead space — at any of the wrapped paragraph counts.
+  ctx.save();
+  ctx.font = `italic 400 ${bodySize}px ${fonts.serif}`;
+  const wrappedParas = EXPLAINER_BODY.map(p => wrapText(ctx, p, textW));
+  ctx.restore();
+  const totalBodyLines = wrappedParas.reduce((n, lines) => n + lines.length, 0);
+
+  const titleTop = 40; // title baseline offset from card top
+  const titleToBody = 44; // gap from title baseline to first body line
+  const bottomPad = 40;
+  const bodyHeight =
+    totalBodyLines * bodyLineH + (wrappedParas.length - 1) * paraGap;
+  const cardH = titleTop + titleToBody + bodyHeight + bottomPad;
+
+  const cx = (w - cardW) / 2;
+  const cy = (h - cardH) / 2;
+
+  // Panel
+  ctx.save();
+  ctx.beginPath();
+  roundedRectPath(ctx, cx, cy, cardW, cardH, 18);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.92);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(palette.cream, 0.45);
+  ctx.stroke();
+  ctx.restore();
+
+  // Title
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = palette.cream;
+  ctx.font = `400 30px ${fonts.serif}`;
+  ctx.fillText(EXPLAINER_TITLE, w / 2, cy + titleTop);
+
+  // Body — centred, wrapped, paragraph by paragraph.
+  ctx.fillStyle = palette.rose;
+  ctx.font = `italic 400 ${bodySize}px ${fonts.serif}`;
+  let y = cy + titleTop + titleToBody;
+  for (const lines of wrappedParas) {
+    for (const line of lines) {
+      ctx.fillText(line, w / 2, y);
+      y += bodyLineH;
+    }
+    y += paraGap;
+  }
+  ctx.restore();
+
+  // ✕ to dismiss, top-right of the card — same construction as the WIN card.
+  const closeR = 13;
+  const closeX = cx + cardW - 26;
+  const closeY = cy + 26;
+  drawCloseButton(ctx, closeX, closeY, closeR, palette.cream, closeHovered);
+
+  return { closeX, closeY, closeR };
+}
+
+// Greedy word-wrap to a pixel width using the context's current font. Returns
+// one entry per visual line. Used by the explainer card so its longer
+// paragraphs fit the panel without hand-broken lines.
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(candidate).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 function roundedRectPath(
   ctx: CanvasRenderingContext2D,
   x: number,
