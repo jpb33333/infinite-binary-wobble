@@ -5,14 +5,20 @@
 # and TS physics fails this job.
 name: ios-physics
 
+# tests/fixtures/** is in the path filters because the golden files are the
+# parity contract: the exporter writes identical copies to tests/fixtures/ and
+# ios/.../Fixtures/, and a re-export must re-run the Swift suite against the
+# new truth (not silently keep passing against stale fixtures).
 on:
   push:
     paths:
       - 'ios/WobblePhysics/**'
+      - 'tests/fixtures/**'
       - '.github/workflows/ios-physics.yml'
   pull_request:
     paths:
       - 'ios/WobblePhysics/**'
+      - 'tests/fixtures/**'
       - '.github/workflows/ios-physics.yml'
 
 permissions:
@@ -23,9 +29,15 @@ jobs:
     runs-on: ubuntu-24.04
     container: swift:6.0
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
           persist-credentials: false
+      - name: Fixture parity (web copy == bundled iOS copy)
+        # The Swift suite reads ONLY the bundled Fixtures/ via Bundle.module, so
+        # a divergence between the two committed copies (hand edit, partial
+        # export, bad merge resolution) would otherwise test stale goldens and
+        # stay green. git diff --no-index exits non-zero on any difference.
+        run: git diff --no-index --stat tests/fixtures ios/WobblePhysics/Tests/WobblePhysicsTests/Fixtures
       - name: Run physics parity suite
         working-directory: ios/WobblePhysics
         run: swift test
