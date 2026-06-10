@@ -44,7 +44,7 @@ nudge).
    ┌──────────────────────────────────────────────┐
    │      Cloudflare  (THE TRUST ROOT)             │
    │  Worker API · Durable Object (counters)       │
-   │  D1 (entitlements/purchases) · KV (idempotency)│
+   │  D1 (entitlements/purchases/idempotency) · KV │
    │  Turnstile (web bot-gate) · Rate-limit · WAF  │
    │  Transform Rule: HTTP security headers → Pages│
    └───────┬───────────────────────────┬───────────┘
@@ -62,7 +62,9 @@ verification.
 
 - **Storage:** a **Durable Object** per device for the play counter + App Attest
   assertion counter (race-free, monotonic — needed for a correct gate); **D1** for
-  durable entitlement/purchase records; **KV** for idempotency keys + nonces. ⚠️ DO
+  durable entitlement/purchase records **and webhook idempotency**
+  (`processed_events`); **KV** reserved for App Attest challenge nonces
+  (iOS phase — no current route uses it). ⚠️ DO
   requires the **Workers Paid plan ($5/mo)**; $0 fallback is a D1 atomic
   `UPDATE … SET n=n+1` counter (the scaffold ships this path by default).
 - **"A play"** is counted at the **countdown→simulate edge** (`Game.toSimulate()`)
@@ -100,7 +102,7 @@ prevent it. iOS is the enforceable paywall; web is a goodwill nudge.
 
 **Security:** secrets in Workers Secrets; raw-body signature verification on both
 webhooks; rate-limiting (per-IP + per-attest-key) + WAF + Bot Fight Mode; CORS
-echoes only the web origin; idempotency via `processed_events` + KV.
+echoes only the web origin; idempotency via `processed_events` in D1.
 
 **Edge headers:** front Pages via `play.<domain>` CNAME + a Response Header
 Transform Rule that sets HSTS, a CSP *header* (incl. `frame-ancestors 'none'` +

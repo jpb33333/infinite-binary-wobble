@@ -17,9 +17,29 @@ operational summary.
 - `entitlement` is always a **server-derived view of current payment state**.
 
 > **Honest limitation — web metering is best-effort.** A web client can clear
-> cookies / edit JS to re-earn free plays. Turnstile + rate limits raise the
-> cost but cannot prevent it. The *enforceable* paywall is iOS (App Attest).
-> The web paywall is a goodwill nudge, which fits pay-what-you-want.
+> cookies / edit JS to re-earn free plays. Turnstile raises the cost — add a
+> Cloudflare **rate-limiting rule** on `/v1/*` during provisioning, because the
+> Worker itself does not rate-limit — but it cannot prevent it. The
+> *enforceable* paywall is iOS (App Attest). The web paywall is a goodwill
+> nudge, which fits pay-what-you-want.
+
+## Cookie & origin constraint — read before wiring the web client
+
+The device token travels in a `SameSite=Strict` HttpOnly cookie, so the browser
+only sends it when the game and the API share a **registrable domain**
+(e.g. `play.example.com` + `api.example.com`). Two consequences:
+
+- **`github.io` can never work.** `github.io` is on the Public Suffix List, so
+  `jpb33333.github.io` is its own "site": a cookie set by a Worker on
+  `workers.dev` (or any other domain) is dropped, cross-site `Set-Cookie`
+  responses are rejected, and Safari blocks the third-party cookie outright.
+- **The failure is invisible by design.** The client is fail-open: with no
+  cookie, `/v1/status` returns 401, the meter stays inert, and the game simply
+  plays free forever. Nothing errors. If metering "does nothing" in testing,
+  check the domains first.
+
+Set `VITE_API_BASE_URL` only for a same-domain pair behind the custom domain
+(ROADMAP Phase A) — never for the `github.io` + `workers.dev` combination.
 
 ## Status (this scaffold)
 
@@ -80,7 +100,9 @@ npm run deploy
 ```
 
 Then point Stripe's webhook at `https://api.<domain>/v1/stripe/webhook` and
-Apple's Server Notifications V2 URL at `https://api.<domain>/v1/apple/notifications`.
+Apple's Server Notifications V2 URL at `https://api.<domain>/v1/apple/notifications`,
+and add a Cloudflare **rate-limiting rule** on `https://api.<domain>/v1/*`
+(the Worker itself does not rate-limit).
 
 For local dev, copy `.dev.vars.example` → `.dev.vars` and `npm run dev`.
 

@@ -4,7 +4,7 @@ The single place to see **what's done, what's next, and how to pick this up on a
 new machine**. The full architecture is in
 [`MONETIZATION_PLAN.md`](./MONETIZATION_PLAN.md); this is the actionable version.
 
-_Last updated: 2026-06-04._
+_Last updated: 2026-06-10._
 
 ## The goal
 
@@ -27,10 +27,11 @@ plays, then pay to keep playing.
 | 📋 **Not started** | Native iOS app + commerce layer; privacy policy + App Privacy label |
 
 **Backend — real vs stubbed** (`api-worker/`): real + unit-tested — router, CORS
-lock, signed web token, gate logic, D1 counter, Turnstile session, **Stripe
-webhook signature verification**. Stubbed (need secrets/SDKs) — Stripe Checkout
-creation, entitlement persistence, App Attest, StoreKit 2 + App Store Server
-API/Notifications.
+lock, signed web token (device reuse + sliding renewal), gate logic, D1 counter,
+Turnstile session, **Stripe webhook signature verification**, **Stripe Checkout
+creation + verified-webhook entitlement persistence** (idempotent unlock /
+refund-relock). Stubbed (need secrets/SDKs) — App Attest, StoreKit 2 + App
+Store Server API/Notifications.
 
 ## Sequenced work
 
@@ -51,11 +52,14 @@ in `SECURITY.md`.)
 Worker. Point the Stripe webhook + Apple notifications at it.
 
 ### Phase C — Enable web metering end-to-end (~1–2 d)
-Set `VITE_API_BASE_URL` + `VITE_TURNSTILE_SITE_KEY` for the web build; add the API
-origin + `challenges.cloudflare.com` to the CSP `connect-src` (and the Turnstile
-script/frame directives). Implement the remaining backend pieces (Stripe Checkout
-creation; the webhook → D1 entitlement write). Test: play to the limit → paywall →
-Stripe checkout → unlock.
+Set `VITE_API_BASE_URL` + `VITE_TURNSTILE_SITE_KEY` for the web build — the build
+widens the CSP automatically (`meteringCsp` in `vite.config.ts`), and the backend
+pieces (Stripe Checkout creation; verified webhook → D1 entitlement) shipped in
+0.4.x. **The game and the API must share a registrable domain**: the device cookie
+is `SameSite=Strict`, so the `github.io` + `workers.dev` combination silently
+no-ops (fail-open — see "Cookie & origin constraint" in `api-worker/README.md`).
+Test: play to the limit → paywall → Stripe checkout → unlock → **reload** (the
+entitlement must survive the `?checkout=success` redirect).
 
 ### Phase D — iOS native core (~3 wk)
 The existing 7-phase rewrite in `IOS_NATIVE_APP_PLAN.md` (physics → render → state
