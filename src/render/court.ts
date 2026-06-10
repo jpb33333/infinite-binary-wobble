@@ -16,34 +16,51 @@ export function drawCourt(
   layout: CourtLayout,
   opts: CourtDrawOptions,
 ): void {
-  // Soft ambient wash on the active side
+  // Soft ambient wash on the active side. The gradient runs from the
+  // canvas edge owned by that player toward the dividing line, whichever
+  // axis the layout splits on.
+  const { axis, at } = layout.centerLine;
+  const vertical = axis === 'vertical';
   if (opts.activePlayer === 1) {
-    const grad = ctx.createLinearGradient(0, 0, layout.centerLineX, 0);
+    const grad = vertical
+      ? ctx.createLinearGradient(0, 0, at, 0)
+      : ctx.createLinearGradient(0, 0, 0, at);
     grad.addColorStop(0, rgba(palette.player1, 0.07));
     grad.addColorStop(1, rgba(palette.player1, 0));
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, layout.centerLineX, layout.canvas.height);
+    if (vertical) ctx.fillRect(0, 0, at, layout.canvas.height);
+    else ctx.fillRect(0, 0, layout.canvas.width, at);
   } else if (opts.activePlayer === 2) {
-    const grad = ctx.createLinearGradient(layout.centerLineX, 0, layout.canvas.width, 0);
+    const grad = vertical
+      ? ctx.createLinearGradient(at, 0, layout.canvas.width, 0)
+      : ctx.createLinearGradient(0, at, 0, layout.canvas.height);
     grad.addColorStop(0, rgba(palette.player2, 0));
     grad.addColorStop(1, rgba(palette.player2, 0.07));
     ctx.fillStyle = grad;
-    ctx.fillRect(layout.centerLineX, 0, layout.canvas.width - layout.centerLineX, layout.canvas.height);
+    if (vertical) ctx.fillRect(at, 0, layout.canvas.width - at, layout.canvas.height);
+    else ctx.fillRect(0, at, layout.canvas.width, layout.canvas.height - at);
   }
 
   // Glowing center "service line"
   if (opts.showCenterLine) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const grad = ctx.createLinearGradient(layout.centerLineX, 0, layout.centerLineX, layout.canvas.height);
+    const grad = vertical
+      ? ctx.createLinearGradient(at, 0, at, layout.canvas.height)
+      : ctx.createLinearGradient(0, at, layout.canvas.width, at);
     grad.addColorStop(0, rgba(palette.terracotta, 0));
     grad.addColorStop(0.5, rgba(palette.terracotta, 0.35));
     grad.addColorStop(1, rgba(palette.terracotta, 0));
     ctx.strokeStyle = grad;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(layout.centerLineX, 0);
-    ctx.lineTo(layout.centerLineX, layout.canvas.height);
+    if (vertical) {
+      ctx.moveTo(at, 0);
+      ctx.lineTo(at, layout.canvas.height);
+    } else {
+      ctx.moveTo(0, at);
+      ctx.lineTo(layout.canvas.width, at);
+    }
     ctx.stroke();
     ctx.restore();
   }

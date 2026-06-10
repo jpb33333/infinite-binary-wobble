@@ -1,6 +1,6 @@
 import { palette, fonts, rgba, blendHex } from '../theme.ts';
 import type { CourtLayout, BodySpec, GameStateKind } from '../game/states.ts';
-import { DEFAULT_LAYOUT, LIMITS } from '../game/states.ts';
+import { layoutForViewport, LIMITS } from '../game/states.ts';
 import {
   generateStarfield,
   drawStarfield,
@@ -73,10 +73,19 @@ export interface RenderInput {
   explainerOpen: boolean;
 }
 
+// Minimum touch-target side in CSS pixels (Apple HIG 44pt). Buttons are
+// drawn in design space, so at small contain-fit scales their on-screen size
+// shrinks below a fingertip; hit-testing inflates each rect (centered) up to
+// this floor. Visuals stay petite; taps stay reliable.
+const TOUCH_TARGET_MIN_CSS = 44;
+
 export class Renderer {
   readonly canvas: HTMLCanvasElement;
   readonly ctx: CanvasRenderingContext2D;
-  readonly layout: CourtLayout;
+  // Swapped between DEFAULT_LAYOUT and PORTRAIT_LAYOUT on resize to match the
+  // viewport's aspect. The Game compares this reference across resize() calls
+  // to detect orientation changes and remap in-flight setup specs.
+  private currentLayout: CourtLayout;
   private starfield: StarSpec[];
   // Atmosphere (full-bleed, screen space) vs world events (design space). The
   // ambient drift fills the whole viewport like the starfield; collision
@@ -97,12 +106,12 @@ export class Renderer {
   private viewW = 1;
   private viewH = 1;
 
-  constructor(canvas: HTMLCanvasElement, layout: CourtLayout = DEFAULT_LAYOUT) {
+  constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Could not acquire 2D context');
     this.ctx = ctx;
-    this.layout = layout;
+    this.currentLayout = layoutForViewport(window.innerWidth, window.innerHeight);
 
     this.starfield = [];
     this.ambientLayer = new Particles();
@@ -123,6 +132,8 @@ export class Renderer {
     this.dpr = dpr;
     this.viewW = cssW;
     this.viewH = cssH;
+    // Re-pick the design space for the new aspect (landscape ↔ portrait).
+    this.currentLayout = layoutForViewport(cssW, cssH);
     const { width: dw, height: dh } = this.layout.canvas;
     this.fit = computeFit(cssW, cssH, dw, dh);
     // Re-seed the starfield at the density the new viewport calls for. The
@@ -156,11 +167,26 @@ export class Renderer {
     this.burstLayer.burst(x, y, count, color, speed);
   }
 
+  get layout(): CourtLayout {
+    return this.currentLayout;
+  }
+
   // Returns the button (in canvas-space) hovered by the pointer, if any.
+  // Each rect is inflated (centered) so its on-screen size is at least
+  // TOUCH_TARGET_MIN_CSS per side; ties between inflated neighbours resolve
+  // by insertion order, which registers primary buttons first.
   hoveredButton(p: { x: number; y: number } | null): string | null {
     if (!p) return null;
+    const minSide = TOUCH_TARGET_MIN_CSS / this.fit.scale;
     for (const [name, b] of this.buttons) {
-      if (p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height) {
+      const padX = Math.max(0, (minSide - b.width) / 2);
+      const padY = Math.max(0, (minSide - b.height) / 2);
+      if (
+        p.x >= b.x - padX &&
+        p.x <= b.x + b.width + padX &&
+        p.y >= b.y - padY &&
+        p.y <= b.y + b.height + padY
+      ) {
         return name;
       }
     }
@@ -442,32 +468,44 @@ export class Renderer {
 
   private drawSetupHelp(activePlayer: 1 | 2): void {
     const { ctx } = this;
-    const x = activePlayer === 1 ? 80 : this.layout.canvas.width - 80;
-    const align: CanvasTextAlign = activePlayer === 1 ? 'left' : 'right';
-    ctx.save();
-    ctx.font = `400 12px ${fonts.sans}`;
-    ctx.fillStyle = rgba(palette.cream, 0.45);
-    ctx.textAlign = align;
+    const portrait = this.layout.orientation === 'portrait';
     const lines = [
       'DRAG OUTWARD from the star to throw it.',
       'TAP your court to reposition the star.',
       'TAP − or + to set mass.',
-      `Max velocity ${LIMITS.maxVelocityPerBody} m/s.`,
+      `Max velocity ${LIMITS.maxVelocityPerBody} px/s.`,
     ];
-    // Stack the help block so everything (including the ESC affordance below)
-    // sits above the court's top edge at y=200.
-    let y = 100;
+    ctx.save();
+    ctx.font = `400 12px ${fonts.sans}`;
+    ctx.fillStyle = rgba(palette.cream, 0.45);
+    let x: number;
+    let y: number;
+    if (portrait) {
+      // Centered block in the breathing room above the active player's court:
+      // under the phase label for P1 (ends y=64, court at 170), just below the
+      // center line for P2 (line at 640, court at 770).
+      ctx.textAlign = 'center';
+      x = this.layout.canvas.width / 2;
+      y = activePlayer === 1 ? 88 : this.layout.centerLine.at + 28;
+    } else {
+      // Landscape: stacked in the active player's top corner, above the
+      // court's top edge at y=200.
+      ctx.textAlign = activePlayer === 1 ? 'left' : 'right';
+      x = activePlayer === 1 ? 80 : this.layout.canvas.width - 80;
+      y = 100;
+    }
     for (const line of lines) {
       ctx.fillText(line, x, y);
       y += 18;
     }
-    // ESC affordance, set apart by a blank line and dimmer alpha so the
-    // primary controls don't compete with it. Only surfaced during setup —
-    // by the time the player reaches countdown / sim they already know.
+    // Exit affordance, set apart by a blank line and dimmer alpha so the
+    // primary controls don't compete with it. Names both routes — ESC for
+    // keyboards, the EXIT pill for touch. Only surfaced during setup; by
+    // the time the player reaches countdown / sim they already know.
     y += 8;
     ctx.fillStyle = rgba(palette.cream, 0.3);
     ctx.font = `italic 400 11px ${fonts.sans}`;
-    ctx.fillText('Press ESC to return to title.', x, y);
+    ctx.fillText('ESC or the EXIT pill returns to title.', x, y);
     ctx.restore();
   }
 
@@ -546,7 +584,7 @@ export class Renderer {
       const periodText = Number.isFinite(o.period) ? `${o.period.toFixed(1)} s` : '∞';
       drawHud(ctx, w, h, [
         { label: 'separation', value: `${o.separation.toFixed(0)} px`, color: palette.rose },
-        { label: 'rel. speed', value: `${o.vRel.toFixed(0)} m/s`, color: palette.rose },
+        { label: 'rel. speed', value: `${o.vRel.toFixed(0)} px/s`, color: palette.rose },
         { label: 'energy', value: boundText, color: boundColor },
         { label: 'ecc.', value: eccText, color: palette.cream },
         { label: 'period', value: periodText, color: palette.rose },
@@ -580,8 +618,10 @@ export class Renderer {
   // (receding, red-shifted). The orbit's geometry guarantees this tint
   // pulses sinusoidally with the orbital phase.
   private dopplerTinted(style: StarStyle, body: Body): StarStyle {
-    const OBS_X = 640;
-    const OBS_Y = 1500; // far below the canvas
+    // Observer sits far below the canvas, centred — derived from the layout
+    // so the tint geometry is sane in both landscape and portrait spaces.
+    const OBS_X = this.layout.canvas.width / 2;
+    const OBS_Y = this.layout.canvas.height + 700;
     const REFERENCE_V = 250; // ~typical orbital speed; full tint at this radial v
     const MAX_BLEND = 0.35; // never replace the body color, just shift it
 
@@ -766,7 +806,7 @@ export class Renderer {
       case 'lose_slingshot':
         return `${t.toFixed(1)}s${sep}ecc ${eccTxt}`;
       case 'lose_collision':
-        return `${t.toFixed(1)}s${sep}${o.vRel.toFixed(0)} m/s at impact`;
+        return `${t.toFixed(1)}s${sep}${o.vRel.toFixed(0)} px/s at impact`;
       default:
         return null;
     }

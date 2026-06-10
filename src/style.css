@@ -70,36 +70,10 @@ body {
   -webkit-user-select: none;
 }
 
-/* On a narrow portrait viewport (a phone held upright) the court would shrink
-   to a sliver — too small for finger-sized controls. Nudge the player to
-   rotate instead of forcing them to fight cramped buttons. */
-@media (max-width: 700px) and (orientation: portrait) {
-  body {
-    flex-direction: column;
-    gap: 1.2rem;
-    padding: 0 1.5rem;
-    text-align: center;
-  }
-  #stage {
-    display: none;
-  }
-  body::before {
-    content: 'Infinite Binary Wobble';
-    color: #FFC89B;
-    font-family: 'Cardo', Georgia, serif;
-    font-size: 2.2rem;
-    line-height: 1.1;
-  }
-  body::after {
-    content: 'Rotate your phone to landscape to play.';
-    color: #F4A58D;
-    font-family: 'Cardo', Georgia, serif;
-    font-style: italic;
-    font-size: 1.05rem;
-    max-width: 280px;
-    line-height: 1.5;
-  }
-}
+/* Portrait phones get a real portrait court (stacked P1-top / P2-bottom in a
+   800×1280 design space — see PORTRAIT_LAYOUT in src/game/states.ts) instead
+   of the old "rotate your phone" lockout. The canvas stays full-bleed; the
+   Renderer re-picks the design space on every resize/rotation. */
 
 /* Shown only if the page is opened inside a cross-origin iframe and the
    frame-buster in main.ts can't redirect the top window. Styled via this
@@ -187,9 +161,9 @@ body[data-screen]:not([data-screen='title']) .dedication {
   color: rgba(255, 200, 155, 0.4); /* palette.cream @ 0.4 */
 }
 
-/* The portrait "rotate your phone" prompt replaces the whole screen; the
-   dedication would just clutter it. Hide it there. */
-@media (max-width: 700px) and (orientation: portrait) {
+/* On short viewports the bottom letterbox band can vanish; keep the signature
+   from colliding with the court by hiding it when there's no room to breathe. */
+@media (max-height: 480px) {
   .dedication {
     display: none;
   }

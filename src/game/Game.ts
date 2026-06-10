@@ -1,5 +1,5 @@
-import type { BodySpec, GameStateKind } from './states.ts';
-import { DEFAULT_LAYOUT, defaultSpec } from './states.ts';
+import type { BodySpec, GameStateKind, CourtLayout } from './states.ts';
+import { defaultSpec } from './states.ts';
 import { Renderer } from '../render/Renderer.ts';
 import { PositionControl } from '../ui/PositionControl.ts';
 import { MassControl } from '../ui/MassControl.ts';
@@ -63,10 +63,12 @@ export class Game {
   private meter = new Meter();
 
   constructor(canvas: HTMLCanvasElement) {
-    this.renderer = new Renderer(canvas, DEFAULT_LAYOUT);
+    // The Renderer picks the design space (landscape or portrait) that
+    // matches the boot viewport; everything downstream reads renderer.layout.
+    this.renderer = new Renderer(canvas);
     this.specs = {
-      p1: defaultSpec(1, DEFAULT_LAYOUT),
-      p2: defaultSpec(2, DEFAULT_LAYOUT),
+      p1: defaultSpec(1, this.renderer.layout),
+      p2: defaultSpec(2, this.renderer.layout),
     };
     this.trails = {
       p1: new Trail(TRAIL_CAPACITY),
@@ -104,11 +106,39 @@ export class Game {
     window.addEventListener('keydown', e => this.onKeyDown(e));
     // Refit the canvas whenever the window changes — resized, rotated, or
     // dragged to a monitor with a different pixel density. The rAF loop runs
-    // continuously, so the next frame repaints at the new size; resize() only
-    // needs to update the device buffer and the fit transform.
-    window.addEventListener('resize', () =>
-      this.renderer.resize(window.innerWidth, window.innerHeight),
-    );
+    // continuously, so the next frame repaints at the new size. A rotation
+    // can also swap the design space (landscape ↔ portrait), in which case
+    // any in-flight setup specs are remapped into the new courts.
+    window.addEventListener('resize', () => this.handleResize());
+  }
+
+  private handleResize(): void {
+    const before = this.renderer.layout;
+    this.renderer.resize(window.innerWidth, window.innerHeight);
+    const after = this.renderer.layout;
+    if (after === before) return;
+    // Orientation flipped. A drag in the old coordinate space is meaningless
+    // in the new one — drop it before remapping.
+    this.posControl.release();
+    this.arrowControl.release();
+    this.remapSpec(this.specs.p1, before, after);
+    this.remapSpec(this.specs.p2, before, after);
+    // Mid-simulation the bodies live in absolute design-space coordinates and
+    // the camera re-centres the barycenter every frame, so the sim itself
+    // needs no remap; the outcome thresholds are layout-independent (the two
+    // design spaces are transposes with the same half-diagonal).
+  }
+
+  // Carry a star's setup across an orientation swap: same normalized spot in
+  // the player's in-bounds box, velocity vector unchanged (right stays right —
+  // rotating the device doesn't rotate the player's intent).
+  private remapSpec(spec: BodySpec, from: CourtLayout, to: CourtLayout): void {
+    const a = spec.player === 1 ? from.p1InBounds : from.p2InBounds;
+    const b = spec.player === 1 ? to.p1InBounds : to.p2InBounds;
+    const nx = (spec.pos.x - a.x) / a.width;
+    const ny = (spec.pos.y - a.y) / a.height;
+    spec.pos.x = b.x + nx * b.width;
+    spec.pos.y = b.y + ny * b.height;
   }
 
   private onKeyDown(e: KeyboardEvent): void {

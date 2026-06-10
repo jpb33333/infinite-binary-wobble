@@ -41,7 +41,7 @@ export class ArrowControl {
     return this.grabbed;
   }
 
-  // Velocity magnitude (px/s, displayed as "m/s" in the UI per the brief).
+  // Velocity magnitude (px/s, displayed as "px/s" in the UI).
   static magnitude(spec: BodySpec): number {
     return Math.hypot(spec.vel.x, spec.vel.y);
   }
