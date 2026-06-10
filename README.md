@@ -70,16 +70,18 @@ This is a vanilla-TypeScript canvas app built with Vite. No runtime dependencies
 
 - `npm install` — once.
 - `npm run dev` — Vite dev server with HMR (the dev server strips the CSP `<meta>` tag so blob-worker console noise doesn't appear; production keeps the tight CSP).
-- `npm test` — run the Vitest suite once (25 tests across physics, outcomes, fit, and starfield).
+- `npm test` — run the Vitest suite once (43 tests across physics, outcomes, fit, layout, starfield, and the metering client).
 - `npm run test:watch` — Vitest in watch mode.
 - `npm run build` — type-check (`tsc`) then bundle to `dist/` (static; deployable under any subpath, `base` is relative).
 - `npm run preview` — serve the built bundle locally.
 
 Pushing to `main` triggers the GitHub Actions workflow (`.github/workflows/deploy.yml`): it runs the tests, builds, and deploys `dist/` to GitHub Pages. The live site is https://jpb33333.github.io/infinite-binary-wobble/.
 
+Phones work too: landscape plays full-bleed, portrait gets a real stacked layout (P1 top / P2 bottom), and the site is installable as a web app (Add to Home Screen).
+
 ## Project structure
 
-See [`CLAUDE.md`](./CLAUDE.md) for the architecture overview and the rules of the road, and [`docs/PROJECT_STATE.md`](./docs/PROJECT_STATE.md) for the cold-start handoff (current state, file map, runbook, known gaps). A native iOS rewrite is sketched in [`docs/IOS_NATIVE_APP_PLAN.md`](./docs/IOS_NATIVE_APP_PLAN.md).
+See [`CLAUDE.md`](./CLAUDE.md) for the architecture overview and the rules of the road, and [`docs/PROJECT_STATE.md`](./docs/PROJECT_STATE.md) for the cold-start handoff (current state, file map, runbook, known gaps). Two siblings live alongside the web game: [`ios/`](./ios/) — a native SwiftUI port with golden-parity physics — and [`api-worker/`](./api-worker/) — the Cloudflare Worker behind the planned metering/payments layer (built, not yet deployed; see [`docs/ROADMAP.md`](./docs/ROADMAP.md)).
 
 ## License
 

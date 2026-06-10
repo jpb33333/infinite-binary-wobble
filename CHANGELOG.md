@@ -6,6 +6,8 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-10
+
 ### Added
 - **iOS assets harvested from the standalone repo** (which is now archived):
   the six SIL-OFL **Cardo + Inter TTFs** with license text and per-file
@@ -58,6 +60,9 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 ### Removed
 - Dead `hitTest` export in `src/render/overlay.ts` (the Renderer's
   `hoveredButton()` owns all button hit-testing).
+- Dead `MassControl.setMass` (zero callers — it was documented as "test-only"
+  but no test ever used it) and the never-imported `src/utils/lerp.ts`, both
+  surfaced by the documentation truth pass.
 
 ### Fixed
 - **Metering: a page reload no longer resets the device.** `/v1/web/session`
@@ -103,6 +108,11 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 ## [0.4.0] — 2026-06-10
 
 ### Added
+- **Native iOS app** (added retroactively to this entry 2026-06-10 — it
+  shipped in this release's PR but was omitted from the changelog):
+  `ios/` holds a SwiftUI `Canvas` + `TimelineView` port with a pure-Swift
+  physics package (`WobblePhysics`) proven against golden trajectories
+  exported from the TypeScript engine.
 - **Playable portrait mode.** Portrait phones get a real stacked layout
   (P1 top / P2 bottom, `PORTRAIT_LAYOUT`, the exact transpose of the
   landscape design space — same half-diagonal, so the play-tuned outcome

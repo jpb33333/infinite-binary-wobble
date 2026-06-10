@@ -58,7 +58,7 @@ export class Game {
   // Reading the cookie every frame would be silly at 60Hz.
   private statsSummary: StatsSummary = summarize(loadStats());
 
-  // Web metering (100 free plays → paywall). Inert unless a backend is
+  // Web metering (200 free plays → paywall). Inert unless a backend is
   // configured (VITE_API_BASE_URL); fail-open on any error.
   private meter = new Meter();
 

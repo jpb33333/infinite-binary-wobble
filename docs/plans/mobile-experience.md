@@ -1,8 +1,14 @@
 # Plan: Drastically improve the mobile experience
 
-Status: **Draft / planning** — to be refined in CLI before any of Phase 2+
-is built. Phase 1 (dismissible WIN card + on-screen EXIT) already shipped on
-this branch.
+> **Status (updated 2026-06-10): largely shipped.** Phase 1 (dismissible WIN
+> card + on-screen EXIT) shipped in 0.3.0; the portrait stacked-courts layout,
+> 44 px touch targets, `100dvh` fix, `prefers-reduced-motion`, and PWA install
+> shipped in 0.4.0 — and the "iOS app wrapper" framing below was superseded by
+> the native SwiftUI port (`ios/`). Still open from this plan: the hot-seat
+> pass-the-phone flow question (§Open questions #3) and the screenshot /
+> visual-regression harness (#4).
+
+Status: ~~Draft / planning~~ **see banner above.**
 
 ## Goal
 

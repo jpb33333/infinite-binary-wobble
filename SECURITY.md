@@ -1,10 +1,15 @@
 # Security Policy
 
 Infinite Binary Wobble is a static, client-side browser game deployed to GitHub
-Pages. It has **no backend, no accounts, and collects no personal data** — the
-game runs entirely in the visitor's browser and makes zero network requests. The
-attack surface is small by design; this document records how it's kept that way
-and how to report anything we missed.
+Pages. **The deployed game has no backend, no accounts, and collects no personal
+data** — it runs entirely in the visitor's browser and makes zero network
+requests. (A metering/payments backend exists in this repo under `api-worker/`,
+unit-tested but **not deployed**; its client half ships in the bundle but is
+inert — it makes zero network calls unless `VITE_API_BASE_URL` was set at
+build time, which the default deploy never sets. This document must be updated
+before that ships — see `ROADMAP.md` Phase G.) The attack surface is small by design;
+this document records how it's kept that way and how to report anything we
+missed.
 
 ## Reporting a vulnerability
 

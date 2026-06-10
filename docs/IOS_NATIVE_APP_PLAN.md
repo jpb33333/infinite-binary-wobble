@@ -1,10 +1,23 @@
 # Infinite Binary Wobble — Native iOS App Plan
 
+> **Status (updated 2026-06-10): EXECUTED.** The port this plan specifies
+> shipped in-repo under [`ios/`](../ios/) (PR #24: SwiftUI `Canvas` +
+> `TimelineView`, golden-parity physics; fonts + constants guard harvested in
+> PR #27). Kept as the spec of record — §3's constants/formulas remain the
+> faithful port contract, and the App Store submission checklist in §8 is
+> still ahead of us (§10's open decisions are resolved; §11's web-mobile
+> interim note is superseded by the shipped portrait layout). Two ways reality diverged from the text below: the app lives
+> in THIS repo (not a separate one — the standalone repo is archived, its
+> docs preserved under [`docs/ios/`](./ios/)), and the suite counts quoted
+> below are stale (web is 43 tests today; Swift adds golden-trajectory,
+> invariant, and constants-guard suites).
+
 Plan to ship a **native Swift** iOS app to the App Store, iOS-only, portrait +
 landscape playable, signed with JP's Apple Developer Program account.
 
-Status: PLAN (no code yet). Decisions locked 2026-06-03: native Swift rewrite
-(not Capacitor), portrait playable (not landscape-only).
+Status: ~~PLAN (no code yet)~~ **executed — see banner.** Decisions locked
+2026-06-03: native Swift rewrite (not Capacitor), portrait playable (not
+landscape-only).
 
 ---
 
