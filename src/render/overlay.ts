@@ -180,10 +180,6 @@ export function drawButton(
   ctx.restore();
 }
 
-export function hitTest(btn: CanvasButton, x: number, y: number): boolean {
-  return x >= btn.x && x <= btn.x + btn.width && y >= btn.y && y <= btn.y + btn.height;
-}
-
 // A small circular ✕ button — used to dismiss the WIN card so the wobble can
 // be watched unobstructed. Drawn as a translucent disc with an accent-tinted
 // glyph; the caller owns the (larger, finger-friendly) hit rectangle.

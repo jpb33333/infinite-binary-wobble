@@ -35,12 +35,22 @@ function meteringCsp(apiBaseUrl: string): Plugin {
       if (!apiBaseUrl) return html;
       const apiOrigin = new URL(apiBaseUrl).origin;
       const turnstile = 'https://challenges.cloudflare.com';
-      return html
-        .replace("script-src 'self';", `script-src 'self' ${turnstile};`)
-        .replace(
-          "font-src 'self';",
-          `font-src 'self'; connect-src 'self' ${apiOrigin} ${turnstile}; frame-src ${turnstile};`,
-        );
+      // Fail the build, not the paywall: if a CSP edit in index.html breaks
+      // either anchor substring, a silent no-op here would ship a policy that
+      // blocks every metering fetch — and the fail-open client would simply
+      // never show the paywall. A thrown error surfaces it at build time.
+      const widenScript = html.replace("script-src 'self';", `script-src 'self' ${turnstile};`);
+      if (widenScript === html) {
+        throw new Error("meteringCsp: script-src anchor not found in index.html CSP");
+      }
+      const widened = widenScript.replace(
+        "font-src 'self';",
+        `font-src 'self'; connect-src 'self' ${apiOrigin} ${turnstile}; frame-src ${turnstile};`,
+      );
+      if (widened === widenScript) {
+        throw new Error("meteringCsp: font-src anchor not found in index.html CSP");
+      }
+      return widened;
     },
   };
 }

@@ -16,7 +16,26 @@
 // (Node 22 strips TypeScript types for `.ts` imports, so the script imports the
 //  real physics modules directly — zero new dependencies, zero build step.)
 //
-// Output: tests/fixtures/golden-{stable_orbit,collision,slingshot_escape}.json
+// REGENERATION IS A DELIBERATE ACT, not a formality. Two constraints:
+//   1. Same engine as last time (CI = Node 22, enforced below — `--force`
+//      overrides). The force path uses Math.pow (gravity.ts), and
+//      transcendentals are NOT bit-specified by IEEE-754 — a different V8 can
+//      differ by 1 ULP, which perturbs the last digits of long trajectories.
+//      Re-exporting on another Node major churns the files with noise that
+//      looks like (but is not) a physics change.
+//   2. The committed fixtures predate the 0.4.0 softened-energy fix, and this
+//      script still samples computeOrbit WITHOUT the softening argument
+//      (Keplerian diagnostics), while Simulation.initialEnergy is now
+//      softened — so `final.energyDriftRel` mixes the two conventions.
+//      Before the next regeneration, decide which convention each field pins
+//      (and update the Swift suite's expectations in the same change).
+//
+// Output: golden-{stable_orbit,collision,slingshot_escape}.json, written as
+// identical copies to BOTH committed locations — tests/fixtures/ (the canonical
+// web-side copy; no Vitest test reads it, it exists for diffing/provenance) and
+// ios/WobblePhysics/Tests/WobblePhysicsTests/Fixtures/ (the copy the Swift
+// XCTest parity suite actually loads, via Bundle.module). The ios-physics CI
+// workflow asserts the two stay byte-identical; neither is hand-maintained.
 //
 // Each fixture pins, for one scenario:
 //   • the PHYSICS constants + PEFRL coefficients it was generated against
@@ -39,8 +58,27 @@ import { computeOrbit } from '../src/physics/orbit.ts';
 import { vec2 } from '../src/physics/Vec2.ts';
 import { bodyRadius } from '../src/physics/Body.ts';
 
+// The Node major the committed fixtures were generated on (matches CI). A
+// different major may emit 1-ULP transcendental differences (see header), so
+// refuse to silently churn the goldens; `--force` is the deliberate override
+// for an intentional, reviewed regeneration on a new pinned version.
+const FIXTURE_NODE_MAJOR = 22;
+const nodeMajor = Number(process.versions.node.split('.')[0]);
+if (nodeMajor !== FIXTURE_NODE_MAJOR && !process.argv.includes('--force')) {
+  console.error(
+    `Refusing to export on Node ${process.versions.node}: the committed fixtures ` +
+      `were generated on Node ${FIXTURE_NODE_MAJOR} and a different engine can ` +
+      `churn them with last-ULP Math.pow noise. Use Node ${FIXTURE_NODE_MAJOR}, ` +
+      `or pass --force for a deliberate regeneration.`,
+  );
+  process.exit(1);
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = join(__dirname, '..', 'tests', 'fixtures');
+const OUT_DIRS = [
+  join(__dirname, '..', 'tests', 'fixtures'),
+  join(__dirname, '..', 'ios', 'WobblePhysics', 'Tests', 'WobblePhysicsTests', 'Fixtures'),
+];
 
 // The PEFRL coefficients are private to src/physics/integrator.ts (not exported).
 // They are pinned here VERBATIM from that file so the fixture records exactly
@@ -225,13 +263,16 @@ const fixtures = [
   runScenario('slingshot_escape', slingshotEscapeSpecs, 2000, 50),
 ];
 
-mkdirSync(OUT_DIR, { recursive: true });
 for (const fx of fixtures) {
-  const path = join(OUT_DIR, `golden-${fx.scenario}.json`);
-  writeFileSync(path, JSON.stringify(fx, null, 2) + '\n', 'utf8');
-  console.log(
-    `wrote ${path}  (${fx.samples.length} samples, ` +
-      `outcome=${fx.final.outcome}, ` +
-      `final |E-E0|/|E0|=${fx.final.energyDriftRel.toExponential(3)})`,
-  );
+  const body = JSON.stringify(fx, null, 2) + '\n';
+  for (const dir of OUT_DIRS) {
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, `golden-${fx.scenario}.json`);
+    writeFileSync(path, body, 'utf8');
+    console.log(
+      `wrote ${path}  (${fx.samples.length} samples, ` +
+        `outcome=${fx.final.outcome}, ` +
+        `final |E-E0|/|E0|=${fx.final.energyDriftRel.toExponential(3)})`,
+    );
+  }
 }
