@@ -6,6 +6,26 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Grazing collisions can no longer slip between frames.** The simulation now
+  remembers the closest the two stars have ever come (at full 1/240 s physics
+  resolution), and the outcome classifier reads that instead of the
+  once-per-frame snapshot. Before this, a fast near-miss could overlap and
+  pull apart entirely between two frame checks — reliably missed at the 30 fps
+  frame floor for light stars — and the round would end as "drifting" with no
+  supernova even though the stars visibly touched. Fixed identically in the
+  web engine and the Swift iOS port, each with a regression test that replays
+  a tunneling graze.
+- **Button hover styling now actually renders.** The renderer's button
+  registry is double-buffered: hover highlights (brighter pill, wider halo,
+  the explainer link's underline) were querying a just-cleared registry and
+  could never match, so they had been silently dead on desktop. Clicks and
+  the pointer cursor were unaffected.
+- **The paywall headline tracks the configured free-play limit.** It
+  hardcoded "A hundred wobbles in." while the limit is 200; the count is now
+  interpolated from config alongside the body line. (Latent until metering
+  ships — the paywall is unreachable while the backend is dark.)
+
 ### Changed
 - **The "what is a binary star?" explainer link moved from the top-right
   corner to centred just above the BEGIN button** — where a curious
