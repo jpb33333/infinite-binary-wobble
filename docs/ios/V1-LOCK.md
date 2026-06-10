@@ -13,6 +13,9 @@
 >   in-repo `Stats.swift` is in-memory per session.
 > - **Repo/licensing strategy:** pins a private all-rights-reserved standalone
 >   repo; the port now lives inside this MIT repo.
+> - **Device family:** pins iPhone-only (opt out of iPad/Mac/Vision Pro); the
+>   in-repo app targets iPhone + iPad (`TARGETED_DEVICE_FAMILY "1,2"`,
+>   fullscreen-only).
 > Still-useful material: the App Store Connect checklist mechanics, the
 > review-notes guidance, the free-pricing rationale, and the risk ladder.
 

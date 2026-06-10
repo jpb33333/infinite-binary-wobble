@@ -8,7 +8,9 @@
 > `api-worker/wrangler.toml` still defaults `FREE_PLAY_LIMIT = "100"` — pick
 > one before Phase C provisioning. The copyright identity here ("© JP
 > Bowditch 2026") also differs from the live site's footer ("© Carousella
-> Gaming 2026") — same open question as the LICENSE line.
+> Gaming 2026") — same open question as the LICENSE line — and the Seeds
+> bullet quotes the dedication as "A love letter to Natalia" where the
+> shipped footer reads "For Natalia / From JP".
 
 ---
 
