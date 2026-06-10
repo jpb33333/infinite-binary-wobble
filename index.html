@@ -25,16 +25,23 @@
     <meta name="twitter:card" content="summary" />
     <title>Infinite Binary Wobble</title>
     <!-- Strict Content-Security-Policy. default-src 'none' denies every
-         resource type by default; only same-origin script/style/img/font are
-         re-allowed, and the game makes zero network requests (connect falls
-         back to 'none'). require-trusted-types-for neutralises DOM-XSS sinks.
+         resource type by default; only same-origin script/style/img/font/
+         manifest are re-allowed (manifest-src set explicitly — it falls back
+         to default-src 'none', which silently blocked the PWA manifest), and
+         the game makes zero network requests (connect falls back to 'none').
+         require-trusted-types-for neutralises DOM-XSS sinks.
          Delivered via <meta> because GitHub Pages can't set HTTP headers, so
          the header-only protections (frame-ancestors, X-Frame-Options, etc.)
          are documented in SECURITY.md and clickjacking is blocked by the JS
-         frame-buster in main.ts. -->
+         frame-buster in main.ts.
+         BUILD-TIME COUPLING: the meteringCsp plugin in vite.config.ts widens
+         this policy by string-replacing on the exact script-src and font-src
+         directives in the content attribute below (first match in the file —
+         which is why this comment must never quote them verbatim). The build
+         fails loudly if either anchor stops matching. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'"
     />
     <!-- Don't leak the game's URL to any site a player navigates to from here. -->
     <meta name="referrer" content="no-referrer" />

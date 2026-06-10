@@ -19,7 +19,7 @@ given. Machine-readable contact: [`/.well-known/security.txt`](./public/.well-kn
 ## What protects the deployed game
 
 - **Strict Content-Security-Policy** — `default-src 'none'` with a least-privilege
-  same-origin allowlist (`script`/`style`/`img`/`font` = `'self'`),
+  same-origin allowlist (`script`/`style`/`img`/`font`/`manifest` = `'self'`),
   `object-src 'none'`, `base-uri 'none'`, `form-action 'none'`,
   `upgrade-insecure-requests`. The game makes no network calls, so `connect-src`
   resolves to `'none'`. **Verified in a real headless browser: zero violations,
@@ -54,7 +54,7 @@ to Cloudflare Pages / Netlify — and serve these response headers:
 
 ```
 Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'
+Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
 Referrer-Policy: no-referrer
