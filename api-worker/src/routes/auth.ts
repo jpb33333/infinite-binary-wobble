@@ -19,7 +19,11 @@ export async function authenticate(req: Request, env: Env): Promise<AuthResult |
     // signCount (replay defense), then resolve the device_id. Reject until done.
     return null;
   }
-  const token = readCookie(req, 'ibw_session');
+  // __Host- prefix: the browser refuses to store it unless Secure, Path=/ and
+  // no Domain attribute — so a script on a sibling subdomain (the documented
+  // deploy model is play.X + api.X on one registrable domain) cannot plant or
+  // shadow it, closing the session-fixation angle for free.
+  const token = readCookie(req, '__Host-ibw_session');
   if (!token) return null;
   const payload = await verifyToken(token, env.TOKEN_SIGNING_KEY);
   if (!payload) return null;
