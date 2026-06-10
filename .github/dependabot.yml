@@ -16,6 +16,19 @@ updates:
         patterns:
           - "*"
 
+  # The Cloudflare Worker is its own npm package with its own lockfile — it was
+  # invisible to Dependabot until this entry existed (and quietly accumulated a
+  # critical-severity dev advisory). Same weekly cadence + grouping as the root.
+  - package-ecosystem: "npm"
+    directory: "/api-worker"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        patterns:
+          - "*"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

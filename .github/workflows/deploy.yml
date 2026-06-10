@@ -40,6 +40,8 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      # ci.yml runs this same suite (npm ci → audit → test → build) as the PR
+      # gate — when a step is added or changed here, mirror it there.
       - name: Install dependencies
         run: npm ci
 
