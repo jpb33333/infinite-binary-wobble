@@ -6,7 +6,7 @@ export interface Body {
   pos: Vec2;
   vel: Vec2;
   // Current acceleration in game units. Maintained by `gravity.applyGravity`
-  // so that the Velocity Verlet integrator can read it without recomputing
+  // so that the PEFRL integrator can read it without recomputing
   // mid-step. Initialized to zero; the Simulation primes it at construction.
   accel: Vec2;
 }

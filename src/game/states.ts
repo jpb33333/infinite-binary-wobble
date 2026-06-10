@@ -23,7 +23,10 @@ export interface BodySpec {
 
 // Court layout — pixel rectangles in canvas-space. Shared by render, UI, and
 // outcome classifier so they all agree on what's "in bounds."
+export type CourtOrientation = 'landscape' | 'portrait';
+
 export interface CourtLayout {
+  orientation: CourtOrientation;
   canvas: { width: number; height: number };
   // The full half-of-canvas region each player owns (used for highlighting)
   p1Region: { x: number; y: number; width: number; height: number };
@@ -31,18 +34,47 @@ export interface CourtLayout {
   // The dotted in-bounds square inside which each player's star starts
   p1InBounds: { x: number; y: number; width: number; height: number };
   p2InBounds: { x: number; y: number; width: number; height: number };
-  centerLineX: number;
+  // The glowing "service line" dividing the two courts: a vertical line at
+  // x = at (landscape, P1 left / P2 right) or a horizontal line at y = at
+  // (portrait, P1 top / P2 bottom).
+  centerLine: { axis: 'vertical' | 'horizontal'; at: number };
 }
 
 export const DEFAULT_LAYOUT: CourtLayout = {
+  orientation: 'landscape',
   canvas: { width: 1280, height: 800 },
   p1Region: { x: 0, y: 0, width: 640, height: 800 },
   p2Region: { x: 640, y: 0, width: 640, height: 800 },
   // 400×400 inner courts, vertically centered, generous side margins
   p1InBounds: { x: 120, y: 200, width: 400, height: 400 },
   p2InBounds: { x: 760, y: 200, width: 400, height: 400 },
-  centerLineX: 640,
+  centerLine: { axis: 'vertical', at: 640 },
 };
+
+// Portrait: the same game rotated into a phone-shaped design space — courts
+// stacked P1-top / P2-bottom ("two players, one phone, pass it between
+// turns" reads naturally vertically). The design space transposes 1280×800
+// so the half-diagonal — which the 820 px barycenter-distance outcome bound
+// was tuned against — is identical; physics and outcome thresholds are
+// untouched. Vertical budget per half: phase label + help block above the
+// P1 court, the LOCK IN row below each court, HUD strip at the very bottom.
+export const PORTRAIT_LAYOUT: CourtLayout = {
+  orientation: 'portrait',
+  canvas: { width: 800, height: 1280 },
+  p1Region: { x: 0, y: 0, width: 800, height: 640 },
+  p2Region: { x: 0, y: 640, width: 800, height: 640 },
+  // 360×360 inner courts, horizontally centered in each half
+  p1InBounds: { x: 220, y: 170, width: 360, height: 360 },
+  p2InBounds: { x: 220, y: 770, width: 360, height: 360 },
+  centerLine: { axis: 'horizontal', at: 640 },
+};
+
+// Pick the design space that matches the viewport's aspect so the court
+// fills a phone held either way instead of shrinking into a letterboxed
+// sliver. Square viewports get landscape (the original tuning).
+export function layoutForViewport(cssW: number, cssH: number): CourtLayout {
+  return cssW >= cssH ? DEFAULT_LAYOUT : PORTRAIT_LAYOUT;
+}
 
 // Default spec for a player when entering their setup phase
 export function defaultSpec(player: PlayerId, layout: CourtLayout): BodySpec {

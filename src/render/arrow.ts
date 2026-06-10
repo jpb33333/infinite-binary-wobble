@@ -1,5 +1,4 @@
 import { palette, fonts, rgba } from '../theme.ts';
-import { LIMITS } from '../game/states.ts';
 
 // Draws the velocity arrow from a star's center to the tip of its velocity
 // vector. Includes a small head and a tooltip showing the magnitude.
@@ -70,7 +69,7 @@ function drawVelocityTooltip(
   anchorY: number,
   color: string,
 ): void {
-  const text = `${speed.toFixed(0)} m/s`;
+  const text = `${speed.toFixed(0)} px/s`;
   ctx.save();
   ctx.font = `500 12px ${fonts.sans}`;
   ctx.textBaseline = 'middle';
@@ -102,6 +101,4 @@ function drawVelocityTooltip(
   ctx.textAlign = 'center';
   ctx.fillText(text, x + w / 2, y + h / 2 + 0.5);
   ctx.restore();
-  // Use LIMITS so a future maxVelocity change keeps the readout sensible.
-  void LIMITS;
 }

@@ -17,7 +17,7 @@ export const palette = {
 export const fonts = {
   // Humanist serif for wordmark, headings, victory cards
   serif: '"Cardo", Georgia, "Times New Roman", serif',
-  // Humanist sans for UI labels, tooltips, m/s readout
+  // Humanist sans for UI labels, tooltips, px/s readout
   sans: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
 } as const;
 

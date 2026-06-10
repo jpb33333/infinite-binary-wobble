@@ -7,6 +7,9 @@ export interface Env {
   WEB_ORIGIN: string;
   FREE_PLAY_LIMIT: string;
   ENVIRONMENT: string;
+  // Stripe Price with custom_unit_amount enabled (pay-what-you-want >= $1).
+  // A resource id, not a secret - created once during provisioning.
+  STRIPE_PRICE_ID: string;
 
   // Bindings
   DB: D1Database;

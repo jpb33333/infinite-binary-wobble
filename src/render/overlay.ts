@@ -18,8 +18,17 @@ export function drawWordmark(ctx: CanvasRenderingContext2D, w: number, h: number
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
+  // Shrink-to-fit: 76px is the landscape size; in the narrower portrait
+  // design space the full wordmark must still clear the side margins.
+  let titleSize = 76;
+  ctx.font = `400 ${titleSize}px ${fonts.serif}`;
+  const maxW = w - 80;
+  const measured = ctx.measureText('Infinite Binary Wobble').width;
+  if (measured > maxW) {
+    titleSize = Math.floor((titleSize * maxW) / measured);
+    ctx.font = `400 ${titleSize}px ${fonts.serif}`;
+  }
   ctx.fillStyle = palette.cream;
-  ctx.font = `400 76px ${fonts.serif}`;
   ctx.fillText('Infinite Binary Wobble', w / 2, h * 0.38);
 
   ctx.fillStyle = palette.rose;
