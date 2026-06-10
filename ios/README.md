@@ -11,7 +11,7 @@ the web original — and the golden-trajectory tests prove it numerically.
 | Path | What |
 |---|---|
 | `WobblePhysics/` | SPM package: Vec2 · Body · Gravity · PEFRL Integrator · Orbit · Simulation · Outcomes. Zero UI imports; `swift test` runs on macOS or Linux. |
-| `WobblePhysics/Tests/` | XCTest port of the web Vitest invariants (energy, momentum, escape, softening, outcomes) **plus** golden-trajectory parity against fixtures exported from the TypeScript engine (`../tests/fixtures/`). |
+| `WobblePhysics/Tests/` | XCTest port of the web Vitest invariants (energy, momentum, escape, softening, outcomes) **plus** golden-trajectory parity against fixtures exported from the TypeScript engine. The suite loads the bundled copies in `Tests/WobblePhysicsTests/Fixtures/`; `npm run export:fixtures` (repo root) regenerates them and `../tests/fixtures/` together, and CI asserts the two stay identical. |
 | `App/` | SwiftUI app: GameModel (state machine + fixed-step accumulator + input routing), Canvas rendering (starfield, court, painterly stars, trails, predicted orbits, supernova, HUD, cards), haptics, session scoreboard. |
 | `project.yml` | XcodeGen spec for the app target. |
 
