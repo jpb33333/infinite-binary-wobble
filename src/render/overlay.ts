@@ -361,36 +361,41 @@ function outcomeText(outcome: Outcome): {
 }
 
 // The optional title-screen affordance: a quiet, lowercase text link in the
-// site's voice. Drawn as plain prose (not a pill) so it reads as an aside, not
-// a control — but the caller registers a finger-sized hit rect around it. A
-// faint underline appears on hover to confirm it's tappable, matching the
-// restraint of the rest of the title screen.
+// site's voice. Drawn as plain prose (not a pill) so it reads as an invitation,
+// not a control — but the caller registers a finger-sized hit rect around it.
+// A faint underline appears on hover to confirm it's tappable. It sits centred
+// just above BEGIN (where a curious first-timer is already looking), mirroring
+// the free-plays meter line that sits below the button when metering is on.
 const EXPLAINER_LINK_TEXT = 'what is a binary star?';
 
 export function drawTitleExplainerLink(
   ctx: CanvasRenderingContext2D,
   w: number,
+  h: number,
   hovered: boolean,
 ): CanvasButton {
   ctx.save();
   ctx.font = `italic 400 15px ${fonts.serif}`;
   ctx.textBaseline = 'middle';
-  ctx.textAlign = 'right';
+  ctx.textAlign = 'center';
 
-  const margin = 28;
-  const baselineY = 30;
+  // 44px above the BEGIN button's top edge (button top = h·0.62): the visual
+  // gap balances the meter line 72px below the button, and keeps this hit
+  // rect (44px tall, centred on the baseline) 22px clear of BEGIN's — a
+  // mis-tap lands on one or the other, never both.
+  const centerX = w / 2;
+  const baselineY = h * 0.62 - 44;
   const textW = ctx.measureText(EXPLAINER_LINK_TEXT).width;
-  const rightX = w - margin;
 
   ctx.fillStyle = rgba(palette.rose, hovered ? 0.85 : 0.5);
-  ctx.fillText(EXPLAINER_LINK_TEXT, rightX, baselineY);
+  ctx.fillText(EXPLAINER_LINK_TEXT, centerX, baselineY);
 
   if (hovered) {
     ctx.strokeStyle = rgba(palette.rose, 0.6);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(rightX - textW, baselineY + 11);
-    ctx.lineTo(rightX, baselineY + 11);
+    ctx.moveTo(centerX - textW / 2, baselineY + 11);
+    ctx.lineTo(centerX + textW / 2, baselineY + 11);
     ctx.stroke();
   }
   ctx.restore();
@@ -402,7 +407,7 @@ export function drawTitleExplainerLink(
   const padX = 12;
   return {
     label: '',
-    x: rightX - textW - padX,
+    x: centerX - textW / 2 - padX,
     y: baselineY - hitH / 2,
     width: textW + padX * 2,
     height: hitH,
