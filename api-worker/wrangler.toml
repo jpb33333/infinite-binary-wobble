@@ -20,7 +20,9 @@ binding = "DB"
 database_name = "ibw"
 database_id = "REPLACE_ME"                 # `wrangler d1 create ibw`
 
-# --- KV: idempotency keys + single-use nonces ---
+# --- KV: reserved for iOS App Attest challenge nonces (Phase E/F). ---
+# No current route reads or writes it — webhook idempotency lives in D1
+# (processed_events). Provisioned now so the binding exists when iOS lands.
 [[kv_namespaces]]
 binding = "KV"
 id = "REPLACE_ME"                          # `wrangler kv namespace create ibw-kv`
