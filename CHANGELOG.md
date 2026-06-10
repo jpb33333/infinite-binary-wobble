@@ -6,12 +6,16 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-- **CSP no longer blocks the PWA manifest.** `manifest-src 'self'` added to the
-  CSP (meta tag + the recommended header set in `SECURITY.md`) — it previously
-  fell back to `default-src 'none'`, which silently blocked
-  `manifest.webmanifest` and broke Android/Chrome "Install app" (iOS install
-  was unaffected — it reads the `apple-touch-icon`/meta tags instead).
+### Added
+- **PR test gate (`.github/workflows/ci.yml`).** Every pull request now runs
+  the web suite (audit, tests, build) and the api-worker suite (audit,
+  typecheck, tests), with per-PR concurrency; previously tests ran only
+  post-merge inside the deploy workflow, so a broken PR surfaced only after
+  landing.
+- **Web meter client tests** (`tests/meter.test.ts`) pinning refresh-first
+  boot, the first-visit Turnstile→session→status order, the gate contract,
+  the paywall un-latch on session expiry, and fail-open behavior on
+  401 / 5xx / malformed bodies / network errors.
 
 ### Changed
 - **Golden-fixture exporter writes both copies, with guardrails.**
@@ -33,6 +37,47 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 ### Removed
 - Dead `hitTest` export in `src/render/overlay.ts` (the Renderer's
   `hoveredButton()` owns all button hit-testing).
+
+### Fixed
+- **Metering: a page reload no longer resets the device.** `/v1/web/session`
+  now reuses the device behind a valid session cookie (sliding 30-day renewal,
+  missing rows re-adopted under the same id) instead of minting a fresh
+  identity per call, and the web client boots refresh-first — Turnstile and
+  the session mint only run when the server answers 401. Previously every
+  page load created a new device: the 100-free-plays meter reset on refresh,
+  and a paid unlock was orphaned the moment Stripe's `?checkout=success`
+  redirect reloaded the page. A session that expires mid-visit now also
+  un-latches a cached paywall lock instead of trapping the player (fail-open).
+- **Stripe webhook: a transient failure can no longer eat a payment.** The
+  idempotency claim on an event id is released if applying the event throws,
+  so Stripe's retry re-processes it instead of hitting the duplicate path —
+  one D1 hiccup can no longer leave a paying customer permanently locked. A
+  failed claim release and a refund that can't resolve its device are logged
+  loudly for manual reconciliation (both are otherwise invisible).
+- **CSP no longer blocks the PWA manifest.** `manifest-src 'self'` added to the
+  CSP (meta tag + the recommended header set in `SECURITY.md`) — it previously
+  fell back to `default-src 'none'`, which silently blocked
+  `manifest.webmanifest` and broke Android/Chrome "Install app" (iOS install
+  was unaffected — it reads the `apple-touch-icon`/meta tags instead).
+
+### Security
+- **Session cookie hardened to `__Host-ibw_session`.** The `__Host-` prefix
+  makes the browser enforce Secure + Path=/ + no Domain attribute, so a
+  script on a sibling subdomain can never plant or shadow the session cookie
+  (session fixation) — free hardening while the feature is still dark.
+- **api-worker toolchain refreshed and under Dependabot.** vitest 2.1.9 →
+  4.1.8, wrangler 3.90 → 4.99, TypeScript aligned to ~6.0.2: `npm audit` goes
+  from 9 vulnerabilities (1 critical, 1 high) to **0**. `.github/dependabot.yml`
+  now watches `/api-worker`, which was previously invisible to it. wrangler 4
+  config compatibility verified via `wrangler deploy --dry-run`.
+- **The same-site cookie constraint is documented** (api-worker README +
+  ROADMAP Phase C): metering requires the game and API on one registrable
+  domain, and the `github.io` + `workers.dev` combination fails silently. The
+  README no longer claims rate limits the Worker doesn't implement (the
+  provisioning steps gain a Cloudflare rate-limiting rule), the KV namespace
+  is labeled as reserved for the iOS phase (idempotency lives in D1 —
+  `MONETIZATION_PLAN.md` corrected to match), and SECURITY.md's recommended
+  header set warns about the metering CSP additions.
 
 ## [0.4.0] — 2026-06-10
 
