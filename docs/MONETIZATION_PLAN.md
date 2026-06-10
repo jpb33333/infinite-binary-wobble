@@ -15,7 +15,7 @@ GitHub Pages, and **(b)** a written plan for a native-Swift iOS rewrite
 network, Data Not Collected."**
 
 The goal: evolve **both** clients into a networked, metered, monetized product —
-**100 free plays, then pay to continue** (iOS via Apple IAP tiers; web via Stripe
+**200 free plays, then pay to continue** (iOS via Apple IAP tiers; web via Stripe
 pay-what-you-want ≥ $1) — sharing **one Cloudflare backend**, built **as securely
 as possible**. This breaks the offline assumption, so the work is: stand up a
 Cloudflare *trust-root* backend, add a commerce/attestation layer to each client,
@@ -23,7 +23,7 @@ front the web site with Cloudflare for real HTTP security headers, and update th
 security + privacy posture.
 
 **Locked decisions:** iOS = Apple IAP fixed tiers (no external links in-app,
-Guideline 3.1.1); web = Stripe pay-what-you-want; metering = 100 free plays, iOS
+Guideline 3.1.1); web = Stripe pay-what-you-want; metering = 200 free plays, iOS
 enforced via App Attest + server count (no login), web best-effort; web + iOS both
 adopt the model; "as securely as possible" is first-class.
 

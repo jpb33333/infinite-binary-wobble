@@ -8,7 +8,7 @@ _Last updated: 2026-06-10._
 
 ## The goal
 
-Turn the (live, free) web game into a **metered, monetized product**: 100 free
+Turn the (live, free) web game into a **metered, monetized product**: 200 free
 plays, then pay to keep playing.
 
 - **iOS:** Apple In-App Purchase, fixed "support the dev" tiers (e.g. $1/$3/$5/$10).

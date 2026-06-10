@@ -33,5 +33,5 @@ export async function handleIncrement(req: Request, env: Env): Promise<Response>
 
 function freeLimit(env: Env): number {
   const n = Number(env.FREE_PLAY_LIMIT);
-  return Number.isFinite(n) && n > 0 ? n : 100;
+  return Number.isFinite(n) && n > 0 ? n : 200;
 }

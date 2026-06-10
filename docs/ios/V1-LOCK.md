@@ -16,6 +16,8 @@
 > - **Device family:** pins iPhone-only (opt out of iPad/Mac/Vision Pro); the
 >   in-repo app targets iPhone + iPad (`TARGETED_DEVICE_FAMILY "1,2"`,
 >   fullscreen-only).
+> - **Meter:** pins 1000 free plays for v1.1; decided 2026-06-10 → **200**
+>   (`FREE_PLAY_LIMIT` in `api-worker/wrangler.toml`).
 > Still-useful material: the App Store Connect checklist mechanics, the
 > review-notes guidance, the free-pricing rationale, and the risk ladder.
 

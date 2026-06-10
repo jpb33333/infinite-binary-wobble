@@ -3,14 +3,16 @@
 > launch effort that was superseded by the in-repo SwiftUI port (PR #24,
 > `ios/`). Preserved verbatim below the rule as the product-intent record —
 > the "saved wobbles" feature and the north star remain live direction.
-> **Decision recorded here that has NOT reached the code:** the v1.1 meter is
-> stated as **1000 free plays ("updated from 100")**, while
-> `api-worker/wrangler.toml` still defaults `FREE_PLAY_LIMIT = "100"` — pick
-> one before Phase C provisioning. The copyright identity here ("© JP
-> Bowditch 2026") also differs from the live site's footer ("© Carousella
-> Gaming 2026") — same open question as the LICENSE line — and the Seeds
-> bullet quotes the dedication as "A love letter to Natalia" where the
-> shipped footer reads "For Natalia / From JP".
+> Two open questions this doc surfaced were **decided 2026-06-10**:
+> - **Meter: 200 free plays** (JP) — supersedes both this doc's 1000 and the
+>   old 100 default; `FREE_PLAY_LIMIT = "200"` in `api-worker/wrangler.toml`.
+>   Best-effort by design: a determined web player re-earning plays
+>   (cookie clear / new device) is accepted.
+> - **Copyright holder: Carousella Gaming** (the company building the game) —
+>   supersedes this doc's "© JP Bowditch 2026"; matches the live footer and
+>   now the LICENSE line. See `docs/plans/carousella-copyright.md`.
+> Also note: the Seeds bullet quotes the dedication as "A love letter to
+> Natalia" where the shipped footer reads "For Natalia / From JP".
 
 ---
 

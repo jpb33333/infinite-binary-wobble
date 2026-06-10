@@ -8,7 +8,7 @@ operational summary.
 
 ## What it does
 
-- Holds the **play count** server-side (free tier = `FREE_PLAY_LIMIT`, default 100).
+- Holds the **play count** server-side (free tier = `FREE_PLAY_LIMIT`, default 200).
 - **iOS:** verifies Apple **App Attest** (device authenticity) and **StoreKit 2**
   purchases; consumes **App Store Server Notifications V2** for refund/revoke.
 - **Web:** issues a signed, HttpOnly device token behind **Cloudflare Turnstile**,
