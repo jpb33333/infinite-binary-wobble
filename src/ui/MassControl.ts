@@ -18,9 +18,4 @@ export class MassControl {
     const change = -deltaY / 100 * step;
     spec.mass = clamp(spec.mass + change, LIMITS.minMass, LIMITS.maxMass);
   }
-
-  // Direct setter — used by tests and any future slider UI.
-  setMass(spec: BodySpec, mass: number): void {
-    spec.mass = clamp(mass, LIMITS.minMass, LIMITS.maxMass);
-  }
 }
