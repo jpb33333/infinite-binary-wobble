@@ -11,7 +11,7 @@ the web original — and the golden-trajectory tests prove it numerically.
 | Path | What |
 |---|---|
 | `WobblePhysics/` | SPM package: Vec2 · Body · Gravity · PEFRL Integrator · Orbit · Simulation · Outcomes. Zero UI imports; `swift test` runs on macOS or Linux. |
-| `WobblePhysics/Tests/` | XCTest port of the web Vitest invariants (energy, momentum, escape, softening, outcomes) **plus** golden-trajectory parity against fixtures exported from the TypeScript engine. The suite loads the bundled copies in `Tests/WobblePhysicsTests/Fixtures/`; `npm run export:fixtures` (repo root) regenerates them and `../tests/fixtures/` together, and CI asserts the two stay identical. |
+| `WobblePhysics/Tests/` | XCTest port of the web Vitest invariants (energy, momentum, escape, softening, outcomes), a **constants guard** pinning every play-tuned constant to its exact contractual value, **plus** golden-trajectory parity against fixtures exported from the TypeScript engine. The suite loads the bundled copies in `Tests/WobblePhysicsTests/Fixtures/`; `npm run export:fixtures` (repo root) regenerates them and `../tests/fixtures/` together, and CI asserts the two stay identical. |
 | `App/` | SwiftUI app: GameModel (state machine + fixed-step accumulator + input routing), Canvas rendering (starfield, court, painterly stars, trails, predicted orbits, supernova, HUD, cards), haptics, session scoreboard. |
 | `project.yml` | XcodeGen spec for the app target. |
 
@@ -27,13 +27,25 @@ cd ios && xcodegen generate
 open InfiniteBinaryWobble.xcodeproj   # set your team, run on a device
 ```
 
-## Fonts (optional but recommended)
+## Fonts (bundled)
 
-The wordmark/cards use **Cardo** and UI labels use **Inter** (both SIL OFL).
-Download `Cardo-Regular.ttf`, `Cardo-Italic.ttf`, `Inter-Regular.ttf`, drop
-them in `App/Resources/`, add them to the target + `UIAppFonts` in the Info
-settings. Without them the app falls back to the system serif/sans designs —
-fully functional, slightly different voice.
+**Cardo** (wordmark/cards) and **Inter** (UI labels) ship in the repo at
+`App/Resources/Fonts/` — six SIL-OFL TTFs harvested from the original
+standalone iOS repo, wired through `project.yml`'s `UIAppFonts` (so
+`xcodegen generate` does all the plumbing; nothing to download or click).
+The full OFL license text plus per-file SHA-256 provenance lives in
+`App/Resources/FontLicenses.txt` — surface the "Built with Cardo and Inter"
+credit in any future About screen (see `../docs/ios/ABOUT-SCREEN.md`).
+If a font ever fails to load, `Theme.swift` degrades to the system
+serif/sans designs — fully functional, slightly different voice.
+
+## Product docs
+
+The standalone-repo launch effort's docs were harvested into
+[`../docs/ios/`](../docs/ios/) with provenance banners: `ROADMAP-IOS.md`
+(saved/sent wobbles, the 1000-free-plays meter decision, north star),
+`V1-LOCK.md` (the superseded V1 launch plan — useful App Store mechanics),
+and `ABOUT-SCREEN.md` (final copy for the not-yet-built About screen).
 
 ## Fidelity notes
 
