@@ -44,7 +44,7 @@ Skill routing:
 
 - `npm install` — once.
 - `npm run dev` — local dev server with HMR (Vite's default port, usually http://localhost:5173). The dev server strips the CSP `<meta>` tag via a `apply: 'serve'` plugin; production keeps it.
-- `npm test` — run all Vitest tests once (43 tests).
+- `npm test` — run all Vitest tests once (44 tests).
 - `npm run test:watch` — Vitest in watch mode (useful while tuning physics).
 - `npm run build` — type-check (`tsc`) then produce the production bundle in `dist/`.
 - `npm run preview` — serve the built bundle locally.

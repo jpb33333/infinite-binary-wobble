@@ -52,6 +52,12 @@ public final class Simulation {
   public private(set) var time: Double
   public let initialSeparation: Double
   public let initialEnergy: Double
+  /// Smallest separation seen at any substep since construction. Collision
+  /// detection (OutcomeClassifier) reads THIS, not the instantaneous
+  /// separation: the classifier only runs once per rendered frame (4–8
+  /// substeps), and a fast grazing pass can dip inside the collision radius
+  /// and back out entirely between frames. Mirrors src/physics/Simulation.ts.
+  public private(set) var minSeparation: Double
 
   public init(a: Body, b: Body) {
     self.a = a
@@ -60,6 +66,7 @@ public final class Simulation {
     // Prime acceleration so the integrator's first kick has a meaningful a(0).
     applyGravity(a, b, G: PHYSICS.G, softening: PHYSICS.SOFTENING)
     self.initialSeparation = (b.pos - a.pos).mag
+    self.minSeparation = self.initialSeparation
     self.initialEnergy = computeOrbit(a, b, G: PHYSICS.G, softening: PHYSICS.SOFTENING).totalEnergy
   }
 
@@ -67,6 +74,8 @@ public final class Simulation {
   public func step(dt: Double = PHYSICS.DT) {
     pefrlStep(a, b, dt: dt, G: PHYSICS.G, softening: PHYSICS.SOFTENING)
     time += dt
+    let sep = (b.pos - a.pos).mag
+    if sep < minSeparation { minSeparation = sep }
   }
 
   /// Advance one display frame (= SUBSTEPS_PER_FRAME physics sub-steps).

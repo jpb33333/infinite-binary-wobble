@@ -84,6 +84,13 @@ export class Simulation {
   time: number;
   readonly initialSeparation: number;
   readonly initialEnergy: number;
+  // Smallest separation seen at any substep since construction. Collision
+  // detection (game/outcomes.ts) reads THIS, not the instantaneous
+  // separation: the classifier only runs once per rendered frame (4–8
+  // substeps), and a fast grazing pass can dip inside the collision radius
+  // and back out entirely between frames. At game speeds a body moves ≲10 px
+  // per substep, so the substep minimum itself can't tunnel a ≥28 px disk.
+  minSeparation: number;
 
   constructor(a: Body, b: Body) {
     this.a = a;
@@ -94,6 +101,7 @@ export class Simulation {
     const dx = b.pos.x - a.pos.x;
     const dy = b.pos.y - a.pos.y;
     this.initialSeparation = Math.sqrt(dx * dx + dy * dy);
+    this.minSeparation = this.initialSeparation;
     this.initialEnergy = computeOrbit(a, b, PHYSICS.G, PHYSICS.SOFTENING).totalEnergy;
   }
 
@@ -104,6 +112,10 @@ export class Simulation {
   step(dt: number = PHYSICS.DT): void {
     pefrlStep(this.a, this.b, dt, PHYSICS.G, PHYSICS.SOFTENING);
     this.time += dt;
+    const dx = this.b.pos.x - this.a.pos.x;
+    const dy = this.b.pos.y - this.a.pos.y;
+    const sep = Math.sqrt(dx * dx + dy * dy);
+    if (sep < this.minSeparation) this.minSeparation = sep;
   }
 
   // Advance one display frame (= SUBSTEPS_PER_FRAME physics sub-steps).
