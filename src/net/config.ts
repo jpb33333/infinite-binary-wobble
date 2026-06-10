@@ -8,5 +8,5 @@
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
 export const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '';
-export const FREE_LIMIT_HINT = Number(import.meta.env.VITE_FREE_LIMIT ?? '100') || 100;
+export const FREE_LIMIT_HINT = Number(import.meta.env.VITE_FREE_LIMIT ?? '200') || 200;
 export const METERING_ENABLED = API_BASE_URL.length > 0;

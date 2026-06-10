@@ -7,6 +7,16 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **iOS assets harvested from the standalone repo** (which is now archived):
+  the six SIL-OFL **Cardo + Inter TTFs** with license text and per-file
+  SHA-256 provenance (`ios/App/Resources/`, hashes verified on harvest),
+  wired into the app via `project.yml`'s generated Info.plist (`UIAppFonts`);
+  a **constants-guard test** pinning every play-tuned physics constant to its
+  exact contractual value (`ConstantsGuardTests.swift`); and the three
+  product docs — `ROADMAP-IOS.md` (saved/sent wobbles, the 1000-free-plays
+  meter decision, north star), `V1-LOCK.md`, `ABOUT-SCREEN.md` — preserved
+  under `docs/ios/` with provenance banners flagging where they conflict
+  with what actually shipped (bundle id, orientation, stats persistence).
 - **PR test gate (`.github/workflows/ci.yml`).** Every pull request now runs
   the web suite (audit, tests, build) and the api-worker suite (audit,
   typecheck, tests), with per-PR concurrency; previously tests ran only
@@ -18,6 +28,17 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   401 / 5xx / malformed bodies / network errors.
 
 ### Changed
+- **Free-play allotment set to 200** (decided 2026-06-10; supersedes the 100
+  default and the 1000 recorded in the harvested iOS roadmap):
+  `FREE_PLAY_LIMIT` in `wrangler.toml`, the worker's fallback, the client's
+  display hint, and every doc now agree. Web metering stays best-effort by
+  design — a determined player re-earning free plays is accepted.
+- **Copyright holder unified as Carousella Gaming** (decided 2026-06-10):
+  the LICENSE attribution line now matches the live footer; the harvested
+  About-screen copy is flagged to use it when that screen is built. The
+  practical to-company checklist (LLC, IP assignment, Copyright Office
+  registration, Apple organization enrollment, trademark lane) lives in
+  `docs/plans/carousella-copyright.md`.
 - **Golden-fixture exporter writes both copies, with guardrails.**
   `npm run export:fixtures` now emits identical fixtures to `tests/fixtures/`
   *and* `ios/WobblePhysics/Tests/WobblePhysicsTests/Fixtures/` (the copy the

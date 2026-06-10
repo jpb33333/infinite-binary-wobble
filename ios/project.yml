@@ -17,15 +17,48 @@ targets:
       - App
     dependencies:
       - package: WobblePhysics
+    # Info-plist keys live HERE (xcodegen writes App/Info.plist at generate
+    # time; it is gitignored like the .xcodeproj) — not as INFOPLIST_KEY_*
+    # build settings, because UIAppFonts has no INFOPLIST_KEY_ mapping and
+    # mixing an explicit plist with generate-time keys silently drops them.
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Binary Wobble
+        # With an explicit Info.plist, the MARKETING_VERSION /
+        # CURRENT_PROJECT_VERSION build settings only reach the bundle through
+        # these variable references — without them xcodegen hardcodes 1.0/1
+        # and version bumps in this file silently stop applying.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
+        UIStatusBarHidden: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # iPad family (TARGETED_DEVICE_FAMILY "1,2") without all four
+        # orientations fails App Store upload validation (ITMS-90474) unless
+        # the app declares fullscreen-only. Going iPhone-only instead is a
+        # product call — docs/ios/V1-LOCK.md pinned iPhone-only for the old V1.
+        UIRequiresFullScreen: true
+        # Bundled SIL-OFL fonts (App/Resources/Fonts; full license text +
+        # per-file SHA-256 provenance in App/Resources/FontLicenses.txt).
+        # Theme.swift degrades to system serif/sans if a font fails to load.
+        # Cardo-Bold has no caller yet — bundled for the About-screen wordmark
+        # (docs/ios/ABOUT-SCREEN.md) so the family ships complete.
+        UIAppFonts:
+          - Cardo-Regular.ttf
+          - Cardo-Italic.ttf
+          - Cardo-Bold.ttf
+          - Inter-Regular.ttf
+          - Inter-Medium.ttf
+          - Inter-SemiBold.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.carousella.infinitebinarywobble
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        INFOPLIST_KEY_UIStatusBarHidden: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Binary Wobble
         SWIFT_VERSION: "5.9"
         TARGETED_DEVICE_FAMILY: "1,2"
         # Automatic signing with your team — set via Xcode or:

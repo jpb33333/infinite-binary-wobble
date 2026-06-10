@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 # Lock CORS + cookie scope to your web origin once the domain is chosen.
 WEB_ORIGIN = "https://play.example.com"   # CHANGE_ME
-FREE_PLAY_LIMIT = "100"
+FREE_PLAY_LIMIT = "200"
 ENVIRONMENT = "production"
 # Pay-what-you-want Price: created once with custom_unit_amount[enabled]=true
 # and custom_unit_amount[minimum]=100 (see README.md). A resource id, not a secret.
