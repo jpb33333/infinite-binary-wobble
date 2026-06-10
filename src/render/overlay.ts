@@ -603,7 +603,12 @@ export function drawPaywallCard(
 
   ctx.fillStyle = palette.cream;
   ctx.font = `400 38px ${fonts.serif}`;
-  ctx.fillText('A hundred wobbles in.', w / 2, cy + 72);
+  // The count comes from the client-side hint (VITE_FREE_LIMIT) — interpolated
+  // so the title tracks config instead of hardcoded prose (it said "A hundred"
+  // while the limit was 200). It can still desync if the Worker's independent
+  // FREE_PLAY_LIMIT env diverges from the build-time hint; the server never
+  // reports its limit back (GateResponse has no limit field).
+  ctx.fillText(`${meter.limit} wobbles in.`, w / 2, cy + 72);
 
   ctx.fillStyle = palette.rose;
   ctx.font = `italic 400 18px ${fonts.serif}`;
