@@ -63,6 +63,13 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Resource-Policy: same-origin
 ```
 
+> **Metering caveat.** A `VITE_API_BASE_URL` build widens the meta CSP with
+> `connect-src`/`frame-src`/`script-src` entries for the API origin and
+> `challenges.cloudflare.com` (see `meteringCsp` in `vite.config.ts`). Browsers
+> enforce the *intersection* of header and meta policies — so if web metering
+> is enabled, the header above must gain the same entries or it re-blocks
+> every metering call and the Turnstile widget.
+
 ## Recommended repository settings
 
 - **Dependabot alerts** — free for private repos; enable in Settings → Security.

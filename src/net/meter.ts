@@ -43,12 +43,23 @@ export class Meter {
     return METERING_ENABLED && this.locked && !this.unlocked;
   }
 
-  /** Fetch current status on boot. Best-effort; failure leaves metering inert. */
+  /**
+   * Sync status on boot — refresh-FIRST. An existing HttpOnly session cookie
+   * answers /v1/status directly; Turnstile + /v1/web/session run only when the
+   * server says 401 (no or expired session). So the widget appears once per
+   * device, not on every page load — and an existing device's play count and
+   * entitlement survive reloads. Best-effort; failure leaves metering inert.
+   */
   async init(): Promise<void> {
     if (!METERING_ENABLED) return;
     try {
-      await this.ensureSession();
-      await this.refresh();
+      const r = await this.fetchGate('/v1/status');
+      if (r === 'unauthenticated') {
+        await this.ensureSession();
+        if (this.sessionReady) await this.refresh();
+      } else if (r) {
+        this.apply(r);
+      }
     } catch {
       /* fail open */
     }
@@ -57,14 +68,24 @@ export class Meter {
   /** A play has begun — optimistic, fire-and-forget; never blocks the loop. */
   consumePlay(): void {
     if (!METERING_ENABLED || this.unlocked) return;
-    void this.post('/v1/play/increment')
-      .then(r => r && this.apply(r))
+    void this.fetchGate('/v1/play/increment', { method: 'POST' })
+      .then(r => {
+        if (r && r !== 'unauthenticated') this.apply(r);
+      })
       .catch(() => {});
   }
 
   async refresh(): Promise<void> {
     if (!METERING_ENABLED) return;
-    const r = await this.get('/v1/status').catch(() => null);
+    const r = await this.fetchGate('/v1/status');
+    if (r === 'unauthenticated') {
+      // Session died (30-day cookie expired mid-visit). Un-latch the gate:
+      // without this, a player parked on the paywall when the cookie lapses
+      // is stuck there — a fail-closed corner in a fail-open design. The next
+      // boot mints a fresh device anyway (expiry IS the meter-reset cadence).
+      this.locked = false;
+      return;
+    }
     if (r) this.apply(r);
   }
 
@@ -108,13 +129,21 @@ export class Meter {
     if (res.ok) this.sessionReady = true;
   }
 
-  private async get(path: string): Promise<GateResponse | null> {
-    const res = await fetch(`${API_BASE_URL}${path}`, { credentials: 'include' });
-    return res.ok ? ((await res.json()) as GateResponse) : null;
-  }
-
-  private async post(path: string): Promise<GateResponse | null> {
-    const res = await fetch(`${API_BASE_URL}${path}`, { method: 'POST', credentials: 'include' });
-    return res.ok ? ((await res.json()) as GateResponse) : null;
+  /**
+   * Call a metering endpoint. Distinguishes 401 ('unauthenticated' — the
+   * mint-a-session signal) from every other failure (null — fail open).
+   * Never rejects: network errors and malformed bodies all resolve to null.
+   */
+  private async fetchGate(
+    path: string,
+    init: RequestInit = {},
+  ): Promise<GateResponse | 'unauthenticated' | null> {
+    const res = await fetch(`${API_BASE_URL}${path}`, { credentials: 'include', ...init }).catch(
+      () => null,
+    );
+    if (!res) return null;
+    if (res.status === 401) return 'unauthenticated';
+    if (!res.ok) return null;
+    return (await res.json().catch(() => null)) as GateResponse | null;
   }
 }

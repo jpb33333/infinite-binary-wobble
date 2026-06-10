@@ -12,9 +12,9 @@
     "db:init": "wrangler d1 execute ibw --file=./schema.sql"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250620.0",
-    "typescript": "~5.7.0",
-    "vitest": "^2.1.0",
-    "wrangler": "^3.90.0"
+    "@cloudflare/workers-types": "^4.20260610.1",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.8",
+    "wrangler": "^4.99.0"
   }
 }

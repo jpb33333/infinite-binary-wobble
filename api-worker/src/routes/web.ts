@@ -7,11 +7,39 @@ import { authenticate } from './auth.ts';
 const TOKEN_TTL_SEC = 60 * 60 * 24 * 30; // 30 days
 
 /**
- * Web bot-gate → device token. Verifies a Cloudflare Turnstile token, then mints
- * a signed HttpOnly device token + a `devices` row. (Implemented — needs only
- * the TURNSTILE_SECRET to run.)
+ * Web bot-gate → device token. With a valid existing cookie, REUSES that
+ * device (sliding cookie renewal); otherwise verifies a Cloudflare Turnstile
+ * token and mints a signed HttpOnly device token + a `devices` row.
+ * (Implemented — needs only the TURNSTILE_SECRET to run.)
  */
 export async function handleWebSession(req: Request, env: Env): Promise<Response> {
+  // A valid session cookie means this browser already has a device identity —
+  // reuse it instead of minting a fresh one. The play counter and any paid
+  // entitlement hang off the device id, so a new id per call would reset the
+  // meter on every page load and orphan a paid unlock the moment Stripe's
+  // ?checkout=success redirect reloads the page. Turnstile gates device
+  // CREATION (the free-plays reset vector), not continued use of a device
+  // that already passed it — so the reuse path skips the bot check.
+  const existing = await authenticate(req, env);
+  if (existing?.platform === 'web') {
+    const now = Date.now();
+    const seen = await env.DB.prepare(`UPDATE devices SET last_seen = ?2 WHERE device_id = ?1`)
+      .bind(existing.deviceId, now)
+      .run();
+    if (seen.meta.changes === 0) {
+      // Valid cookie but no row (cleanup/migration): restore the SAME
+      // identity instead of minting a new one — otherwise
+      // /v1/play/increment 500s on unknown_device for a valid session.
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO devices (device_id, platform, created_at, last_seen)
+         VALUES (?1, 'web', ?2, ?2)`,
+      )
+        .bind(existing.deviceId, now)
+        .run();
+    }
+    return issueSession(existing.deviceId, env);
+  }
+
   const body = (await req.json().catch(() => ({}))) as { turnstileToken?: string };
   if (!body.turnstileToken) return jsonError(400, 'missing_turnstile_token');
 
@@ -38,9 +66,21 @@ export async function handleWebSession(req: Request, env: Env): Promise<Response
     .bind(deviceId, now)
     .run();
 
-  const iat = Math.floor(now / 1000);
+  return issueSession(deviceId, env);
+}
+
+/**
+ * Sign a fresh 30-day device token and set it as the HttpOnly session cookie.
+ * Sliding renewal: every successful session call restarts the 30 days, so an
+ * active device never expires. Deliberate consequence — there is no per-device
+ * revocation; the kill switch is rotating TOKEN_SIGNING_KEY (logs out every
+ * device at once). Acceptable while the only privilege a token carries is a
+ * free-plays counter; revisit if device identity ever guards more than that.
+ */
+async function issueSession(deviceId: string, env: Env): Promise<Response> {
+  const iat = Math.floor(Date.now() / 1000);
   const token = await signToken({ deviceId, iat, exp: iat + TOKEN_TTL_SEC }, env.TOKEN_SIGNING_KEY);
-  const cookie = `ibw_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${TOKEN_TTL_SEC}`;
+  const cookie = `__Host-ibw_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${TOKEN_TTL_SEC}`;
   return json({ ok: true, deviceId }, 200, { 'Set-Cookie': cookie });
 }
 
@@ -146,11 +186,37 @@ export async function handleStripeWebhook(req: Request, env: Env): Promise<Respo
     return json({ received: true, duplicate: true });
   }
 
-  // In production only live-mode events may move entitlements; test-mode
-  // events flow end-to-end in non-production deploys so the whole loop can be
-  // rehearsed against Stripe's test clock before real money is involved.
-  const allowed = event.livemode === true || env.ENVIRONMENT !== 'production';
+  // The event id is now claimed. If applying it below fails, the claim must
+  // be RELEASED before the error propagates — otherwise Stripe's retry (it
+  // retries on 5xx) hits the duplicate path above and a real payment is
+  // permanently skipped: the customer paid and stays locked. The try/catch
+  // around the apply logic exists solely to keep that invariant.
+  try {
+    return await applyStripeEvent(event, env);
+  } catch (err) {
+    // Best-effort: the release usually fails for the same reason the apply
+    // did (D1 down), so log loudly — a stuck claim here means a payment that
+    // will NEVER auto-apply (Stripe's retry hits the duplicate path) and must
+    // be reconciled by hand from this log line.
+    await env.DB.prepare(`DELETE FROM processed_events WHERE event_id = ?1`)
+      .bind(event.id)
+      .run()
+      .catch((releaseErr: unknown) => {
+        console.error(
+          `stripe webhook: claim release FAILED for ${event.id} — event is now permanently claimed but unapplied`,
+          releaseErr,
+        );
+      });
+    throw err;
+  }
+}
 
+// The post-claim apply step, split out so handleStripeWebhook's claim/release
+// wrapper stays readable. Throws propagate to the caller (→ claim release).
+async function applyStripeEvent(event: StripeEvent, env: Env): Promise<Response> {
+  // In production only live-mode events may move entitlements; test-mode
+  // events flow end-to-end in non-production deploys (see handleStripeWebhook).
+  const allowed = event.livemode === true || env.ENVIRONMENT !== 'production';
   const obj = event.data?.object ?? {};
   const now = Date.now();
 
@@ -207,6 +273,14 @@ export async function handleStripeWebhook(req: Request, env: Env): Promise<Respo
           .run();
         applied = true;
       }
+    }
+    if (!applied) {
+      // No recorded payment_intent → no device to re-lock, and acknowledging
+      // means Stripe won't redeliver. Inherent gap (a refund can't lock a
+      // device it can't resolve) — log loudly for manual reconciliation.
+      console.error(
+        `stripe webhook: ${event.type} ${event.id} could not be applied — payment_intent ${pi ?? 'missing'} has no recorded device`,
+      );
     }
     return json({ received: true, applied });
   }

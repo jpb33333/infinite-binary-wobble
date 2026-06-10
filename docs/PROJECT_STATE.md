@@ -117,7 +117,8 @@ Dependency graph: `Vec2` (leaf) ← `Body`; `gravity`←`Body`; `integrator`←`
 | `package.json` | `name`, `version 0.3.0`, scripts, three devDependencies, zero runtime deps. |
 | `vite.config.ts` | Vite + Vitest config + the dev-only CSP-stripping plugin. |
 | `tsconfig.json` | Type-check-only config (`noEmit`). |
-| `.github/workflows/deploy.yml` | test → build → deploy to GitHub Pages. |
+| `.github/workflows/deploy.yml` | test → build → deploy to GitHub Pages (push to `main`). |
+| `.github/workflows/ci.yml` | PR gate: web suite (audit/test/build) + `api-worker` suite (audit/typecheck/test). |
 | `public/favicon.svg`, `public/fonts/` | Favicon (two-star SVG) and self-hosted Cardo + Inter woff2 (~82 KB). |
 | `tests/` | Six Vitest files, 25 tests. |
 | `docs/` | `IOS_NATIVE_APP_PLAN.md` and this file. |
@@ -260,7 +261,7 @@ Toolchain: `typescript ~6.0.2` (resolved 6.0.3), `vite ^8.0.12` (8.0.15), `vites
 
 ### CI/CD (GitHub Pages auto-deploy)
 
-`.github/workflows/deploy.yml` triggers on push to `main` (and `workflow_dispatch`). Job order: checkout → setup-node (**Node 22**, npm cache) → `npm ci` → `npm audit --audit-level=high` → `npm test` → `npm run build` → configure-pages → upload-pages-artifact (`./dist`) → deploy-pages. All third-party actions are pinned to full commit SHAs and updated via `.github/dependabot.yml` (npm + github-actions, weekly). The checkout uses `persist-credentials: false`, and an `npm audit --audit-level=high` step gates the deploy on a high/critical advisory. Concurrency group `pages`, `cancel-in-progress: false`. Live URL: https://jpb33333.github.io/infinite-binary-wobble/.
+`.github/workflows/deploy.yml` triggers on push to `main` (and `workflow_dispatch`). Job order: checkout → setup-node (**Node 22**, npm cache) → `npm ci` → `npm audit --audit-level=high` → `npm test` → `npm run build` → configure-pages → upload-pages-artifact (`./dist`) → deploy-pages. Pull requests are gated separately by `.github/workflows/ci.yml` (web suite + `api-worker` typecheck/tests/audit) — before it existed, tests ran only post-merge inside this deploy job. All third-party actions are pinned to full commit SHAs and updated via `.github/dependabot.yml` (npm + github-actions, weekly). The checkout uses `persist-credentials: false`, and an `npm audit --audit-level=high` step gates the deploy on a high/critical advisory. Concurrency group `pages`, `cancel-in-progress: false`. Live URL: https://jpb33333.github.io/infinite-binary-wobble/.
 
 `dist/` is gitignored and built fresh in CI; the `dist/` currently on disk is a stale local artifact.
 
