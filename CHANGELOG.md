@@ -7,6 +7,16 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **iOS assets harvested from the standalone repo** (which is now archived):
+  the six SIL-OFL **Cardo + Inter TTFs** with license text and per-file
+  SHA-256 provenance (`ios/App/Resources/`, hashes verified on harvest),
+  wired into the app via `project.yml`'s generated Info.plist (`UIAppFonts`);
+  a **constants-guard test** pinning every play-tuned physics constant to its
+  exact contractual value (`ConstantsGuardTests.swift`); and the three
+  product docs — `ROADMAP-IOS.md` (saved/sent wobbles, the 1000-free-plays
+  meter decision, north star), `V1-LOCK.md`, `ABOUT-SCREEN.md` — preserved
+  under `docs/ios/` with provenance banners flagging where they conflict
+  with what actually shipped (bundle id, orientation, stats persistence).
 - **PR test gate (`.github/workflows/ci.yml`).** Every pull request now runs
   the web suite (audit, tests, build) and the api-worker suite (audit,
   typecheck, tests), with per-PR concurrency; previously tests ran only
