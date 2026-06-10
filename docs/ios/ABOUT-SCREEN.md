@@ -3,9 +3,12 @@
 > screen it specifies is **not yet built** in the in-repo app (`ios/App/` has
 > the explainer card, no About screen) — this is the final copy waiting for
 > that view. Notes: the bundled fonts + `FontLicenses.txt` it relies on now
-> live at `ios/App/Resources/`; the copyright line ("© 2026 J.P. Bowditch")
-> conflicts with the live site footer ("© Carousella Gaming 2026") and the
-> MIT LICENSE attribution — resolve the identity once, then update all three.
+> live at `ios/App/Resources/`. The copyright identity was **decided
+> 2026-06-10: Carousella Gaming** — when this screen is built, render the
+> copyright line as "© 2026 Carousella Gaming. All rights reserved." instead
+> of the "J.P. Bowditch" wording pinned verbatim below (the LICENSE and the
+> live footer already say Carousella; see
+> `docs/plans/carousella-copyright.md`).
 
 ---
 
