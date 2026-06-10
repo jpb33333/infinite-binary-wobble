@@ -105,6 +105,10 @@ export class Renderer {
   private fit: Fit = { scale: 1, offsetX: 0, offsetY: 0 };
   private viewW = 1;
   private viewH = 1;
+  // OS-level reduced-motion preference. When set, the decorative atmosphere
+  // (starfield twinkle, ambient stardust drift) goes still; gameplay motion
+  // — the orbit, the arrow, the countdown — IS the content and keeps moving.
+  private reducedMotion = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -112,6 +116,14 @@ export class Renderer {
     if (!ctx) throw new Error('Could not acquire 2D context');
     this.ctx = ctx;
     this.currentLayout = layoutForViewport(window.innerWidth, window.innerHeight);
+
+    if (typeof window.matchMedia === 'function') {
+      const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+      this.reducedMotion = mql.matches;
+      mql.addEventListener('change', e => {
+        this.reducedMotion = e.matches;
+      });
+    }
 
     this.starfield = [];
     this.ambientLayer = new Particles();
@@ -206,8 +218,9 @@ export class Renderer {
     // scaled by DPR only — no fit transform), so the atmosphere bleeds to
     // every edge regardless of the letterbox.
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    drawStarfield(ctx, this.starfield, input.time, this.viewW, this.viewH);
-    this.ambientLayer.ambient(this.viewW, this.viewH, input.dt);
+    // Frozen twinkle phase + no drifting motes under reduced motion.
+    drawStarfield(ctx, this.starfield, this.reducedMotion ? 0 : input.time, this.viewW, this.viewH);
+    if (!this.reducedMotion) this.ambientLayer.ambient(this.viewW, this.viewH, input.dt);
 
     // ── Scene (design space via the contain-fit transform) ──
     // Pre-multiplied by DPR so all drawing below stays sharp. Every render
@@ -250,7 +263,7 @@ export class Renderer {
     // Ambient motes paint last, on top, full-bleed (back to screen space) so
     // they keep the original "drifting in front" feel across the whole window.
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    this.ambientLayer.draw(ctx);
+    if (!this.reducedMotion) this.ambientLayer.draw(ctx);
   }
 
   // ─────────────────────────────────────────────────────────────── states
