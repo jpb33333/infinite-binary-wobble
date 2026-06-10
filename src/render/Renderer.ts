@@ -299,11 +299,12 @@ export class Renderer {
         ctx.restore();
       }
 
-      // The quiet, optional explainer affordance. Hidden while the card is open
-      // (the card is the explainer); a finger-sized hit rect is registered so
-      // taps and the hover cursor line up with the text.
+      // The quiet, optional explainer affordance, centred just above BEGIN.
+      // Hidden while the card is open (the card is the explainer); a
+      // finger-sized hit rect is registered so taps and the hover cursor line
+      // up with the text.
       const linkHovered = this.hoveredButton(input.hover) === 'explainer';
-      const linkBtn = drawTitleExplainerLink(ctx, w, linkHovered);
+      const linkBtn = drawTitleExplainerLink(ctx, w, h, linkHovered);
       this.buttons.set('explainer', linkBtn);
     }
 

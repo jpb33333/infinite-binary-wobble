@@ -1,0 +1,26 @@
+{
+  "date": "2026-06-10",
+  "window": "session (1 day)",
+  "metrics": {
+    "commits_to_main": 11,
+    "session_prs_merged": 4,
+    "dependabot_merged": 6,
+    "contributors": 2,
+    "tests_start": 25,
+    "tests_end": 75,
+    "test_suites": { "web": 43, "api_worker": 32, "swift_files": 4 },
+    "worker_vulns_start": 9,
+    "worker_vulns_end": 0,
+    "review_agents_dispatched": 13,
+    "review_findings": 50,
+    "findings_fixed_premerge": 39,
+    "production_deploys_verified": 4,
+    "critical_bugs_fixed_prelaunch": 2,
+    "ai_assisted_commits_pct": 100
+  },
+  "version_range": ["0.4.0", "0.5.0"],
+  "decisions": ["meter=200 free plays", "copyright=Carousella Gaming"],
+  "repo_actions": ["infinite-binary-wobble-ios archived", "branch protection enabled (web+api-worker required, enforce_admins)"],
+  "streak_days": 1,
+  "tweetable": "Jun 10: cold clone → audit → 10 merges → v0.5.0. Tests 25→75, vulns 9→0, 2 pre-launch payment bugs dead, 50 review findings (39 fixed pre-merge), 4 verified deploys, branch protection on."
+}

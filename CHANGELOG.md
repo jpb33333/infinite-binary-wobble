@@ -6,6 +6,14 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **The "what is a binary star?" explainer link moved from the top-right
+  corner to centred just above the BEGIN button** — where a curious
+  first-timer is already looking, and in the thumb zone on phones. Same quiet
+  styling, same finger-sized hit rect (kept 22px clear of BEGIN's so a
+  mis-tap never lands on both); when metering ships, it mirrors the
+  free-plays line below the button.
+
 ## [0.5.0] — 2026-06-10
 
 ### Added
