@@ -6,6 +6,34 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **CSP no longer blocks the PWA manifest.** `manifest-src 'self'` added to the
+  CSP (meta tag + the recommended header set in `SECURITY.md`) — it previously
+  fell back to `default-src 'none'`, which silently blocked
+  `manifest.webmanifest` and broke Android/Chrome "Install app" (iOS install
+  was unaffected — it reads the `apple-touch-icon`/meta tags instead).
+
+### Changed
+- **Golden-fixture exporter writes both copies, with guardrails.**
+  `npm run export:fixtures` now emits identical fixtures to `tests/fixtures/`
+  *and* `ios/WobblePhysics/Tests/WobblePhysicsTests/Fixtures/` (the copy the
+  Swift suite actually loads via `Bundle.module`), and refuses to run on a
+  Node major other than the one the committed fixtures were generated on
+  (Node 22 — engine-dependent `Math.pow` churns trajectory tails at the last
+  ULP; `--force` overrides for a deliberate regeneration). The `ios-physics`
+  workflow now asserts the two fixture trees are byte-identical before
+  running the Swift suite, triggers on `tests/fixtures/**` changes, and pins
+  its `checkout` action to the same v6.0.3 SHA as the deploy workflow.
+- **Metering CSP injection fails loudly.** The build-time `meteringCsp`
+  plugin now throws if either of its CSP anchor substrings stops matching
+  `index.html`, instead of silently shipping a policy that blocks every
+  metering fetch (which the fail-open client would mask as
+  "the paywall just never appears").
+
+### Removed
+- Dead `hitTest` export in `src/render/overlay.ts` (the Renderer's
+  `hoveredButton()` owns all button hit-testing).
+
 ## [0.4.0] — 2026-06-10
 
 ### Added
