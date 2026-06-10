@@ -10,6 +10,9 @@ compatibility_flags = ["nodejs_compat"]
 WEB_ORIGIN = "https://play.example.com"   # CHANGE_ME
 FREE_PLAY_LIMIT = "100"
 ENVIRONMENT = "production"
+# Pay-what-you-want Price: created once with custom_unit_amount[enabled]=true
+# and custom_unit_amount[minimum]=100 (see README.md). A resource id, not a secret.
+STRIPE_PRICE_ID = "REPLACE_ME"
 
 # --- D1: entitlements/purchases + the free-tier play counter ---
 [[d1_databases]]

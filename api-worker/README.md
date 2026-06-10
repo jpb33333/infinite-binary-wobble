@@ -25,9 +25,10 @@ operational summary.
 
 | Implemented (pure logic, testable) | Stubbed (needs secrets/SDKs — marked `TODO`) |
 |---|---|
-| Router, CORS lock, security headers, error wrapper | Stripe Checkout creation + webhook→D1 persistence |
-| `gate.ts` free/locked decision | App Attest attestation + assertion verification |
-| `token.ts` HMAC sign/verify; **Stripe webhook signature verify** | StoreKit 2 JWS + App Store Server API + ASSN V2 |
+| Router, CORS lock, security headers, error wrapper | App Attest attestation + assertion verification |
+| `gate.ts` free/locked decision | StoreKit 2 JWS + App Store Server API + ASSN V2 |
+| `token.ts` HMAC sign/verify; **Stripe webhook signature verify** | — |
+| **Stripe Checkout creation + webhook→D1 persistence** (idempotent unlock/refund-relock, unit-tested) | — |
 | `counter.ts` D1 atomic increment; Turnstile siteverify + web session | — |
 | D1 `schema.sql`, `/health`, `/v1/status` | — |
 
@@ -63,6 +64,9 @@ npx wrangler kv namespace create ibw-kv
 npm run db:init                      # apply schema.sql to D1
 
 # 2. Set WEB_ORIGIN in wrangler.toml to your site (e.g. https://play.yourdomain)
+#    and STRIPE_PRICE_ID to a pay-what-you-want Price (create once):
+#      stripe prices create -d "currency=usd" -d "product_data[name]=Infinite Binary Wobble" \
+#        -d "custom_unit_amount[enabled]=true" -d "custom_unit_amount[minimum]=100"
 
 # 3. Load secrets (values never touch the repo)
 for s in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET TURNSTILE_SECRET \
