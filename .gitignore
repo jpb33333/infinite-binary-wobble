@@ -35,3 +35,9 @@ dist-ssr
 SCRATCH.md
 scratch/
 .gstack/
+
+# Xcode / Swift (ios/ native app)
+ios/InfiniteBinaryWobble.xcodeproj
+ios/**/.build/
+ios/**/xcuserdata/
+ios/**/DerivedData/

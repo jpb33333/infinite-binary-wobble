@@ -1,0 +1,31 @@
+# Physics-parity gate for the native iOS port. The WobblePhysics package is
+# pure Swift (no UI imports), so its XCTest suite — including the
+# golden-trajectory comparison against fixtures exported from the TypeScript
+# engine — runs on a Linux Swift container. Any divergence between the Swift
+# and TS physics fails this job.
+name: ios-physics
+
+on:
+  push:
+    paths:
+      - 'ios/WobblePhysics/**'
+      - '.github/workflows/ios-physics.yml'
+  pull_request:
+    paths:
+      - 'ios/WobblePhysics/**'
+      - '.github/workflows/ios-physics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  swift-test:
+    runs-on: ubuntu-24.04
+    container: swift:6.0
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
+      - name: Run physics parity suite
+        working-directory: ios/WobblePhysics
+        run: swift test
