@@ -21,10 +21,11 @@ plays, then pay to keep playing.
 
 | | |
 |---|---|
-| ✅ **Live** | Hardened web game (strict CSP + Trusted Types) — https://jpb33333.github.io/infinite-binary-wobble/ |
-| ✅ **On `main`, dark/inert** | `api-worker/` backend scaffold; web metering client (`src/net/`, `paywall` state) — does nothing until `VITE_API_BASE_URL` is set |
+| ✅ **Live** | Hardened web game (strict CSP + Trusted Types, portrait + PWA install) — https://jpb33333.github.io/infinite-binary-wobble/ |
+| ✅ **On `main`, dark/inert** | `api-worker/` backend (Stripe checkout + verified-webhook persistence, session reuse — unit-tested); web metering client (`src/net/`, refresh-first, `paywall` state) — does nothing until `VITE_API_BASE_URL` is set |
+| ✅ **Shipped (in-repo)** | Native iOS app core (`ios/`, SwiftUI Canvas, golden-parity physics, bundled fonts) — Phase D done; the standalone iOS repo is archived |
 | ⛔ **Blocked on provisioning** | Deploying the backend; enabling web metering; the Cloudflare edge headers |
-| 📋 **Not started** | Native iOS app + commerce layer; privacy policy + App Privacy label |
+| 📋 **Not started** | iOS commerce layer (StoreKit 2 + App Attest, Phases E/F); privacy policy + App Privacy label update |
 
 **Backend — real vs stubbed** (`api-worker/`): real + unit-tested — router, CORS
 lock, signed web token (device reuse + sliding renewal), gate logic, D1 counter,
@@ -61,9 +62,10 @@ no-ops (fail-open — see "Cookie & origin constraint" in `api-worker/README.md`
 Test: play to the limit → paywall → Stripe checkout → unlock → **reload** (the
 entitlement must survive the `?checkout=success` redirect).
 
-### Phase D — iOS native core (~3 wk)
-The existing 7-phase rewrite in `IOS_NATIVE_APP_PLAN.md` (physics → render → state
-→ input → orientation → polish). No backend dependency; can start any time.
+### Phase D — iOS native core ✅ DONE (shipped in-repo, 0.4.x)
+The rewrite specced in `IOS_NATIVE_APP_PLAN.md` shipped under `ios/` (PR #24;
+fonts + constants guard harvested in PR #27). What remains of the iOS track is
+commerce (E/F) and the App Store submission (H).
 
 ### Phase E/F — iOS commerce + backend iOS endpoints (~2–3 wk)
 App Attest + StoreKit 2 in the app; App Attest verification + StoreKit / App Store
@@ -114,7 +116,7 @@ gh repo clone jpb33333/infinite-binary-wobble
 cd infinite-binary-wobble
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 25 tests
+npm test         # 43 tests
 
 # 4. When you're ready to deploy the backend
 cd api-worker
@@ -128,11 +130,11 @@ architecture, and **Sequenced work** above for the order.
 
 ## Open maintenance — Dependabot
 
-Dependabot (configured in `.github/dependabot.yml`) has opened PRs bumping the
-pinned GitHub Actions (checkout / setup-node / deploy-pages / …) and a dev-deps
-group. Review + merge them deliberately: the Action bumps are CI-only and low risk;
-**build-test the dev-dependency bump locally before merging it** — it touches the
-Vite / Vitest / TypeScript toolchain.
+Dependabot (`.github/dependabot.yml`) watches root npm, `/api-worker` npm, and
+the pinned GitHub Actions, weekly. The 2026-06-04 batch (five Action bumps + the
+dev-deps group) was reviewed and merged 2026-06-10. Future PRs are gated by
+`ci.yml` automatically; the standing advice holds — Action bumps are CI-only and
+low risk, dev-dependency bumps deserve a local build-test before merging.
 
 ## Pull requests that built this
 
@@ -140,3 +142,7 @@ Vite / Vitest / TypeScript toolchain.
 - #17 — Cloudflare Worker backend scaffold + Stripe signature verification (merged)
 - #18 — web metering client (merged, dark)
 - #9 — accounts/auth architecture plan (merged)
+- #24 — native iOS app + portrait mode + PWA install + softened-energy fix (0.4.0)
+- #25 — hygiene: manifest-src CSP fix, fixture-parity guardrails (merged, live)
+- #26 — metering integrity: session reuse, webhook retry safety, PR CI gate (merged)
+- #27 — iOS asset harvest + the 200-free-plays & Carousella Gaming decisions (merged)

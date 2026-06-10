@@ -2,9 +2,9 @@
 
 The single cold-start handoff document. If you are an engineer (or Claude) picking this up on a different machine in a different terminal session, read this first. It describes exactly what exists today, how the pieces fit, and what is left to do. Every technical claim here is grounded in the current source; where the source contradicts itself, that is called out under **Known gaps & risks**.
 
-Companion docs: [`README.md`](../README.md) (public-facing), [`CLAUDE.md`](../CLAUDE.md) (working rules + architecture), [`CHANGELOG.md`](../CHANGELOG.md) (history), and [`IOS_NATIVE_APP_PLAN.md`](./IOS_NATIVE_APP_PLAN.md) (future direction).
+Companion docs: [`README.md`](../README.md) (public-facing), [`CLAUDE.md`](../CLAUDE.md) (working rules + architecture), [`CHANGELOG.md`](../CHANGELOG.md) (history), [`ROADMAP.md`](./ROADMAP.md) (sequenced work + provisioning), and [`docs/ios/`](./ios/) (the harvested iOS product docs).
 
-> **In progress (2026-06-04):** the game is being extended into a metered, monetized product (200 free plays → pay) with a Cloudflare backend. See [`ROADMAP.md`](./ROADMAP.md) (sequenced work + provisioning + new-machine bootstrap) and [`MONETIZATION_PLAN.md`](./MONETIZATION_PLAN.md). The `api-worker/` backend scaffold and the web metering client (`src/net/`, dark until `VITE_API_BASE_URL` is set) have landed; nothing is wired or deployed yet.
+> **In progress (updated 2026-06-10):** the game is being extended into a metered, monetized product (200 free plays → pay) with a Cloudflare backend — see [`ROADMAP.md`](./ROADMAP.md) and [`MONETIZATION_PLAN.md`](./MONETIZATION_PLAN.md). The `api-worker/` backend (Stripe checkout + verified-webhook persistence, session reuse, all unit-tested) and the web metering client (`src/net/`, refresh-first, dark until `VITE_API_BASE_URL` is set) are built; **nothing is wired or deployed** — everything past here is blocked on Phase 0 provisioning. A native SwiftUI iOS port also lives in-repo under `ios/` (golden-parity physics, bundled fonts; commerce layer not started).
 
 ---
 
@@ -27,11 +27,13 @@ main.ts  ──boots──►  Game (orchestrator)
                        │               classifies each frame; owns win/lose thresholds
                        ├──asks──────►  Renderer (paint)
                        │               contain-fit, DPR, starfield, particles, all draw
-                       └──polls─────►  ui/ controls (PositionControl/MassControl/ArrowControl)
-                                       passive BodySpec mutators, active in Setup only
+                       ├──polls─────►  ui/ controls (PositionControl/MassControl/ArrowControl)
+                       │               passive BodySpec mutators, active in Setup only
+                       └──consults──►  net/ Meter (web metering, fail-open)
+                                       inert unless VITE_API_BASE_URL is set at build time
 ```
 
-The single most load-bearing idea is the **fixed design space**: the game always thinks in a 1280×800 coordinate system. The Renderer maps that into whatever viewport the browser gives it with a uniform contain-fit (letterboxed, DPR-sharp). Every control, hit-test, and clamp works in 1280×800 logical units regardless of window size or device pixel ratio. Pointer events come in as CSS pixels and are inverted back into design space by `Renderer.screenToLogical`.
+The single most load-bearing idea is the **design space**: the game always thinks in a fixed logical coordinate system — **1280×800 in landscape, 800×1280 in portrait** (`layoutForViewport` picks whichever matches the viewport's aspect; the portrait court is the exact transpose, stacked P1-top/P2-bottom, so the half-diagonal that the 820 px outcome bound was tuned against is identical). The Renderer maps the chosen design space into the live viewport with a uniform contain-fit (letterboxed, DPR-sharp) and re-picks it on every resize/rotation, remapping in-flight setups to the same normalized spot. Every control, hit-test, and clamp works in design-space units regardless of window size or device pixel ratio. Pointer events come in as CSS pixels and are inverted back into design space by `Renderer.screenToLogical`.
 
 ---
 
@@ -72,10 +74,10 @@ Dependency graph: `Vec2` (leaf) ← `Body`; `gravity`←`Body`; `integrator`←`
 
 | File | Role |
 |---|---|
-| `states.ts` | `GameStateKind` (6 states), `BodySpec`, `CourtLayout`, `DEFAULT_LAYOUT`, `defaultSpec()`, `LIMITS`. |
-| `outcomes.ts` | `Outcome` union, `DEFAULT_OUTCOME_CONFIG`, `outcomeConfigForLayout(_layout)` (layout-ignored, returns a copy), and the stateful `OutcomeClassifier`. |
-| `stats.ts` | Per-session cookie scoreboard (`ibw-stats-v1`), `GameRecord`, `recordGame`, `loadStats`, `summarize`, and (unwired) `resetStats`/`saveStats`. |
-| `Game.ts` | The orchestrator: state machine, rAF loop, all input, camera-follow, supernova/particle effects, scoreboard recording. |
+| `states.ts` | `GameStateKind` (7 states incl. `paywall`), `BodySpec`, `CourtLayout`, `DEFAULT_LAYOUT` (landscape 1280×800), `PORTRAIT_LAYOUT` (800×1280 transpose), `layoutForViewport()`, `defaultSpec()`, `LIMITS`. |
+| `outcomes.ts` | `Outcome` union, `DEFAULT_OUTCOME_CONFIG`, `outcomeConfigForLayout(_layout)` (returns a copy; layout-independent by design — the portrait transpose preserves the outcome envelope, the param is kept for API stability), and the stateful `OutcomeClassifier`. |
+| `stats.ts` | Per-session cookie scoreboard (`ibw-stats-v1`), `GameRecord`, `recordGame` (which calls `saveStats` internally), `loadStats`, `summarize`, and the still-unwired `resetStats`. |
+| `Game.ts` | The orchestrator: state machine, rAF loop, all input, camera-follow, supernova/particle effects, scoreboard recording, and the metering gate (`meter.shouldGate()` → `paywall`). |
 
 ### `src/render/` — everything that paints (design-space draw helpers + the Renderer)
 
@@ -97,31 +99,48 @@ Dependency graph: `Vec2` (leaf) ← `Body`; `gravity`←`Body`; `integrator`←`
 |---|---|
 | `input.ts` | Pure geometry helpers `inRect(p, r)` and `distSq(a, b)`. No event listeners, no coordinate mapping (a comment says `screenToLogical` lives on the Renderer because it owns the fit). |
 | `PositionControl.ts` | Drag/teleport the star inside the in-bounds box (`clampToInBounds`, pad 24); owns `isOverBody`. |
-| `MassControl.ts` | `applyWheel(spec, deltaY)` (step 0.18, inverted) and `setMass` (test-only). |
+| `MassControl.ts` | `applyWheel(spec, deltaY)` (step 0.18, inverted — scroll-up increases). |
 | `ArrowControl.ts` | Drag-from-star velocity, 1 px = 1 px/s, capped at 300; `static magnitude`. |
+
+### `src/net/` — web metering client (dark by default)
+
+| File | Role |
+|---|---|
+| `config.ts` | Build-time env (`VITE_API_BASE_URL`, `VITE_TURNSTILE_SITE_KEY`, `VITE_FREE_LIMIT` hint, default 200); `METERING_ENABLED` is false — and the game makes **zero** network calls — unless the API base URL is set. |
+| `meter.ts` | `Meter`: refresh-first boot (Turnstile + session mint only on a 401), `shouldGate()`, optimistic `consumePlay()`, `startCheckout()` (Stripe redirect). Fail-open everywhere: any error leaves the game fully playable; only a positive server "locked" shows the paywall. |
+| `turnstile.ts` | Cloudflare Turnstile loader; resolves a token or `null` (null = stay inert). |
 
 ### `src/` — entry & shared
 
 | File | Role |
 |---|---|
-| `main.ts` | Entry point (24 lines): iframe frame-buster, `#stage` canvas lookup, boots `Game`. |
+| `main.ts` | Entry point (51 lines): iframe frame-buster, `#stage` canvas lookup, the DOM dedication footer ("For Natalia / From JP / © Carousella Gaming 2026", title screen only), boots `Game`. |
 | `theme.ts` | `palette`, `fonts`, `rgba()`, `blendHex()`. The single source of color. |
 | `utils/clamp.ts` | `clamp(value, min, max)`. |
-| `style.css` | Global styles, `@font-face`, `#stage` sizing, portrait "rotate your phone" prompt, `touch-action: none`. |
+| `style.css` | Global styles, `@font-face`, `#stage` sizing (`100dvh` for iOS Safari's collapsing toolbar), the dedication/noscript/iframe-refusal styles, `touch-action: none`. Portrait is **playable** (stacked courts) — the old "rotate your phone" prompt is gone. (`prefers-reduced-motion` is honored in `Renderer.ts` via a live `matchMedia` listener, not CSS.) |
 
 ### Project root
 
 | File | Role |
 |---|---|
-| `index.html` | Single page: `<canvas id="stage" width="1280" height="800">` + module script + CSP meta. |
-| `package.json` | `name`, `version 0.3.0`, scripts, three devDependencies, zero runtime deps. |
-| `vite.config.ts` | Vite + Vitest config + the dev-only CSP-stripping plugin. |
+| `index.html` | Single page: `<canvas id="stage">` + module script + CSP meta + PWA manifest/touch-icon/OG tags. |
+| `package.json` | `name`, `version 0.5.0`, scripts (incl. `export:fixtures`), three devDependencies, zero runtime deps. |
+| `vite.config.ts` | Vite + Vitest config + the dev-only CSP-stripping plugin + the build-time `meteringCsp` plugin (widens the CSP when `VITE_API_BASE_URL` is set; throws if its anchor substrings stop matching). |
 | `tsconfig.json` | Type-check-only config (`noEmit`). |
 | `.github/workflows/deploy.yml` | test → build → deploy to GitHub Pages (push to `main`). |
 | `.github/workflows/ci.yml` | PR gate: web suite (audit/test/build) + `api-worker` suite (audit/typecheck/test). |
-| `public/favicon.svg`, `public/fonts/` | Favicon (two-star SVG) and self-hosted Cardo + Inter woff2 (~82 KB). |
-| `tests/` | Six Vitest files, 25 tests. |
-| `docs/` | `IOS_NATIVE_APP_PLAN.md` and this file. |
+| `.github/workflows/ios-physics.yml` | Swift physics-parity gate: asserts the two golden-fixture trees are byte-identical, then runs the WobblePhysics XCTest suite in a Linux Swift container. |
+| `scripts/` | `export-golden-fixtures.mjs` (writes identical fixtures to `tests/fixtures/` + the iOS copy; Node-22-guarded) and `make-touch-icons.mjs` (zero-dep PNG icon rasterizer). |
+| `public/` | Favicon, self-hosted Cardo + Inter woff2, PWA manifest + 192/512/apple-touch icons, `privacy.html` + `support.html` (App Store URLs), `.well-known/security.txt`. |
+| `tests/` | Nine Vitest files, 43 tests (physics, outcomes, fit, layout, starfield, meter) + `tests/fixtures/` golden trajectories. |
+| `docs/` | This file, `ROADMAP.md`, `MONETIZATION_PLAN.md`, `IOS_NATIVE_APP_PLAN.md` (executed — see its banner), `docs/ios/` (harvested product docs), `docs/plans/`. |
+
+### Sibling packages (own toolchains, gated by `ci.yml`)
+
+| Dir | What it is |
+|---|---|
+| `api-worker/` | The Cloudflare Worker metering/payments backend — built and unit-tested (32 tests), **not deployed**. Own `package.json` (vitest 4, wrangler 4), `wrangler.toml`, D1 `schema.sql`. Read `api-worker/README.md` first — especially the **cookie & origin constraint** (SameSite=Strict means the game and API must share a registrable domain; `github.io` + `workers.dev` silently no-ops). |
+| `ios/` | The native SwiftUI port: `ios/App/` (app + bundled Cardo/Inter fonts with OFL provenance) + `ios/WobblePhysics/` (pure-Swift physics, golden-parity + constants-guard tests; `swift test` needs XCTest — full Xcode locally, or the CI container). Build: `brew install xcodegen && cd ios && xcodegen generate`. |
 
 ---
 
@@ -174,9 +193,9 @@ The constructor primes `accel` (one `applyGravity` call) so the first step has a
 
 ## 5. Responsive / full-bleed rendering
 
-The game renders in a fixed **1280×800 design space**; the Renderer fits it into the live viewport.
+The game renders in one of two fixed design spaces — **landscape 1280×800** or **portrait 800×1280** — chosen per viewport by `layoutForViewport(cssW, cssH)` (`cssW >= cssH` → landscape; square gets landscape, the original tuning). The Renderer fits the chosen space into the live viewport and re-picks it on every resize/rotation; in-flight setup positions remap to the same normalized spot in the new space. Canvas buttons inflate their hit rects to a 44 CSS-px minimum at small contain-fit scales (Apple HIG).
 
-- `computeFit(cssW, cssH, 1280, 800)`: `scale = min(cssW/1280, cssH/800)` (smaller ratio wins, so the whole court is visible); `offsetX = (cssW − 1280·scale)/2`, `offsetY = (cssH − 800·scale)/2` (symmetric letterbox). No DPR, no clamp.
+- `computeFit(cssW, cssH, designW, designH)`: `scale = min(cssW/designW, cssH/designH)` (smaller ratio wins, so the whole court is visible); offsets center the letterbox symmetrically. No DPR, no clamp.
 - `resize(cssW, cssH)` (called on window resize and at construction): re-reads `dpr = max(1, devicePixelRatio || 1)`; sets `viewW/viewH`; recomputes the fit; **regenerates the starfield** at `starCountForViewport(cssW, cssH)`; sets `canvas.width/height = round(css·dpr)` and the CSS size in px. Setting `canvas.width/height` resets all ctx state, which is why `render()` re-establishes the transform every frame (no persistent `ctx.scale`).
 - `screenToLogical(event)`: `x = (clientX − rect.left − offsetX)/scale`, `y = (clientY − rect.top − offsetY)/scale`. **DPR is intentionally absent** because `getBoundingClientRect` already returns CSS pixels — do not introduce a phantom DPR factor.
 
@@ -190,24 +209,25 @@ The game renders in a fixed **1280×800 design space**; the Renderer fits it int
 
 **Two particle layers** (`particles.ts`, cap 300): **ambient** renders in screen space at `viewW/viewH` (full-bleed); **burst** renders in design-space world coordinates so it rides the fit with the scene. New effects must pick the correct layer.
 
-**Camera offset** (`computeCameraOffset`): `{x: 640 − barycenterX, y: 400 − barycenterY}` using the mass-weighted barycenter, only during simulate/resolved with a live sim and positive finite total mass; `null` otherwise. It wraps **only** the system content inside `renderSimulate` (predicted orbits, both trails, barycenter, stars/supernova). Court, HUD, phase label, and starfield stay canvas-fixed.
+**Camera offset** (`computeCameraOffset`): `{x: designCenterX − barycenterX, y: designCenterY − barycenterY}` (the design-space center is `layout.canvas/2` — 640,400 in landscape, 400,640 in portrait) using the mass-weighted barycenter, only during simulate/resolved with a live sim and positive finite total mass; `null` otherwise. It wraps **only** the system content inside `renderSimulate` (predicted orbits, both trails, barycenter, stars/supernova). Court, HUD, phase label, and starfield stay canvas-fixed.
 
 ---
 
 ## 6. State machine & outcome rules
 
-### States (`GameStateKind`, 6 total)
+### States (`GameStateKind`, 7 total)
 
-`title → setup_p1 → setup_p2 → countdown → simulate → resolved`. **ESC** (`e.key === 'Escape'`) returns to `title` from any non-title state. A **WIN** keeps `simulate`-style stepping alive inside `resolved` forever; every other outcome freezes.
+`title → setup_p1 → setup_p2 → countdown → simulate → resolved`, plus **`paywall`** (web metering only — inert unless a backend is configured). **ESC** (`e.key === 'Escape'`) returns to `title` from any non-title state. A **WIN** keeps `simulate`-style stepping alive inside `resolved` forever; every other outcome freezes.
 
-- `title` → `begin` button → `setup_p1`.
+- `title` → `begin` button → `setup_p1` — unless `meter.shouldGate()` (out of free plays, unpaid), which routes to `paywall` instead.
+- `paywall` → `support` button → `meter.startCheckout()` (Stripe redirect); a background `meter.refresh()` exits back to `setup_p1` once the device is no longer gated.
 - `setup_p1`/`setup_p2` → `lock_in` button, but only if the active spec's `hypot(vel) ≥ 1` (can't lock in a near-zero velocity).
-- `countdown` — `COUNTDOWN_SECONDS = 3`, counts down by real dt → `toSimulate()`.
+- `countdown` — `COUNTDOWN_SECONDS = 3`, counts down by real dt → `toSimulate()` (which also fires the optimistic `meter.consumePlay()`).
 - `resolved` → `again` button → back to `setup_p1`.
 
-### Layout (`DEFAULT_LAYOUT`)
+### Layouts (`DEFAULT_LAYOUT` / `PORTRAIT_LAYOUT`)
 
-Canvas 1280×800; `p1Region {0,0,640,800}`, `p2Region {640,0,640,800}`; `p1InBounds {120,200,400,400}`, `p2InBounds {760,200,400,400}`; `centerLineX 640`. `defaultSpec`: mass 2.5, vel `{0,0}`, position at the center of the player's in-bounds box.
+Landscape: canvas 1280×800; `p1Region {0,0,640,800}`, `p2Region {640,0,640,800}`; 400×400 in-bounds boxes (`{120,200}` / `{760,200}`); vertical center line at x=640. Portrait: canvas 800×1280 (the exact transpose — same half-diagonal, so the play-tuned 820 px outcome envelope holds); courts stacked `p1Region {0,0,800,640}` / `p2Region {0,640,800,640}`; 360×360 in-bounds boxes (`{220,170}` / `{220,770}`); horizontal center line at y=640. `defaultSpec`: mass 2.5, vel `{0,0}`, position at the center of the player's in-bounds box.
 
 ### Outcome thresholds (`DEFAULT_OUTCOME_CONFIG`)
 
@@ -240,7 +260,7 @@ Recorded exactly once (guarded by `!burstedOnResolve && sim && classifier && kin
 - **Velocity**: drag from the star, 1 px = 1 px/s, magnitude capped at 300, direction preserved.
 - **Cursor** (`updateCursor`): `pointer` over buttons; in setup, `grabbing` while dragging, `grab` over the star, `crosshair` in the active region, `default` elsewhere. Only writes `canvas.style.cursor` on change.
 
-HUD strip (`renderSimulate`) shows seven fields: separation (px), rel. speed (m/s label — see gaps), energy (BOUND/UNBOUND), ecc. (2dp or ∞), period (s or ∞), orbits (int), time (s).
+HUD strip (`renderSimulate`) shows seven fields: separation (px), rel. speed (px/s — honest units since 0.4.0), energy (BOUND/UNBOUND), ecc. (2dp or ∞), period (s or ∞), orbits (int), time (s).
 
 ---
 
@@ -251,13 +271,16 @@ HUD strip (`renderSimulate`) shows seven fields: separation (px), rel. speed (m/
 ```
 npm install          # once
 npm run dev          # Vite dev server, HMR, usually http://localhost:5173
-npm test             # vitest run — 25 tests
+npm test             # vitest run — 43 tests
 npm run test:watch   # vitest in watch mode
 npm run build        # tsc (type-check) THEN vite build → dist/
 npm run preview      # serve the built bundle
+
+cd api-worker        # the Cloudflare Worker (separate package)
+npm install && npm run typecheck && npm test   # 32 tests
 ```
 
-Toolchain: `typescript ~6.0.2` (resolved 6.0.3), `vite ^8.0.12` (8.0.15), `vitest ^4.1.7` (4.1.7); zero runtime dependencies. `vite.config.ts`: `base: './'` (relative, works under any Pages subpath), `build.target 'es2022'`, `build.sourcemap false` (deliberate — source maps were publishing full TS source). `tsconfig.json`: `target 'es2023'`, `noEmit`, `moduleResolution 'bundler'` (note the es2023/es2022 mismatch between tsconfig and vite). A dev-only Vite plugin (`apply: 'serve'`) strips the CSP `<meta>` tag so blob-worker console noise doesn't appear; production `dist/index.html` keeps the tight CSP verbatim. The production CSP is `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'`, paired with a `referrer: no-referrer` meta. See `SECURITY.md` for the full posture and the GitHub Pages header limitation.
+Toolchain: `typescript ~6.0.2`, `vite ^8.0.16`, `vitest ^4.1.8`; zero runtime dependencies (api-worker: vitest 4 + wrangler 4 + workers-types, also dev-only). `vite.config.ts`: `base: './'` (relative, works under any Pages subpath), `build.target 'es2022'`, `build.sourcemap false` (deliberate — source maps were publishing full TS source). `tsconfig.json`: `target 'es2023'`, `noEmit`, `moduleResolution 'bundler'` (note the es2023/es2022 mismatch between tsconfig and vite). A dev-only Vite plugin (`apply: 'serve'`) strips the CSP `<meta>` tag so blob-worker console noise doesn't appear; production `dist/index.html` keeps the tight CSP verbatim. The production CSP is `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'`, paired with a `referrer: no-referrer` meta. See `SECURITY.md` for the full posture and the GitHub Pages header limitation.
 
 ### CI/CD (GitHub Pages auto-deploy)
 
@@ -265,7 +288,7 @@ Toolchain: `typescript ~6.0.2` (resolved 6.0.3), `vite ^8.0.12` (8.0.15), `vites
 
 `dist/` is gitignored and built fresh in CI; the `dist/` currently on disk is a stale local artifact.
 
-**Node action-deprecation note.** The workflow pins `node-version: '22'`, ahead of the Node 20 GitHub Actions runtime deprecation, so the actions run on a current Node. There is **no** "Node20 deprecation" text in the repo — if you go looking for one, it isn't there; the relevant fact is simply that CI is on Node 22 while local dev has been run on Node 20 (`v20.20.1`), and nothing pins the Node version for local dev (no `engines` field). Prefer Node 22 locally to match CI.
+**Node version note.** CI pins `node-version: '22'`; local dev has been run on Node 20 and Node 25 at different times, and nothing pins the local version (no `engines` field). Prefer Node 22 locally to match CI — it matters most for `npm run export:fixtures`, which refuses other majors by design (engine-dependent `Math.pow` churns the golden fixtures' last digits; see the script header).
 
 ### iframe / CSP defense
 
@@ -275,7 +298,7 @@ Toolchain: `typescript ~6.0.2` (resolved 6.0.3), `vite ^8.0.12` (8.0.15), `vites
 
 ## 9. Version & changelog state
 
-`package.json` is at **`0.3.0`**, matching the dated **`0.3.0`** section in `CHANGELOG.md` (responsive-resize + full-bleed-starfield, plus ESC, scoreboard, contextual cursor, and ISSUE-006…010), with `0.2.0` and `0.1.0` below it. The 0.3.0 work shipped to the live site after the 0.2.0 tag, and the manifest was aligned in a follow-up bump (2026-06-04) so the two now agree. Going forward, cut a dated changelog section and bump the manifest in the **same** change so they never diverge again.
+`package.json` is at **`0.5.0`**, matching the dated **`0.5.0`** section in `CHANGELOG.md` (metering integrity + PR CI gate + iOS asset harvest + the 200-free-plays and Carousella Gaming decisions), above `0.4.0` (portrait mode, PWA install, the native iOS app, softened-energy fix) and the earlier sections. The rule that keeps them honest: cut a dated changelog section and bump the manifest in the **same** change so they never diverge.
 
 ---
 
@@ -284,21 +307,26 @@ Toolchain: `typescript ~6.0.2` (resolved 6.0.3), `vite ^8.0.12` (8.0.15), `vites
 Grounded discrepancies and limitations a fresh engineer should not trip over:
 
 - **2-body lock-in.** `gravity.ts` overwrites `accel` with `=` (not `+=`); `integrator.ts` and `orbit.ts` hard-code the pair `(a, b)`. Supporting 3+ bodies requires accumulation, a force-clear pass, looping drift/kick over all bodies, and rethinking the single-relative-orbit diagnostics. This is not a quick change.
-- **Stale "Velocity Verlet" code comments.** `Body.ts`, `Simulation.ts` (constructor + `step()`), `Vec2.ts`, and `tests/physics.momentum.test.ts` reference "Velocity Verlet" / "first Verlet step", but the integrator is genuinely **PEFRL**. The README/CLAUDE/IOS-plan PEFRL claims are correct; only these in-code comments are stale and should be purged.
-- **`~5e-7` drift figure** (README + IOS plan) is a measured anecdote; the actual test only asserts `< 1e-5` over 50,000 steps. Present it as an anecdote, not a guaranteed bound.
-- **`m/s` vs `px/s`.** The internal unit is px/s (1 px/s of arrow draws as 1 px) but the velocity tooltip and HUD label read "m/s" per the original brief. Don't claim the displayed velocity is true physical m/s. `arrow.ts` ends with a no-op `void LIMITS;` keeping the import live; it does not actually use `LIMITS`.
+- **`~5e-7` drift figure** (README + IOS plan) is a measured anecdote; the actual test only asserts `< 1e-5` over 50,000 steps. Present it as an anecdote, not a guaranteed bound. (The remaining "Verlet" mentions in `tests/physics.energy.test.ts` are deliberate comparative references — the stale "Velocity Verlet" mislabels were purged in 0.4.0.)
 - **Missing `docs/research/`.** `src/theme.ts` line 5 cites `docs/research/her-aesthetic.md`, which does not exist in the repo. Either restore the report or fix the citation before claiming docs match the tree exactly.
 - **Two copies of the 0.6 s warmup** (`PHYSICS.WARMUP_SECONDS` and `DEFAULT_OUTCOME_CONFIG.warmupSeconds`) and two Mulberry32 PRNG copies (`particles.ts` seed `0xfeed`, `starfield.ts` seed `0xb1bb1e`). A refactor could share each, but must preserve the distinct seeds.
-- **`outcomeConfigForLayout(_layout)` ignores its argument** — the 820 px off-canvas bound is a fixed magic number tuned for the default 1280×800 layout and roughly equal masses (e ≤ 0.93, apoapsis ~720 px). Non-default layouts or very unequal masses aren't accounted for. The layout parameter is the seam to re-activate if bounds should ever scale with the court again.
-- **Unwired scoreboard reset.** `stats.resetStats()`/`saveStats()` are exported but never called outside `stats.ts`; there is no clear-stats UI. `MassControl.setMass` is test-only. The session cookie has no schema versioning beyond its name — a format change needs a new cookie name or migration (`loadStats` silently drops anything that doesn't parse to `{games:[]}`).
+- **Outcome thresholds are layout-independent on purpose.** `outcomeConfigForLayout(_layout)` returns a fixed copy: the portrait design space is an exact transpose (same half-diagonal), so the 820 px bound holds in both orientations. The bound is still a magic number tuned for roughly equal masses; the layout parameter is the seam to re-activate if a future layout ever changes the court diagonal.
+- **Unwired scoreboard reset.** `stats.resetStats()` is exported but never called; there is no clear-stats UI. The session cookie has no schema versioning beyond its name — a format change needs a new cookie name or migration (`loadStats` silently drops anything that doesn't parse to `{games:[]}`).
+- **Golden-fixture regeneration debt.** The committed fixtures predate the 0.4.0 softened-energy fix and the exporter still samples Keplerian diagnostics while `Simulation.initialEnergy` is softened — `final.energyDriftRel` mixes conventions. Regeneration is a deliberate act (Node 22 only, update the Swift expectations in the same change); the full constraints live in the `export-golden-fixtures.mjs` header. CI guards the two fixture trees against drifting apart, not against this.
 - **No lint/format tooling** (no ESLint/Prettier); style is enforced only by `tsconfig` flags + convention. `strict: true` is **not** set in `tsconfig`.
-- **Hard-coded hexes in `main.ts`** (`#FFC89B`, `#1A0F14`, `#E8956F`) in the iframe-refusal fallback HTML — technically violates the "all colors from theme.ts" rule, but only reachable in the cross-origin-iframe path.
-- **No tests for canvas/controls/render.** The suite covers physics + outcomes + fit + starfield only. Input handling, ESC, cursor logic, resize wiring, `screenToLogical`, and DPR are browser-only verified.
+- **Hard-coded hexes in `style.css`** (the iframe-refusal, noscript, and dedication styles duplicate palette values like `#FFC89B`/`#1A0F14`) — CSS can't read `theme.ts`, so these are inherent duplicates; keep them in sync with the palette by hand. (`main.ts` itself no longer hard-codes colors — the refusal notice is DOM-built and styled from CSS.)
+- **No tests for canvas/controls/render.** The suite covers physics + outcomes + fit + layout + starfield + the meter client. Input handling, ESC, cursor logic, resize wiring, `screenToLogical`, and DPR are browser-only verified.
+- **Metering deploy constraints live elsewhere but bite hard:** the device cookie is `SameSite=Strict` (game + API must share a registrable domain — see `api-worker/README.md`), and the client is fail-open, so a mis-wired deploy looks like "metering does nothing" rather than an error.
 
 ---
 
 ## 11. Future direction
 
-The committed future direction is a **native Swift iOS rewrite**, specced in [`docs/IOS_NATIVE_APP_PLAN.md`](./IOS_NATIVE_APP_PLAN.md). Decisions locked 2026-06-03: native Swift (not Capacitor), portrait-playable, SwiftUI `Canvas` + `TimelineView(.animation)`, pure-Swift physics with no engine (SpriteKit as fallback). Its Section 3 is a faithful port spec of every constant and formula in this document and is the source of truth for the port; its open decisions and App Store checklist live in Sections 10–11.
+The **native Swift iOS rewrite is done** — `ios/` holds the SwiftUI `Canvas` + `TimelineView(.animation)` port with golden-parity physics (`docs/IOS_NATIVE_APP_PLAN.md` survives with a status banner as the spec it was built from; the standalone `infinite-binary-wobble-ios` repo is archived, its unique assets harvested into `ios/App/Resources/` and `docs/ios/`).
 
-Two things in that plan are stale relative to the current web code and should be reconciled when the port starts: it says the suite is "13 cases today" (true only for the physics+outcome subset — the full suite is **25**, adding `fit.test.ts` and `starfield.test.ts`), and it predates the camera-follow / full-bleed model, which the port should mirror. The plan's Section 11 web-mobile note ("landscape works full-bleed; portrait shows a rotate-to-landscape prompt") matches the live `style.css` portrait media query.
+What's actually next, in order (see `ROADMAP.md` for the sequenced version):
+
+1. **Phase 0 provisioning** — the only blocker for everything monetization: Cloudflare account + custom domain, Stripe, Turnstile, Apple keys. Human-only.
+2. **Phases A–C** — front the site, deploy `api-worker/`, wire web metering end-to-end (200 free plays → Stripe pay-what-you-want).
+3. **iOS commerce** (Phases E/F) — StoreKit 2 + App Attest in the app; their server verifications in the Worker (currently fail-closed stubs).
+4. **App Store track** — Apple **organization** enrollment (needs the Carousella Gaming entity + D-U-N-S — see `docs/plans/carousella-copyright.md`), privacy-label update when metering ships, TestFlight, submit. The harvested `docs/ios/ROADMAP-IOS.md` carries the product direction beyond V1 (saved/sent wobbles).

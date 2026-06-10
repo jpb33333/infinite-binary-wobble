@@ -97,8 +97,9 @@ entitlement; consume Server Notifications V2 (revoke on refund).
 
 **Web:** Turnstile → signed HttpOnly token → server counter → hosted Stripe
 Checkout → webhook-verified unlock. **Honest limitation:** clearing cookies /
-editing JS re-earns free plays; Turnstile + rate limits raise the cost but can't
-prevent it. iOS is the enforceable paywall; web is a goodwill nudge.
+editing JS re-earns free plays; Turnstile (plus a Cloudflare rate-limiting rule
+added at provisioning — the Worker itself does not rate-limit) raises the cost
+but can't prevent it. iOS is the enforceable paywall; web is a goodwill nudge.
 
 **Security:** secrets in Workers Secrets; raw-body signature verification on both
 webhooks; rate-limiting (per-IP + per-attest-key) + WAF + Bot Fight Mode; CORS
