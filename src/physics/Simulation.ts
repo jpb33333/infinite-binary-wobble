@@ -89,16 +89,16 @@ export class Simulation {
     this.a = a;
     this.b = b;
     this.time = 0;
-    // Prime acceleration so the first Verlet step has a meaningful a(0).
+    // Prime acceleration so the integrator's first kick has a meaningful a(0).
     applyGravity(a, b, PHYSICS.G, PHYSICS.SOFTENING);
     const dx = b.pos.x - a.pos.x;
     const dy = b.pos.y - a.pos.y;
     this.initialSeparation = Math.sqrt(dx * dx + dy * dy);
-    this.initialEnergy = computeOrbit(a, b, PHYSICS.G).totalEnergy;
+    this.initialEnergy = computeOrbit(a, b, PHYSICS.G, PHYSICS.SOFTENING).totalEnergy;
   }
 
   // Single fixed-dt sub-step using the 4th-order PEFRL symplectic integrator.
-  // Cost is 4 force evaluations per call (vs 1 for Velocity Verlet) in
+  // Cost is 4 force evaluations per call (vs 1 for a 2nd-order scheme) in
   // exchange for ~10x lower energy oscillation at the same dt — worth it
   // for a system that may sim indefinitely after a WIN.
   step(dt: number = PHYSICS.DT): void {
@@ -116,7 +116,7 @@ export class Simulation {
   }
 
   orbit(): OrbitState {
-    return computeOrbit(this.a, this.b, PHYSICS.G);
+    return computeOrbit(this.a, this.b, PHYSICS.G, PHYSICS.SOFTENING);
   }
 
   // Convenience constructor from raw numbers — used by both gameplay setup

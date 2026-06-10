@@ -3,7 +3,7 @@ import { Simulation } from '../src/physics/Simulation.ts';
 import { vec2 } from '../src/physics/Vec2.ts';
 
 // Newton's third law ⇒ forces between the two bodies are equal and opposite.
-// In the Verlet integrator, both halves of every kick apply equal-and-opposite
+// In the PEFRL integrator, every kick apply equal-and-opposite
 // momentum changes (m·a·dt is symmetric in our pair-gravity formula), so
 // total linear momentum is conserved to floating-point precision.
 

@@ -1,5 +1,5 @@
 // Plain 2D vector. We use a mutable record shape `{ x, y }` and standalone
-// functions rather than a class — the Verlet step touches body.pos.x / .y
+// functions rather than a class — the PEFRL step touches body.pos.x / .y
 // directly for performance, and a class wrapper would either force a heap
 // allocation per step (with `new Vec2(...)`) or add a `this` indirection
 // for no benefit. KISS.
