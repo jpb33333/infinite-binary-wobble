@@ -357,7 +357,9 @@ export class Renderer {
     if (input.explainerOpen) {
       const closeHovered = this.hoveredButton(input.hover) === 'dismiss_explainer';
       const close = drawExplainerCard(ctx, w, h, closeHovered);
-      const hit = 22;
+      // Hit rect tracks the (legibility-floored) disc radius + finger padding,
+      // mirroring the WIN ✕ — a fixed 22 left the bigger disc poking outside it.
+      const hit = close.closeR + 9;
       this.register('dismiss_explainer', {
         label: '',
         x: close.closeX - hit,

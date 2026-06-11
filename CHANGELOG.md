@@ -20,8 +20,9 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   below the readable floor. Type that would render too small is now pulled up
   toward an on-screen legibility floor, preserving the size hierarchy; display
   text and near-full-size desktop / iPad are untouched. The setup help
-  reflowed to fit, and the win card's ✕ — previously a roughly 6-point speck
-  almost nobody noticed — is now visibly tappable.
+  reflowed to fit; the win card grows to keep its footer inside the panel on
+  the narrowest phones; and the card's ✕ — previously a roughly 6-point speck
+  almost nobody noticed — is now visibly tappable with a matching touch target.
 - **Grazing collisions can no longer slip between frames.** The simulation now
   remembers the closest the two stars have ever come (at full 1/240 s physics
   resolution), and the outcome classifier reads that instead of the

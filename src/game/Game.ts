@@ -10,7 +10,7 @@ import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
-import { palette } from '../theme.ts';
+import { palette, lineHeightFor } from '../theme.ts';
 import { Meter } from '../net/meter.ts';
 
 const COUNTDOWN_SECONDS = 3;
@@ -305,7 +305,10 @@ export class Game {
   private clampCardOffset(raw: { x: number; y: number }): { x: number; y: number } {
     const { width: w, height: h } = this.renderer.layout.canvas;
     const cardW = 600;
-    const cardH = 232 + 28; // WIN card + stats line (always present on a win)
+    // Mirrors drawOutcomeCard's WIN geometry EXACTLY (600 wide, stats line
+    // always present on a win, + the legibility-floor footer growth). If the
+    // formula there changes, change it here — the clamp depends on the height.
+    const cardH = 232 + 28 + Math.max(0, lineHeightFor(12) * 3 - 48);
     const homeX = (w - cardW) / 2;
     const homeY = h - cardH - 72;
     const margin = 8;
