@@ -126,7 +126,8 @@ function initialBodies(sim) {
 }
 
 // The summed-radii collision threshold the game uses (src/game/outcomes.ts:
-// `orbit.separation < bodyRadius(a) + bodyRadius(b)`).
+// `sim.minSeparation < bodyRadius(a) + bodyRadius(b)`, where minSeparation is
+// the substep-resolution minimum — matching this script's per-step latch).
 function collisionThreshold(sim) {
   return bodyRadius(sim.a.mass) + bodyRadius(sim.b.mass);
 }

@@ -55,6 +55,11 @@ public final class OutcomeClassifier {
 
   public var orbits: Int { completedOrbits }
 
+  /// Prepare this classifier for a FRESH Simulation. The pairing contract is
+  /// one classifier per simulation run: collision keys off sim.minSeparation,
+  /// which is monotone since the SIM's construction — reusing a sim that has
+  /// already grazed would re-resolve loseCollision instantly after reset.
+  /// (GameModel constructs both together in toSimulate; keep it that way.)
   public func reset() {
     prevAngle = nil
     unwrappedAngle = 0
@@ -81,9 +86,13 @@ public final class OutcomeClassifier {
 
     let orbit = sim.orbit()
 
-    // Collision is always checked first and instantly resolves.
+    // Collision is always checked first and instantly resolves. Keys off the
+    // SUBSTEP-resolution minimum separation (maintained by Simulation.step),
+    // not the instantaneous separation: this classifier samples once per
+    // rendered frame, and a fast grazing pass can overlap and pull apart
+    // again entirely between two samples. Mirrors src/game/outcomes.ts.
     let rSum = bodyRadius(sim.a.mass) + bodyRadius(sim.b.mass)
-    if orbit.separation < rSum {
+    if sim.minSeparation < rSum {
       resolved = .loseCollision
       return resolved
     }

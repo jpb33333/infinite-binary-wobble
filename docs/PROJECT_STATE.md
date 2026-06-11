@@ -132,7 +132,7 @@ Dependency graph: `Vec2` (leaf) ← `Body`; `gravity`←`Body`; `integrator`←`
 | `.github/workflows/ios-physics.yml` | Swift physics-parity gate: asserts the two golden-fixture trees are byte-identical, then runs the WobblePhysics XCTest suite in a Linux Swift container. |
 | `scripts/` | `export-golden-fixtures.mjs` (writes identical fixtures to `tests/fixtures/` + the iOS copy; Node-22-guarded) and `make-touch-icons.mjs` (zero-dep PNG icon rasterizer). |
 | `public/` | Favicon, self-hosted Cardo + Inter woff2, PWA manifest + 192/512/apple-touch icons, `privacy.html` + `support.html` (App Store URLs), `.well-known/security.txt`. |
-| `tests/` | Nine Vitest files, 43 tests (physics, outcomes, fit, layout, starfield, meter) + `tests/fixtures/` golden trajectories. |
+| `tests/` | Nine Vitest files, 44 tests (physics, outcomes, fit, layout, starfield, meter) + `tests/fixtures/` golden trajectories. |
 | `docs/` | This file, `ROADMAP.md`, `MONETIZATION_PLAN.md`, `IOS_NATIVE_APP_PLAN.md` (executed — see its banner), `docs/ios/` (harvested product docs), `docs/plans/`. |
 
 ### Sibling packages (own toolchains, gated by `ci.yml`)
@@ -237,7 +237,7 @@ Landscape: canvas 1280×800; `p1Region {0,0,640,800}`, `p2Region {640,0,640,800}
 
 1. **Always** track the unwrapped relative angle (`atan2` of `b.pos − a.pos`, delta clamped to `[−π, π]`); `completedOrbits = floor(|unwrappedAngle|/2π)`. Keeps counting even after resolution, so a WIN's ORBITS readout climbs forever.
 2. If already resolved, return the frozen outcome.
-3. **Collision first, unconditional** (ignores warmup): `separation < bodyRadius(a) + bodyRadius(b)` → `lose_collision`.
+3. **Collision first, unconditional** (ignores warmup): `sim.minSeparation < bodyRadius(a) + bodyRadius(b)` → `lose_collision`. `minSeparation` is the substep-resolution minimum maintained by `Simulation.step` — the instantaneous separation would let a fast graze overlap and pull apart entirely between two frame samples.
 4. If `sim.time < warmupSeconds`, return `playing`.
 5. Compute the mass-weighted barycenter; `maxBodyDist = max(distA, distB)`. If `> 820`, accumulate `offCanvasTime`; once `≥ 0.6 s`, resolve: `bound ? lose_slingshot : lose_escape`.
 6. Else reset `offCanvasTime`, and WIN iff `bound && eccentricity ≤ 0.93 && completedOrbits ≥ 2`.
@@ -271,7 +271,7 @@ HUD strip (`renderSimulate`) shows seven fields: separation (px), rel. speed (px
 ```
 npm install          # once
 npm run dev          # Vite dev server, HMR, usually http://localhost:5173
-npm test             # vitest run — 43 tests
+npm test             # vitest run — 44 tests
 npm run test:watch   # vitest in watch mode
 npm run build        # tsc (type-check) THEN vite build → dist/
 npm run preview      # serve the built bundle

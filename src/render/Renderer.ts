@@ -94,7 +94,16 @@ export class Renderer {
   // systems from colliding.
   private ambientLayer: Particles;
   private burstLayer: Particles;
-  readonly buttons: Map<string, CanvasButton> = new Map();
+  // Double-buffered button registry. hoveredButton (hover styling, cursor,
+  // click routing) reads the FRONT map — the last fully drawn frame — while
+  // the draw pass registers this frame's rects into the BACK map, swapped in
+  // at the end of render(). Hover-styling queries run mid-draw, BEFORE the
+  // button being drawn has re-registered; against a single just-cleared map
+  // they could never match, so the hovered state never rendered (2026-06-10
+  // review). One frame of staleness is what cursor + click routing already
+  // had, and button rects only move on state changes.
+  private buttons: Map<string, CanvasButton> = new Map();
+  private nextButtons: Map<string, CanvasButton> = new Map();
 
   // The game draws in a fixed design space (layout.canvas, 1280×800) so the
   // pixel-tuned physics never shift with screen size. `fit` maps that design
@@ -205,6 +214,12 @@ export class Renderer {
     return null;
   }
 
+  // Register a button drawn THIS frame into the back buffer; it becomes
+  // hit-testable when render() publishes the swap at the end of the frame.
+  private register(name: string, btn: CanvasButton): void {
+    this.nextButtons.set(name, btn);
+  }
+
   render(input: RenderInput): void {
     const { ctx } = this;
 
@@ -228,7 +243,7 @@ export class Renderer {
     const m = this.dpr * this.fit.scale;
     ctx.setTransform(m, 0, 0, m, this.dpr * this.fit.offsetX, this.dpr * this.fit.offsetY);
 
-    this.buttons.clear();
+    this.nextButtons.clear();
 
     switch (input.state) {
       case 'title':
@@ -264,6 +279,13 @@ export class Renderer {
     // they keep the original "drifting in front" feel across the whole window.
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     if (!this.reducedMotion) this.ambientLayer.draw(ctx);
+
+    // Publish this frame's button rects (back → front). Callers outside
+    // render() — cursor update, pointer events — see the freshly drawn frame,
+    // exactly as they did before the double buffer.
+    const front = this.buttons;
+    this.buttons = this.nextButtons;
+    this.nextButtons = front;
   }
 
   // ─────────────────────────────────────────────────────────────── states
@@ -287,7 +309,7 @@ export class Renderer {
       };
       const hovered = this.hoveredButton(input.hover) === 'begin';
       drawButton(ctx, beginBtn, { primary: palette.cream, hovered });
-      this.buttons.set('begin', beginBtn);
+      this.register('begin', beginBtn);
 
       // Free-plays meter — only when metering is on and the player hasn't paid.
       if (input.meter.enabled && !input.meter.unlocked && input.meter.remaining !== null) {
@@ -305,7 +327,7 @@ export class Renderer {
       // up with the text.
       const linkHovered = this.hoveredButton(input.hover) === 'explainer';
       const linkBtn = drawTitleExplainerLink(ctx, w, h, linkHovered);
-      this.buttons.set('explainer', linkBtn);
+      this.register('explainer', linkBtn);
     }
 
     // Modal explainer card, painted last so it sits above the title. Registers
@@ -314,7 +336,7 @@ export class Renderer {
       const closeHovered = this.hoveredButton(input.hover) === 'dismiss_explainer';
       const close = drawExplainerCard(ctx, w, h, closeHovered);
       const hit = 22;
-      this.buttons.set('dismiss_explainer', {
+      this.register('dismiss_explainer', {
         label: '',
         x: close.closeX - hit,
         y: close.closeY - hit,
@@ -337,7 +359,7 @@ export class Renderer {
     };
     const hovered = this.hoveredButton(input.hover) === 'support';
     drawButton(ctx, btn, { primary: palette.cream, hovered });
-    this.buttons.set('support', btn);
+    this.register('support', btn);
   }
 
   private renderSetup(input: RenderInput): void {
@@ -431,7 +453,7 @@ export class Renderer {
       primary: okToLock ? activeStyle.primary : palette.terracotta,
       hovered: okToLock && hoveredName === 'lock_in',
     });
-    this.buttons.set('lock_in', btn);
+    this.register('lock_in', btn);
 
     // Touch-friendly mass control. Pill buttons on either side of the LOCK
     // IN button — large enough to tap with a finger, in the active player's
@@ -462,8 +484,8 @@ export class Renderer {
       primary: activeStyle.primary,
       hovered: hoveredName === 'mass_plus',
     });
-    this.buttons.set('mass_minus', massMinus);
-    this.buttons.set('mass_plus', massPlus);
+    this.register('mass_minus', massMinus);
+    this.register('mass_plus', massPlus);
 
     if (!okToLock) {
       // Communicate why the button isn't lively — needs a velocity to launch.
@@ -850,7 +872,7 @@ export class Renderer {
       primary: palette.terracotta,
       hovered: hoveredName === 'to_title',
     });
-    this.buttons.set('to_title', exitBtn);
+    this.register('to_title', exitBtn);
 
     if (
       input.state === 'resolved' &&
@@ -869,7 +891,7 @@ export class Renderer {
         primary: palette.cream,
         hovered: hoveredName === 'again',
       });
-      this.buttons.set('again', againBtn);
+      this.register('again', againBtn);
     }
   }
 
@@ -907,7 +929,7 @@ export class Renderer {
     };
     const hovered = this.hoveredButton(input.hover) === 'again';
     drawButton(this.ctx, btn, { primary: card.titleColor, hovered });
-    this.buttons.set('again', btn);
+    this.register('again', btn);
 
     // WIN cards get a ✕ in their top-right corner: tap to dismiss the card and
     // watch the infinite wobble unobstructed. The visible disc is small, but
@@ -919,7 +941,7 @@ export class Renderer {
       const closeHovered = this.hoveredButton(input.hover) === 'dismiss_win';
       drawCloseButton(this.ctx, ccx, ccy, closeR, card.titleColor, closeHovered);
       const hit = 20;
-      this.buttons.set('dismiss_win', {
+      this.register('dismiss_win', {
         label: '',
         x: ccx - hit,
         y: ccy - hit,

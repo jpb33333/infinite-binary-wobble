@@ -71,6 +71,11 @@ export class OutcomeClassifier {
     return this.completedOrbits;
   }
 
+  // Prepare this classifier for a FRESH Simulation. The pairing contract is
+  // one classifier per simulation run: collision keys off sim.minSeparation,
+  // which is monotone since the SIM's construction — reusing a sim that has
+  // already grazed would re-resolve lose_collision instantly after reset.
+  // (Game.ts constructs both together in toSimulate; keep it that way.)
   reset(): void {
     this.prevAngle = null;
     this.unwrappedAngle = 0;
@@ -101,9 +106,14 @@ export class OutcomeClassifier {
 
     const orbit = sim.orbit();
 
-    // Collision is always checked first and instantly resolves.
+    // Collision is always checked first and instantly resolves. Keys off the
+    // SUBSTEP-resolution minimum separation (maintained by Simulation.step),
+    // not the instantaneous separation: this classifier samples once per
+    // rendered frame, and a fast grazing pass can overlap and pull apart
+    // again entirely between two samples (reliably missed at the 1/30 s
+    // frame floor for light stars before this).
     const rSum = bodyRadius(sim.a.mass) + bodyRadius(sim.b.mass);
-    if (orbit.separation < rSum) {
+    if (sim.minSeparation < rSum) {
       this.resolved = { kind: 'lose_collision' };
       return this.resolved;
     }

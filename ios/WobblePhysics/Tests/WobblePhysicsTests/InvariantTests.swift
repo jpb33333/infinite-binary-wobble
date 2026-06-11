@@ -185,6 +185,38 @@ final class OutcomeTests: XCTestCase {
     XCTAssertEqual(run(sim, OutcomeClassifier(), maxSteps: Int((60 / PHYSICS.DT).rounded())), .loseSlingshot)
   }
 
+  func testGrazingCollisionBetweenFrameSamplesIsCaught() {
+    // Regression (2026-06-10 review; mirrors tests/outcomes.test.ts). Two
+    // mass-1 stars at the 300 px/s per-body cap graze ~3 px inside the
+    // collision radius at substep resolution but never at frame resolution
+    // (1/30 s = 8 substeps). Collision must key off sim.minSeparation.
+    let half = 50.0
+    let vx = (300.0 * 300.0 - half * half).squareRoot()
+    let sim = Simulation.create(
+      m1: 1, pos1: Vec2(cx - 200, cy), vel1: Vec2(+vx, -half),
+      m2: 1, pos2: Vec2(cx + 200, cy), vel2: Vec2(-vx, +half)
+    )
+    let rSum = 28.0 // bodyRadius(1) × 2
+
+    let cls = OutcomeClassifier()
+    var outcome = cls.update(sim, dt: 0)
+    let substepsPerFrame = 8
+    let frameDt = Double(substepsPerFrame) * PHYSICS.DT
+    var minFrameSeparation = Double.infinity
+    let maxFrames = Int((5 / frameDt).rounded())
+    var f = 0
+    while f < maxFrames && outcome == .playing {
+      for _ in 0..<substepsPerFrame { sim.step() }
+      minFrameSeparation = min(minFrameSeparation, sim.orbit().separation)
+      outcome = cls.update(sim, dt: frameDt)
+      f += 1
+    }
+
+    // The premise: the overlap is invisible at frame boundaries.
+    XCTAssertGreaterThanOrEqual(minFrameSeparation, rSum)
+    XCTAssertEqual(outcome, .loseCollision)
+  }
+
   func testWarmupGatesEverythingExceptCollision() {
     let sim = Simulation.create(
       m1: 3, pos1: Vec2(cx - 100, cy), vel1: Vec2(+50, 0),

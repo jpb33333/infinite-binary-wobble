@@ -26,6 +26,43 @@ describe('OutcomeClassifier', () => {
     expect(outcome.kind).toBe('lose_collision');
   });
 
+  test('collision: grazing pass that overlaps only BETWEEN frame samples is still caught', () => {
+    // Regression (2026-06-10 review). The classifier runs once per rendered
+    // frame while physics advances in 1/240 s substeps — at the DT_CAP frame
+    // floor (1/30 s = 8 substeps) a fast graze can dip inside the collision
+    // radius and back out entirely between two classifier samples. Two
+    // mass-1 stars at the 300 px/s per-body cap on a near-grazing approach
+    // overlap by ~3 px at substep resolution yet never at frame resolution;
+    // collision detection must key off the substep minimum, not the
+    // instantaneous separation.
+    const c = center();
+    const half = 50; // per-body vy; vx fills the rest of the 300 px/s cap
+    const vx = Math.sqrt(300 * 300 - half * half);
+    const sim = Simulation.create(
+      1, vec2(c.x - 200, c.y), vec2(+vx, -half),
+      1, vec2(c.x + 200, c.y), vec2(-vx, +half),
+    );
+    const rSum = 28; // bodyRadius(1) × 2
+
+    const cls = new OutcomeClassifier(DEFAULT_OUTCOME_CONFIG);
+    let outcome = cls.update(sim, 0);
+    const SUBSTEPS_PER_FRAME = 8; // one 1/30 s frame of physics per classifier sample
+    const frameDt = SUBSTEPS_PER_FRAME * PHYSICS.DT;
+    let minFrameSeparation = Infinity;
+    const maxFrames = Math.round(5 / frameDt);
+    for (let f = 0; f < maxFrames && outcome.kind === 'playing'; f++) {
+      for (let s = 0; s < SUBSTEPS_PER_FRAME; s++) sim.step();
+      const o = sim.orbit();
+      minFrameSeparation = Math.min(minFrameSeparation, o.separation);
+      outcome = cls.update(sim, frameDt);
+    }
+
+    // The premise of the regression: at frame boundaries the stars never
+    // appear to touch — only the substep trajectory dips inside rSum.
+    expect(minFrameSeparation).toBeGreaterThanOrEqual(rSum);
+    expect(outcome.kind).toBe('lose_collision');
+  });
+
   test('escape: super-escape relative velocity, both bodies fly off → lose_escape', () => {
     const c = center();
     const sim = Simulation.create(
