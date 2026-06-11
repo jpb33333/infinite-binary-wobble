@@ -392,7 +392,7 @@ export function drawTitleExplainerLink(
   hovered: boolean,
 ): CanvasButton {
   ctx.save();
-  ctx.font = `italic 400 ${cpx(15)}px ${fonts.serif}`;
+  ctx.font = `italic 400 ${cpx(18)}px ${fonts.serif}`;
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
 
