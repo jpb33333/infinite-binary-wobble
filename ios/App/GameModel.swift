@@ -20,16 +20,20 @@ enum ButtonID: Hashable {
 private let COUNTDOWN_SECONDS = 3.0
 private let DT_CAP = 1.0 / 30.0  // a stutter never feeds physics more than this
 
-// No @MainActor on purpose: TimelineView(.animation) re-evaluates the Canvas
-// every display frame so SwiftUI invalidation isn't needed for rendering, and
-// Canvas's renderer closure carries no actor annotation — the model is only
-// ever touched from SwiftUI's main-thread rendering and gesture callbacks.
-// @Observable (migrated from ObservableObject 2026-06-10) keeps that
-// behavior — lifetime moves from @StateObject to @State in ContentView — and
-// lets the debug-only QA bridge (ios/DebugBridge + DebugBridgeBootstrap)
-// read state by key on a real device.
-@Observable
-final class GameModel {
+// No @Published and no @MainActor on purpose: TimelineView(.animation)
+// re-evaluates the Canvas every display frame so SwiftUI invalidation isn't
+// needed, and Canvas's renderer closure carries no actor annotation — the
+// model is only ever touched from SwiftUI's main-thread rendering and
+// gesture callbacks. ObservableObject is kept for @StateObject lifetime.
+//
+// Do NOT migrate this to @Observable: tick() mutates state from inside the
+// Canvas render pass every frame, and @Observable's per-property tracking
+// turns that into a main-thread invalidation storm (tried + reverted
+// 2026-06-10 — it starved the run loop hard enough that the QA bridge's
+// in-app HTTP server never serviced a request). The QA accessors
+// (DebugBridgeBootstrap) read properties via plain closures and need no
+// observation machinery.
+final class GameModel: ObservableObject {
 
   private(set) var state: GameState = .title
   private(set) var layout: CourtLayout = LANDSCAPE_LAYOUT
