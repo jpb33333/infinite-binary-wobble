@@ -12,6 +12,11 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   underneath stays watchable without losing the live stats line; the ✕ still
   dismisses it entirely for a fully clear view. AGAIN, the ✕, and the EXIT/
   AGAIN corner controls all keep tap priority over the card.
+- **An occasional comet drifts across the deep background.** A faint warm
+  streak crosses the sky roughly every 24 seconds for a few seconds, then it's
+  empty sky again — a little life in the void, on the title screen and during
+  play alike. It rides the same screen-space atmosphere layer as the starfield
+  and freezes (with the twinkle and stardust) under reduced motion.
 
 ### Fixed
 - **Text is legible on phones** — on the web game and the iOS app alike. Both
@@ -48,7 +53,12 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   first-timer is already looking, and in the thumb zone on phones. Same quiet
   styling, same finger-sized hit rect (kept 22px clear of BEGIN's so a
   mis-tap never lands on both); when metering ships, it mirrors the
-  free-plays line below the button.
+  free-plays line below the button. It also reads bigger now (15→18px) so it
+  doesn't get lost on a desktop window.
+- **The background stars twinkle more.** The shimmer was always there but
+  gentle (each star swayed 20–100% of its brightness); it now breathes more
+  visibly (10–100%) without any star blinking fully out. Still frozen under
+  reduced motion.
 
 ### For contributors
 - **Live-device iOS QA harness** (`ios/DebugBridge/`, `/ios-qa`): a debug-only
