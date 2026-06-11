@@ -55,7 +55,7 @@ export function generateStarfield(
       x: rng(), // normalized [0, 1]
       y: rng(), // normalized [0, 1]
       baseAlpha: 0.15 + rng() * 0.45,
-      twinkleSpeed: 0.3 + rng() * 0.8, // radians/second
+      twinkleSpeed: 0.4 + rng() * 1.0, // radians/second
       twinklePhase: rng() * Math.PI * 2,
       warmth: rng(),
     });
@@ -77,12 +77,18 @@ export function drawStarfield(
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const s of stars) {
-    const twinkle = 0.6 + 0.4 * Math.sin(s.twinklePhase + time * s.twinkleSpeed);
+    // Sway each star between 10% and 100% of its base alpha — wider than the
+    // original 20–100% so the shimmer actually reads as movement, while never
+    // blinking fully out (which would look like a fault, not a star). The
+    // 0.55±0.45 form keeps the trough at +10% — 0.45±0.55 would dip negative
+    // (clamped to 0 = a star winking out, which reads as a glitch).
+    const twinkle =
+      0.55 + 0.45 * Math.sin(s.twinklePhase + time * s.twinkleSpeed);
     const a = s.baseAlpha * twinkle;
     const color = s.warmth < 0.5 ? palette.cream : palette.rose;
     ctx.fillStyle = rgba(color, a);
     ctx.beginPath();
-    ctx.arc(s.x * width, s.y * height, 0.7 + 0.6 * twinkle, 0, Math.PI * 2);
+    ctx.arc(s.x * width, s.y * height, 0.7 + 0.9 * twinkle, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
