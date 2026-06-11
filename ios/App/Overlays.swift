@@ -139,12 +139,13 @@ func drawCloseButton(_ ctx: inout GraphicsContext, center: CGPoint, r: CGFloat, 
   ctx.fill(disc, with: .color(Palette.voidDeep.opacity(0.55)))
   ctx.stroke(disc, with: .color(color.opacity(0.5)), lineWidth: 1)
   let k = r * 0.42
+  // stroke scales with the disc (legibility-floored radii upstream)
   var x = Path()
   x.move(to: CGPoint(x: center.x - k, y: center.y - k))
   x.addLine(to: CGPoint(x: center.x + k, y: center.y + k))
   x.move(to: CGPoint(x: center.x + k, y: center.y - k))
   x.addLine(to: CGPoint(x: center.x - k, y: center.y + k))
-  ctx.stroke(x, with: .color(color.opacity(0.8)), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+  ctx.stroke(x, with: .color(color.opacity(0.8)), style: StrokeStyle(lineWidth: max(1.6, r * 0.14), lineCap: .round))
 }
 
 // ── Outcome card ──
@@ -210,23 +211,23 @@ func drawOutcomeCard(
   let cy = geometry.rect.minY
   ctx.draw(
     ctx.resolve(Text(copy.title).font(Fonts.serif(isWin ? 30 : 44)).foregroundColor(copy.titleColor)),
-    at: CGPoint(x: w / 2, y: cy + (isWin ? 40 : 76)), anchor: .center
+    at: CGPoint(x: geometry.rect.midX, y: cy + (isWin ? 40 : 76)), anchor: .center
   )
   ctx.draw(
     ctx.resolve(Text(copy.body).font(Fonts.serif(isWin ? 16 : 19, italic: true)).foregroundColor(Palette.rose)),
-    at: CGPoint(x: w / 2, y: cy + (isWin ? 72 : 122)), anchor: .center
+    at: CGPoint(x: geometry.rect.midX, y: cy + (isWin ? 72 : 122)), anchor: .center
   )
   if let statsLine {
     ctx.draw(
       ctx.resolve(Text(statsLine).font(Fonts.sans(12, weight: .medium)).foregroundColor(Palette.cream.opacity(0.55))),
-      at: CGPoint(x: w / 2, y: cy + (isWin ? 100 : 152)), anchor: .center
+      at: CGPoint(x: geometry.rect.midX, y: cy + (isWin ? 100 : 152)), anchor: .center
     )
   }
 }
 
 /// The Carse footer — the finite-game / infinite-game distinction IS the
 /// game; it appears with every AGAIN button.
-func drawCarseFooter(_ ctx: inout GraphicsContext, topY: CGFloat, w: CGFloat) {
+func drawCarseFooter(_ ctx: inout GraphicsContext, topY: CGFloat, centerX: CGFloat) {
   let lines = [
     "Remember, this is just a finite game.",
     "The real infinite game is played for its own sake",
@@ -237,7 +238,7 @@ func drawCarseFooter(_ ctx: inout GraphicsContext, topY: CGFloat, w: CGFloat) {
   for line in lines {
     ctx.draw(
       ctx.resolve(Text(line).font(Fonts.serif(12, italic: true)).foregroundColor(Palette.rose.opacity(0.55))),
-      at: CGPoint(x: w / 2, y: y), anchor: .top
+      at: CGPoint(x: centerX, y: y), anchor: .top
     )
     y += lh
   }
@@ -302,8 +303,10 @@ func drawExplainerCard(_ ctx: inout GraphicsContext, w: CGFloat, h: CGFloat) -> 
     y += paraGap
   }
 
-  let closeCenter = CGPoint(x: rect.maxX - 26, y: rect.minY + 26)
-  drawCloseButton(&ctx, center: closeCenter, r: 13, color: Palette.cream)
+  // Legibility-floored disc — the 13px ✕ was a ~6pt speck on phone fits.
+  let closeR = Typography.compensate(13)
+  let closeCenter = CGPoint(x: rect.maxX - closeR - 13, y: rect.minY + closeR + 13)
+  drawCloseButton(&ctx, center: closeCenter, r: closeR, color: Palette.cream)
   return CGRect(x: closeCenter.x - 22, y: closeCenter.y - 22, width: 44, height: 44)
 }
 
