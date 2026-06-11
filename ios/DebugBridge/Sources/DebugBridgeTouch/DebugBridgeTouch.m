@@ -227,22 +227,28 @@ static id DBT_HitTestView(UIWindow *window, CGPoint point) {
 
 #pragma mark - Public API
 
+// DEVIATION from the upstream template (2026-06-10): the template's tap sent
+// Began→Ended back-to-back in ONE run-loop turn. UIKit target-action sees
+// that; SwiftUI gesture recognizers (DragGesture et al.) sample touches
+// across run-loop turns and never see it — taps on a SwiftUI Canvas app were
+// silently ignored (verified live: 200-ok tap, zero state change). The
+// rewrite phase-separates every touch with main-run-loop spins and adds a
+// real drag primitive (Began → interpolated Moved @~60Hz → Ended), which
+// gesture-driven apps need anyway. Blocking the @MainActor request handler
+// while the run loop spins is intentional: frames keep pumping (that's the
+// point), and the device session lock already serializes mutations.
+
 @implementation DebugBridgeTouch
 
-+ (BOOL)sendTapAtPoint:(CGPoint)point inWindow:(UIWindow *)window {
-    if (!window) return NO;
-
-    id hit = DBT_HitTestView(window, point);
-    if (!hit) return NO;
-
-    // Build a single synthetic UITouch via private setters. Order matters —
-    // setWindow: clears internal state and must come first.
+// Build the synthetic touch via private setters. Order matters — setWindow:
+// clears internal state and must come first. setView: is typed UIView * but
+// accepts SwiftUI.UIKitGestureContainer (UIResponder) too — that's how
+// SwiftUI Buttons get routed on iOS 18+.
+static UITouch *DBT_BeginTouch(UIWindow *window, CGPoint point, id hit) {
     UITouch *touch = [[UITouch alloc] init];
     [touch setWindow:window];
     [touch setTapCount:1];
     [touch _setLocationInWindow:point resetPrevious:YES];
-    // setView: typed UIView * but accepts SwiftUI.UIKitGestureContainer
-    // (UIResponder) too — that's how SwiftUI Buttons get routed on iOS 18+.
     [touch setView:(UIView *)hit];
     [touch setPhase:UITouchPhaseBegan];
     if ([touch respondsToSelector:@selector(_setIsFirstTouchForView:)]) {
@@ -253,35 +259,69 @@ static id DBT_HitTestView(UIWindow *window, CGPoint point) {
         [hit isKindOfClass:[UIView class]]) {
         [touch setGestureView:(UIView *)hit];
     }
+    return touch;
+}
 
-    // Attach a real IOHIDEvent (required iOS 9+).
-    IOHIDEventRef hidEventBegan = DBT_IOHIDEventWithTouch(touch);
-    [touch _setHidEvent:hidEventBegan];
-
+// Wrap the touch's CURRENT state in a fresh IOHIDEvent (required iOS 9+) and
+// push it through UIApplication.sendEvent — the same dispatch path real
+// touches take.
+static BOOL DBT_DispatchPhase(UITouch *touch) {
+    IOHIDEventRef hid = DBT_IOHIDEventWithTouch(touch);
+    [touch _setHidEvent:hid];
     UIEvent *event = [[UIApplication sharedApplication] _touchesEvent];
     if (!event) {
-        CFRelease(hidEventBegan);
+        CFRelease(hid);
         return NO;
     }
     [event _clearTouches];
-    [event _setHIDEvent:hidEventBegan];
+    [event _setHIDEvent:hid];
     [event _addTouch:touch forDelayedDelivery:NO];
-
     [[UIApplication sharedApplication] sendEvent:event];
-    CFRelease(hidEventBegan);
+    CFRelease(hid);
+    return YES;
+}
 
-    // Ended phase
+// Let the main run loop breathe between phases so gesture recognizers (and
+// the app's own frame loop) observe the touch like a human one.
+static void DBT_SpinRunLoop(NSTimeInterval seconds) {
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:seconds]];
+}
+
++ (BOOL)sendTapAtPoint:(CGPoint)point inWindow:(UIWindow *)window {
+    // A tap is a stationary drag: Began, ~5 frames of dwell, Ended.
+    return [self sendDragFrom:point to:point durationMs:80 inWindow:window];
+}
+
++ (BOOL)sendDragFrom:(CGPoint)from
+                  to:(CGPoint)to
+          durationMs:(NSInteger)durationMs
+            inWindow:(UIWindow *)window {
+    if (!window) return NO;
+    id hit = DBT_HitTestView(window, from);
+    if (!hit) return NO;
+
+    UITouch *touch = DBT_BeginTouch(window, from, hit);
+    if (!DBT_DispatchPhase(touch)) return NO;
+
+    NSInteger steps = MAX(1, durationMs / 16);  // ~60 Hz move cadence
+    BOOL stationary = CGPointEqualToPoint(from, to);
+    for (NSInteger i = 1; i <= steps; i++) {
+        DBT_SpinRunLoop(0.016);
+        if (stationary) continue;
+        CGFloat t = (CGFloat)i / (CGFloat)steps;
+        CGPoint p = CGPointMake(from.x + (to.x - from.x) * t,
+                                from.y + (to.y - from.y) * t);
+        [touch _setLocationInWindow:p resetPrevious:NO];
+        [touch setPhase:UITouchPhaseMoved];
+        [touch setTimestamp:[[NSProcessInfo processInfo] systemUptime]];
+        if (!DBT_DispatchPhase(touch)) return NO;
+    }
+
+    DBT_SpinRunLoop(0.016);
+    [touch _setLocationInWindow:to resetPrevious:NO];
     [touch setPhase:UITouchPhaseEnded];
     [touch setTimestamp:[[NSProcessInfo processInfo] systemUptime]];
-    IOHIDEventRef hidEventEnded = DBT_IOHIDEventWithTouch(touch);
-    [touch _setHidEvent:hidEventEnded];
-    [event _clearTouches];
-    [event _setHIDEvent:hidEventEnded];
-    [event _addTouch:touch forDelayedDelivery:NO];
-    [[UIApplication sharedApplication] sendEvent:event];
-    CFRelease(hidEventEnded);
-
-    return YES;
+    return DBT_DispatchPhase(touch);
 }
 
 @end
@@ -294,6 +334,13 @@ static id DBT_HitTestView(UIWindow *window, CGPoint point) {
 @implementation DebugBridgeTouch
 + (BOOL)sendTapAtPoint:(CGPoint)point inWindow:(UIWindow *)window {
     (void)point; (void)window;
+    return NO;
+}
++ (BOOL)sendDragFrom:(CGPoint)from
+                  to:(CGPoint)to
+          durationMs:(NSInteger)durationMs
+            inWindow:(UIWindow *)window {
+    (void)from; (void)to; (void)durationMs; (void)window;
     return NO;
 }
 @end

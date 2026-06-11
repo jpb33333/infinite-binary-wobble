@@ -243,9 +243,12 @@ enum MutationBridgeImpl {
         return false
     }
 
-    /// Swipe via UIScrollView programmatic scroll OR via setContentOffset on
-    /// the deepest UIScrollView in the hit-tested ancestor chain. Less
-    /// faithful than synthesized touches but covers common scroll scenarios.
+    /// Swipe = a real synthesized touch drag (Began → ~60Hz Moved → Ended)
+    /// via DebugBridgeTouch.sendDrag. DEVIATION from the upstream template,
+    /// which only nudged UIScrollView.contentOffset — useless for gesture-
+    /// driven apps (this game's velocity control is a SwiftUI DragGesture on
+    /// a Canvas). Optional payload key `duration_ms` (default 250) controls
+    /// drag speed; the call blocks for the drag duration by design.
     private static func handleSwipe(_ payload: JSONDict) -> Bool {
         guard let fx = payload["from_x"] as? NSNumber,
               let fy = payload["from_y"] as? NSNumber,
@@ -253,25 +256,10 @@ enum MutationBridgeImpl {
               let ty = payload["to_y"] as? NSNumber else { return false }
         let from = CGPoint(x: fx.doubleValue, y: fy.doubleValue)
         let to = CGPoint(x: tx.doubleValue, y: ty.doubleValue)
+        let durationMs = (payload["duration_ms"] as? NSNumber)?.intValue ?? 250
 
         guard let scene = activeScene(), let window = activeKeyWindow(in: scene) else { return false }
-        guard let hit = window.hitTest(from, with: nil) else { return false }
-
-        // Find the nearest enclosing UIScrollView.
-        var node: UIView? = hit
-        while let cur = node {
-            if let scroll = cur as? UIScrollView {
-                let dx = from.x - to.x
-                let dy = from.y - to.y
-                var off = scroll.contentOffset
-                off.x = max(0, min(scroll.contentSize.width - scroll.bounds.width, off.x + dx))
-                off.y = max(0, min(scroll.contentSize.height - scroll.bounds.height, off.y + dy))
-                scroll.setContentOffset(off, animated: true)
-                return true
-            }
-            node = cur.superview
-        }
-        return false
+        return DebugBridgeTouch.sendDrag(from: from, to: to, durationMs: durationMs, in: window)
     }
 
     // MARK: helpers
