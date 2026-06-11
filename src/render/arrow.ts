@@ -1,4 +1,4 @@
-import { palette, fonts, rgba } from '../theme.ts';
+import { palette, fonts, rgba, cpx } from '../theme.ts';
 
 // Draws the velocity arrow from a star's center to the tip of its velocity
 // vector. Includes a small head and a tooltip showing the magnitude.
@@ -71,7 +71,7 @@ function drawVelocityTooltip(
 ): void {
   const text = `${speed.toFixed(0)} px/s`;
   ctx.save();
-  ctx.font = `500 12px ${fonts.sans}`;
+  ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
   ctx.textBaseline = 'middle';
   const padX = 8;
   const m = ctx.measureText(text);

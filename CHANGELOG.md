@@ -7,20 +7,21 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- **The win card on iOS is now draggable.** Slide it anywhere on screen (it
-  stays fully on-canvas) so the infinite wobble underneath stays watchable
-  without losing the live stats line; the ✕ still dismisses it entirely for a
-  fully clear view. AGAIN and ✕ travel with the card and keep tap priority
-  over it.
+- **The win card is now draggable** — on the web game and on iOS. Slide it
+  anywhere on screen (it stays fully on-canvas) so the infinite wobble
+  underneath stays watchable without losing the live stats line; the ✕ still
+  dismisses it entirely for a fully clear view. AGAIN, the ✕, and the EXIT/
+  AGAIN corner controls all keep tap priority over the card.
 
 ### Fixed
-- **Text is legible on iOS phones.** The native app renders in a fixed design
-  space that lands at about half-size on a phone, which left help text and HUD
-  labels far below the readable floor. Type that would render too small is now
-  pulled up toward an on-screen legibility floor, preserving the size
-  hierarchy; display text and iPad (where the app renders near full-size) are
-  untouched. The setup help reflowed to fit, and the win card's ✕ — previously
-  a roughly 6-point speck almost nobody noticed — is now visibly tappable.
+- **Text is legible on phones** — on the web game and the iOS app alike. Both
+  render in a fixed design space that lands at about half-size on a phone held
+  in portrait, which left help text, HUD labels, card stats, and tooltips far
+  below the readable floor. Type that would render too small is now pulled up
+  toward an on-screen legibility floor, preserving the size hierarchy; display
+  text and near-full-size desktop / iPad are untouched. The setup help
+  reflowed to fit, and the win card's ✕ — previously a roughly 6-point speck
+  almost nobody noticed — is now visibly tappable.
 - **Grazing collisions can no longer slip between frames.** The simulation now
   remembers the closest the two stars have ever come (at full 1/240 s physics
   resolution), and the outcome classifier reads that instead of the
