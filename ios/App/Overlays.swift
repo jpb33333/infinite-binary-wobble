@@ -83,11 +83,15 @@ struct HudField {
 func drawHud(_ ctx: inout GraphicsContext, w: CGFloat, h: CGFloat, fields: [HudField]) {
   let padX: CGFloat = 36
   let baseY = h - 28
+  // Label sits one compensated value-line above the value: the original
+  // fixed 16px gap was tuned for uncompensated 11/18px text and the
+  // legibility floor made labels overprint values (/ios-qa screenshot).
+  let labelGap = Typography.lineHeight(for: 18)
   var x = padX
   for f in fields {
     ctx.draw(
       ctx.resolve(Text(f.label.uppercased()).font(Fonts.sans(11, weight: .medium)).foregroundColor(Palette.cream.opacity(0.55))),
-      at: CGPoint(x: x, y: baseY - 16), anchor: .bottomLeading
+      at: CGPoint(x: x, y: baseY - labelGap), anchor: .bottomLeading
     )
     let value = ctx.resolve(Text(f.value).font(Fonts.serif(18)).foregroundColor(f.color))
     ctx.draw(value, at: CGPoint(x: x, y: baseY), anchor: .bottomLeading)
@@ -229,12 +233,13 @@ func drawCarseFooter(_ ctx: inout GraphicsContext, topY: CGFloat, w: CGFloat) {
     "and is only won by playing again and again.",
   ]
   var y = topY
+  let lh = Typography.lineHeight(for: 12) // compensated text needs a wider advance
   for line in lines {
     ctx.draw(
       ctx.resolve(Text(line).font(Fonts.serif(12, italic: true)).foregroundColor(Palette.rose.opacity(0.55))),
       at: CGPoint(x: w / 2, y: y), anchor: .top
     )
-    y += 16
+    y += lh
   }
 }
 
