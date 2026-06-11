@@ -49,6 +49,15 @@ let package = Package(
             dependencies: [],
             path: "Sources/DebugBridgeTouch",
             publicHeadersPath: "include",
+            cSettings: [
+                // Gives the Clang preprocessor DEBUG in debug builds only —
+                // the ObjC touch-synth body is `#if defined(DEBUG) &&
+                // TARGET_OS_IOS`, so Release compiles it to a no-op stub and
+                // ships none of the private UIKit/IOKit symbols. SwiftPM
+                // auto-defines DEBUG for Swift targets but NOT for Clang, so
+                // this is required, not redundant (unlike the Swift targets').
+                .define("DEBUG", .when(configuration: .debug)),
+            ],
             linkerSettings: [
                 // IOKit is loaded dynamically via dlopen at runtime (it's a
                 // private framework on iOS and can't be linked statically).

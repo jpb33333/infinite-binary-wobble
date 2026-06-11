@@ -20,7 +20,17 @@
 #import "DebugBridgeTouch.h"
 #import <TargetConditionals.h>
 
-#if TARGET_OS_IOS
+// DEVIATION from the upstream template (2026-06-10, /ship adversarial review):
+// the template gated this file on TARGET_OS_IOS ONLY — so a RELEASE build of
+// the app shipped the live class with every private UIKit selector
+// (_setHidEvent:, _hitTestWithContext:, _touchesEvent…) and IOHIDEvent private
+// symbols. Apple's static review greps those exact names → guaranteed App
+// Store rejection. Now gated on DEBUG too (the Package.swift target carries a
+// matching `.define("DEBUG", .when(configuration: .debug))` cSetting, so the
+// Clang preprocessor actually sees it). Release falls to the no-op stub below;
+// nothing is lost — the synth path is dead at runtime anyway (the app routes
+// taps straight into GameModel; see DebugBridgeBootstrap).
+#if defined(DEBUG) && TARGET_OS_IOS
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -266,18 +276,20 @@ static UITouch *DBT_BeginTouch(UIWindow *window, CGPoint point, id hit) {
 // push it through UIApplication.sendEvent — the same dispatch path real
 // touches take.
 static BOOL DBT_DispatchPhase(UITouch *touch) {
+    // hid is NULL if the IOKit private framework failed to dlopen — guard
+    // every CFRelease against it (CFRelease(NULL) crashes).
     IOHIDEventRef hid = DBT_IOHIDEventWithTouch(touch);
-    [touch _setHidEvent:hid];
+    if (hid) [touch _setHidEvent:hid];
     UIEvent *event = [[UIApplication sharedApplication] _touchesEvent];
     if (!event) {
-        CFRelease(hid);
+        if (hid) CFRelease(hid);
         return NO;
     }
     [event _clearTouches];
-    [event _setHIDEvent:hid];
+    if (hid) [event _setHIDEvent:hid];
     [event _addTouch:touch forDelayedDelivery:NO];
     [[UIApplication sharedApplication] sendEvent:event];
-    CFRelease(hid);
+    if (hid) CFRelease(hid);
     return YES;
 }
 
