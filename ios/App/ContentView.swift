@@ -24,7 +24,12 @@ struct ContentView: View {
       }
       .background(Palette.voidDeep.ignoresSafeArea())
       .gesture(dragGesture)
-      .onAppear { model.viewResized(to: geo.size) }
+      .onAppear {
+        model.viewResized(to: geo.size)
+        #if DEBUG
+        DebugBridgeBootstrap.installOnce(model: model)
+        #endif
+      }
       .onChange(of: geo.size) { _, newSize in model.viewResized(to: newSize) }
       .statusBarHidden(true)
       .persistentSystemOverlays(.hidden)
@@ -53,6 +58,9 @@ struct ContentView: View {
     let layout = model.layout
     let w = layout.canvas.width, h = layout.canvas.height
     let time = model.elapsed
+    // Feed the live contain-fit scale to the type system so small text can
+    // hold the on-screen legibility floor (see Typography in Theme.swift).
+    Typography.fitScale = model.fit.scale
 
     // 1 — screen space: void + atmosphere (full-bleed, letterbox included)
     ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Palette.voidDeep))
@@ -160,29 +168,33 @@ struct ContentView: View {
   private func drawSetupHelp(_ ctx: inout GraphicsContext, active: Player) {
     let layout = model.layout
     let portrait = layout.orientation == .portrait
+    // Three lines, not five: legibility-compensated text (Typography) is
+    // ~1.7× taller, and the old five-line block overflowed the gap between
+    // the phase label and the court's top edge in portrait (caught by
+    // /ios-qa screenshots, 2026-06-10). The exit affordance moves to the
+    // canvas bottom, clear of both courts in every orientation.
     let lines = [
       "DRAG OUTWARD from the star to throw it.",
-      "TAP your court to reposition the star.",
-      "TAP − or + to set mass.",
+      "TAP your court to reposition. − / + sets mass.",
       "Max velocity \(Int(Limits.maxVelocityPerBody)) px/s.",
     ]
     let centered = portrait
     let x: CGFloat = portrait
       ? layout.canvas.width / 2
       : (active == .p1 ? 80 : layout.canvas.width - 80)
-    var y: CGFloat = portrait ? (active == .p1 ? 88 : layout.centerLineAt + 28) : 100
+    var y: CGFloat = portrait ? (active == .p1 ? 94 : layout.centerLineAt + 32) : 100
     let anchor: UnitPoint = centered ? .center : (active == .p1 ? .leading : .trailing)
+    let lh = Typography.lineHeight(for: 12) // compensated text needs a wider advance
     for line in lines {
       ctx.draw(
         ctx.resolve(Text(line).font(Fonts.sans(12)).foregroundColor(Palette.cream.opacity(0.45))),
         at: CGPoint(x: x, y: y), anchor: anchor
       )
-      y += 18
+      y += lh
     }
-    y += 8
     ctx.draw(
       ctx.resolve(Text("Tap EXIT to return to title.").font(Fonts.sans(11).italic()).foregroundColor(Palette.cream.opacity(0.3))),
-      at: CGPoint(x: x, y: y), anchor: anchor
+      at: CGPoint(x: layout.canvas.width / 2, y: layout.canvas.height - 36), anchor: .center
     )
   }
 
@@ -233,8 +245,12 @@ struct ContentView: View {
         HudField(label: "rel. speed", value: "\(Int(o.vRel.rounded())) px/s", color: Palette.rose),
         HudField(label: "energy", value: o.bound ? "BOUND" : "UNBOUND", color: o.bound ? Palette.cream : Palette.wine),
         HudField(label: "ecc.", value: o.eccentricity.isFinite ? String(format: "%.2f", o.eccentricity) : "∞", color: Palette.cream),
-        HudField(label: "period", value: o.period.isFinite ? String(format: "%.1f s", o.period) : "∞", color: Palette.rose),
+        // ORBITS before PERIOD: legibility-compensated columns are wider, so
+        // the portrait HUD truncates after ~5 fields — and orbits is the
+        // counter the win condition is ABOUT. Period + time are the
+        // sacrificial tail.
         HudField(label: "orbits", value: String(classifier.orbits), color: Palette.cream),
+        HudField(label: "period", value: o.period.isFinite ? String(format: "%.1f s", o.period) : "∞", color: Palette.rose),
         HudField(label: "time", value: String(format: "%.1f s", sim.time), color: Palette.rose),
       ])
     }
@@ -257,7 +273,15 @@ struct ContentView: View {
     if outcome == .win && model.winCardDismissed { return }
 
     let statsLine = playStatsLine()
-    let geo = outcomeCardGeometry(outcome, w: w, h: h, hasStats: statsLine != nil)
+    let base = outcomeCardGeometry(outcome, w: w, h: h, hasStats: statsLine != nil)
+    // WIN cards are draggable (GameModel.winCardOffset); everything on the
+    // card — panel, text, AGAIN, ✕, footer — rides the same offset.
+    let off = outcome == .win ? model.winCardOffset : .zero
+    let geo = OutcomeCardGeometry(
+      rect: base.rect.offsetBy(dx: off.x, dy: off.y),
+      buttonY: base.buttonY + off.y,
+      carseY: base.carseY + off.y
+    )
     drawOutcomeCard(&ctx, outcome: outcome, w: w, h: h, statsLine: statsLine, geometry: geo)
 
     // The merger is the whole moment — punch it back through the card.
@@ -265,17 +289,25 @@ struct ContentView: View {
       drawSupernova(&ctx, at: nova.pos, elapsed: model.elapsed - nova.t0, mergedMass: nova.mergedMass, time: time)
     }
 
-    let again = CGRect(x: w / 2 - 90, y: geo.buttonY, width: 180, height: 44)
+    let again = CGRect(x: geo.rect.midX - 90, y: geo.buttonY, width: 180, height: 44)
     drawButton(&ctx, label: "Again", rect: again, primary: outcomeCopy(outcome).titleColor)
     model.buttons[.again] = again
 
     if outcome == .win {
-      let c = CGPoint(x: geo.rect.maxX - 26, y: geo.rect.minY + 26)
-      drawCloseButton(&ctx, center: c, r: 13, color: outcomeCopy(outcome).titleColor)
-      model.buttons[.dismissWin] = CGRect(x: c.x - 20, y: c.y - 20, width: 40, height: 40)
+      // Legibility-floor the ✕'s VISUAL disc (its hit target was already
+      // 44pt-inflated by hitButton; the drawn disc was a ~6pt speck — JP
+      // couldn't see that dismissal existed).
+      let closeR = Typography.compensate(13)
+      let c = CGPoint(x: geo.rect.maxX - closeR - 13, y: geo.rect.minY + closeR + 13)
+      drawCloseButton(&ctx, center: c, r: closeR, color: outcomeCopy(outcome).titleColor)
+      let hit = closeR + 9
+      model.buttons[.dismissWin] = CGRect(x: c.x - hit, y: c.y - hit, width: hit * 2, height: hit * 2)
+      // The card itself is the drag handle — registered LAST and biggest, so
+      // AGAIN and ✕ (smaller rects) always win the hit test.
+      model.buttons[.winCard] = geo.rect
     }
 
-    drawCarseFooter(&ctx, topY: geo.carseY, w: w)
+    drawCarseFooter(&ctx, topY: geo.carseY, centerX: geo.rect.midX)
   }
 
   private func playStatsLine() -> String? {
