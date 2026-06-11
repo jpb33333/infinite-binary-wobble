@@ -43,23 +43,60 @@ func blendColor(_ a: Color, _ b: Color, _ t: Double) -> Color {
   )
 }
 
+// Legibility compensation for contain-fit text (QA finding, 2026-06-10,
+// found by JP on an iPhone 14): the 800×1280 portrait design space lands on
+// iPhone screens at ~0.49× scale, so every design-px font renders at half
+// size — 12px help text became ~5.9pt against Apple's ~11pt legibility
+// floor. Fonts are drawn inside the fit-scaled canvas context, so the
+// compensation happens here in design units: text that would land below
+// `floorPt` on screen is pulled up toward it, compressing (slope) but never
+// reversing the size hierarchy; text already at/above the floor — display
+// type, and ALL text on large-scale fits like iPad (~0.92×) — is untouched.
+// Continuous at the floor boundary by construction.
+enum Typography {
+  /// Live contain-fit scale, written by ContentView.render each frame.
+  /// 0 (pre-first-frame) means "no compensation".
+  static var fitScale: CGFloat = 0
+  static let floorPt: CGFloat = 11 // on-screen points
+  static let slope: CGFloat = 0.2  // how much sub-floor deficit survives
+
+  static func compensate(_ designSize: CGFloat) -> CGFloat {
+    guard fitScale > 0 else { return designSize }
+    let pt = designSize * fitScale
+    guard pt < floorPt else { return designSize }
+    return (floorPt - (floorPt - pt) * slope) / fitScale
+  }
+
+  /// Line advance for compensated text — call sites hardcode design-px line
+  /// heights tuned for UNcompensated sizes; this keeps wrapped/stacked text
+  /// from overlapping once it grows. 1.35 leading: tight enough that the
+  /// 3-line setup help clears the court's top edge and the Carse footer
+  /// stays inside the win card (verified by /ios-qa screenshots).
+  static func lineHeight(for designSize: CGFloat) -> CGFloat {
+    compensate(designSize) * 1.35
+  }
+}
+
 // Cardo (serif: wordmark, cards) + Inter (sans: UI labels) — both SIL OFL,
 // bundled as app resources. Fall back to the system designs so a missing
-// font file degrades gracefully instead of crashing.
+// font file degrades gracefully instead of crashing. Sizes pass through
+// Typography.compensate (legibility floor) — call sites stay in design px.
 enum Fonts {
   static func serif(_ size: CGFloat, italic: Bool = false) -> Font {
+    let s = Typography.compensate(size)
     let name = italic ? "Cardo-Italic" : "Cardo-Regular"
-    if UIFont(name: name, size: size) != nil {
-      return .custom(name, size: size)
+    if UIFont(name: name, size: s) != nil {
+      return .custom(name, size: s)
     }
-    let f = Font.system(size: size, design: .serif)
+    let f = Font.system(size: s, design: .serif)
     return italic ? f.italic() : f
   }
 
   static func sans(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-    if UIFont(name: "Inter-Regular", size: size) != nil {
-      return .custom("Inter-Regular", size: size).weight(weight)
+    let s = Typography.compensate(size)
+    if UIFont(name: "Inter-Regular", size: s) != nil {
+      return .custom("Inter-Regular", size: s).weight(weight)
     }
-    return .system(size: size, weight: weight)
+    return .system(size: s, weight: weight)
   }
 }

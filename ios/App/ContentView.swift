@@ -58,6 +58,9 @@ struct ContentView: View {
     let layout = model.layout
     let w = layout.canvas.width, h = layout.canvas.height
     let time = model.elapsed
+    // Feed the live contain-fit scale to the type system so small text can
+    // hold the on-screen legibility floor (see Typography in Theme.swift).
+    Typography.fitScale = model.fit.scale
 
     // 1 — screen space: void + atmosphere (full-bleed, letterbox included)
     ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Palette.voidDeep))
@@ -165,29 +168,33 @@ struct ContentView: View {
   private func drawSetupHelp(_ ctx: inout GraphicsContext, active: Player) {
     let layout = model.layout
     let portrait = layout.orientation == .portrait
+    // Three lines, not five: legibility-compensated text (Typography) is
+    // ~1.7× taller, and the old five-line block overflowed the gap between
+    // the phase label and the court's top edge in portrait (caught by
+    // /ios-qa screenshots, 2026-06-10). The exit affordance moves to the
+    // canvas bottom, clear of both courts in every orientation.
     let lines = [
       "DRAG OUTWARD from the star to throw it.",
-      "TAP your court to reposition the star.",
-      "TAP − or + to set mass.",
+      "TAP your court to reposition. − / + sets mass.",
       "Max velocity \(Int(Limits.maxVelocityPerBody)) px/s.",
     ]
     let centered = portrait
     let x: CGFloat = portrait
       ? layout.canvas.width / 2
       : (active == .p1 ? 80 : layout.canvas.width - 80)
-    var y: CGFloat = portrait ? (active == .p1 ? 88 : layout.centerLineAt + 28) : 100
+    var y: CGFloat = portrait ? (active == .p1 ? 94 : layout.centerLineAt + 32) : 100
     let anchor: UnitPoint = centered ? .center : (active == .p1 ? .leading : .trailing)
+    let lh = Typography.lineHeight(for: 12) // compensated text needs a wider advance
     for line in lines {
       ctx.draw(
         ctx.resolve(Text(line).font(Fonts.sans(12)).foregroundColor(Palette.cream.opacity(0.45))),
         at: CGPoint(x: x, y: y), anchor: anchor
       )
-      y += 18
+      y += lh
     }
-    y += 8
     ctx.draw(
       ctx.resolve(Text("Tap EXIT to return to title.").font(Fonts.sans(11).italic()).foregroundColor(Palette.cream.opacity(0.3))),
-      at: CGPoint(x: x, y: y), anchor: anchor
+      at: CGPoint(x: layout.canvas.width / 2, y: layout.canvas.height - 36), anchor: .center
     )
   }
 
@@ -238,8 +245,12 @@ struct ContentView: View {
         HudField(label: "rel. speed", value: "\(Int(o.vRel.rounded())) px/s", color: Palette.rose),
         HudField(label: "energy", value: o.bound ? "BOUND" : "UNBOUND", color: o.bound ? Palette.cream : Palette.wine),
         HudField(label: "ecc.", value: o.eccentricity.isFinite ? String(format: "%.2f", o.eccentricity) : "∞", color: Palette.cream),
-        HudField(label: "period", value: o.period.isFinite ? String(format: "%.1f s", o.period) : "∞", color: Palette.rose),
+        // ORBITS before PERIOD: legibility-compensated columns are wider, so
+        // the portrait HUD truncates after ~5 fields — and orbits is the
+        // counter the win condition is ABOUT. Period + time are the
+        // sacrificial tail.
         HudField(label: "orbits", value: String(classifier.orbits), color: Palette.cream),
+        HudField(label: "period", value: o.period.isFinite ? String(format: "%.1f s", o.period) : "∞", color: Palette.rose),
         HudField(label: "time", value: String(format: "%.1f s", sim.time), color: Palette.rose),
       ])
     }
