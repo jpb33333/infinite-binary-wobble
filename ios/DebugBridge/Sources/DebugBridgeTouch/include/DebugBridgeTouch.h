@@ -23,11 +23,22 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface DebugBridgeTouch : NSObject
 
-/// Synthesize a single tap (TouchPhaseBegan + TouchPhaseEnded) at the given
+/// Synthesize a single tap (Began → ~80ms dwell → Ended, phase-separated by
+/// run-loop spins so SwiftUI gesture recognizers see it) at the given
 /// window-coordinate point. Returns YES if the touch was delivered (a hit
 /// view was found and the event passed through UIApplication.sendEvent).
 /// On non-iOS platforms returns NO unconditionally.
 + (BOOL)sendTapAtPoint:(CGPoint)point inWindow:(UIWindow *)window;
+
+/// Synthesize a real touch drag: Began at `from`, interpolated Moved events
+/// at ~60Hz over `durationMs`, Ended at `to`. Spins the main run loop
+/// between phases (blocks the caller for the drag duration — intentional).
+/// This is what drives SwiftUI DragGesture; added 2026-06-10 (the upstream
+/// template was tap-only). On non-iOS platforms returns NO unconditionally.
++ (BOOL)sendDragFrom:(CGPoint)from
+                  to:(CGPoint)to
+          durationMs:(NSInteger)durationMs
+            inWindow:(UIWindow *)window;
 
 @end
 
