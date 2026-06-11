@@ -21,6 +21,42 @@ export const fonts = {
   sans: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
 } as const;
 
+// ─── Legibility floor for contain-fit canvas text ──────────────────────────
+//
+// The game draws in a fixed design space (1280×800 / 800×1280) that the
+// Renderer maps into the viewport with a uniform contain-fit. A phone held in
+// portrait renders the 800×1280 space at ~0.49×, so a 12px design font lands
+// at ~5.9 CSS px on screen — far below the ~11px readability floor. (Found on
+// the iOS port first; the web has identical fit math.)
+//
+// `cpx` pulls any design size that would render below the floor up toward it,
+// compressing the sub-floor range (slope) so the size hierarchy is preserved,
+// never inverted. Text already at/above the floor — all display type, and any
+// near-1× desktop fit — is returned unchanged. The Renderer calls
+// `setViewScale(fit.scale)` once per frame before any drawing or measuring.
+let viewScale = 1;
+const FLOOR_PX = 11; // on-screen CSS px (Apple HIG-ish minimum)
+const SLOPE = 0.2; // fraction of the sub-floor deficit that survives
+
+export function setViewScale(scale: number): void {
+  viewScale = scale > 0 ? scale : 1;
+}
+
+// Design-space px to draw at so the glyph clears the on-screen floor. Identity
+// at/above the floor — continuous at the boundary, monotonic in designSize.
+export function cpx(designSize: number): number {
+  const onScreen = designSize * viewScale;
+  if (onScreen >= FLOOR_PX) return designSize;
+  return (FLOOR_PX - (FLOOR_PX - onScreen) * SLOPE) / viewScale;
+}
+
+// Line advance for compensated text — call sites hardcode design-px line
+// heights tuned for the UNcompensated sizes; this keeps stacked/wrapped text
+// from overlapping once it grows. 1.35 matches the iOS port.
+export function lineHeightFor(designSize: number): number {
+  return cpx(designSize) * 1.35;
+}
+
 export type Palette = typeof palette;
 export type PaletteKey = keyof Palette;
 
