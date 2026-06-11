@@ -292,7 +292,12 @@ export function drawOutcomeCard(
   // present so the breathing room around it doesn't collapse.
   const statsExtra = statsLine ? 28 : 0;
   const cardW = isWin ? 600 : 660;
-  const cardH = (isWin ? 232 : 308) + statsExtra;
+  // Grow the card to contain the 3-line Carse footer once the legibility floor
+  // makes it taller than the 48px (3×16) the base heights budgeted for — else
+  // the third line clips below the rounded-rect bottom on sub-390px phones.
+  // Game.clampCardOffset mirrors this exact term; keep them in sync.
+  const footerExtra = Math.max(0, lineHeightFor(12) * 3 - 48);
+  const cardH = (isWin ? 232 : 308) + statsExtra + footerExtra;
   const cx = (w - cardW) / 2 + offset.x;
   // WIN card is bottom-anchored; the bottom 56px belong to the HUD strip
   // (label baseline at h−44, value baseline at h−28, ascenders to ~h−53).
