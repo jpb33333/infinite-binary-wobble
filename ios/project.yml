@@ -69,5 +69,8 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.9"
         TARGETED_DEVICE_FAMILY: "1,2"
-        # Automatic signing with your team — set via Xcode or:
-        # DEVELOPMENT_TEAM: YOURTEAMID
+        # Automatic signing. Personal (free) team selected in Xcode 2026-06-10
+        # and persisted here so headless xcodebuild needs no GUI. Team IDs are
+        # not secret (they ship in every IPA's embedded.mobileprovision).
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: B52N5TMBSW
