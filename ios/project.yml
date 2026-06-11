@@ -9,6 +9,10 @@ options:
 packages:
   WobblePhysics:
     path: WobblePhysics
+  # gstack /ios-qa debug bridge. Every source line is #if DEBUG-gated, so the
+  # linked modules are EMPTY in Release builds — see ios/DebugBridge/Package.swift.
+  DebugBridge:
+    path: DebugBridge
 targets:
   InfiniteBinaryWobble:
     type: application
@@ -17,6 +21,10 @@ targets:
       - App
     dependencies:
       - package: WobblePhysics
+      - package: DebugBridge
+        product: DebugBridgeCore
+      - package: DebugBridge
+        product: DebugBridgeUI
     # Info-plist keys live HERE (xcodegen writes App/Info.plist at generate
     # time; it is gitignored like the .xcodeproj) — not as INFOPLIST_KEY_*
     # build settings, because UIAppFonts has no INFOPLIST_KEY_ mapping and
