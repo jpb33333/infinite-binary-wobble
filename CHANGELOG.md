@@ -6,7 +6,21 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **The win card on iOS is now draggable.** Slide it anywhere on screen (it
+  stays fully on-canvas) so the infinite wobble underneath stays watchable
+  without losing the live stats line; the ✕ still dismisses it entirely for a
+  fully clear view. AGAIN and ✕ travel with the card and keep tap priority
+  over it.
+
 ### Fixed
+- **Text is legible on iOS phones.** The native app renders in a fixed design
+  space that lands at about half-size on a phone, which left help text and HUD
+  labels far below the readable floor. Type that would render too small is now
+  pulled up toward an on-screen legibility floor, preserving the size
+  hierarchy; display text and iPad (where the app renders near full-size) are
+  untouched. The setup help reflowed to fit, and the win card's ✕ — previously
+  a roughly 6-point speck almost nobody noticed — is now visibly tappable.
 - **Grazing collisions can no longer slip between frames.** The simulation now
   remembers the closest the two stars have ever come (at full 1/240 s physics
   resolution), and the outcome classifier reads that instead of the
@@ -33,6 +47,15 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   styling, same finger-sized hit rect (kept 22px clear of BEGIN's so a
   mis-tap never lands on both); when metering ships, it mirrors the
   free-plays line below the button.
+
+### For contributors
+- **Live-device iOS QA harness** (`ios/DebugBridge/`, `/ios-qa`): a debug-only
+  in-app server that drives the SwiftUI app on a real iPhone over USB —
+  screenshots, state snapshots, and tap/swipe — for agent-run QA. Every line
+  is `#if DEBUG`-gated and verified absent from Release builds (the touch
+  layer's private-API code carries a Clang `DEBUG` define so Release links a
+  no-op stub; confirmed by symbol dump). The mass of the iOS work this cycle
+  was found and fixed through this harness.
 
 ## [0.5.0] — 2026-06-10
 
