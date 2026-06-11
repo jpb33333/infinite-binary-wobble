@@ -38,6 +38,40 @@ enum DebugBridgeBootstrap {
 
     #if canImport(UIKit)
     DebugBridgeUIWiring.installAll()
+    // iOS 26: KIF-derived synthesized touches dispatch cleanly (sendEvent
+    // accepts them, taps return ok) but the SwiftUI gesture environment never
+    // surfaces them to DragGesture — verified live 2026-06-10 with both the
+    // template's same-turn tap and a phase-separated ~60Hz drag rewrite.
+    // Rather than chase private UITouch internals on a brand-new iOS major,
+    // route tap/swipe straight into GameModel's input surface — the same
+    // three methods ContentView.dragGesture calls, through the same
+    // fit.toDesign conversion. Deterministic and iOS-version-proof; the
+    // velocity control reads drag DISTANCE (not speed), so synthetic timing
+    // is irrelevant. Screenshot + elements stay on the UIKit bridges.
+    MutationBridge.resolver = { [weak model] op, payload in
+      guard let model else { return false }
+      func designPoint(_ xKey: String, _ yKey: String) -> CGPoint? {
+        guard let x = payload[xKey] as? NSNumber, let y = payload[yKey] as? NSNumber else { return nil }
+        return model.fit.toDesign(CGPoint(x: x.doubleValue, y: y.doubleValue))
+      }
+      switch op {
+      case "tap":
+        guard let p = designPoint("x", "y") else { return false }
+        model.touchBegan(at: p)
+        model.touchEnded()
+        return true
+      case "swipe":
+        guard let from = designPoint("from_x", "from_y"),
+              let to = designPoint("to_x", "to_y") else { return false }
+        model.touchBegan(at: from)
+        model.touchMoved(to: CGPoint(x: (from.x + to.x) / 2, y: (from.y + to.y) / 2))
+        model.touchMoved(to: to)
+        model.touchEnded()
+        return true
+      default:
+        return false  // 'type': this app has no text inputs
+      }
+    }
     #endif
 
     registerAccessors(model: model)
