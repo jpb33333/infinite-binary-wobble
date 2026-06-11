@@ -125,9 +125,13 @@ export class Game {
     const after = this.renderer.layout;
     if (after === before) return;
     // Orientation flipped. A drag in the old coordinate space is meaningless
-    // in the new one — drop it before remapping.
+    // in the new one — drop it before remapping. The WIN-card offset was
+    // clamped to the old canvas; recenter it (and end any card drag) so it
+    // can't render off-canvas in the transposed space until the next move.
     this.posControl.release();
     this.arrowControl.release();
+    this.draggingCard = false;
+    this.winCardOffset = { x: 0, y: 0 };
     this.remapSpec(this.specs.p1, before, after);
     this.remapSpec(this.specs.p2, before, after);
     // Mid-simulation the bodies live in absolute design-space coordinates and

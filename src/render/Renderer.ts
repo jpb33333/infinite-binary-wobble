@@ -107,6 +107,10 @@ export class Renderer {
   // had, and button rects only move on state changes.
   private buttons: Map<string, CanvasButton> = new Map();
   private nextButtons: Map<string, CanvasButton> = new Map();
+  // The WIN-card drag-handle rect, captured during renderResolved and
+  // registered at the very end of the frame (after the corner controls) so it
+  // loses first-match hit-testing to every real button. null when no WIN card.
+  private winCardHitRect: CanvasButton | null = null;
 
   // The game draws in a fixed design space (layout.canvas, 1280×800) so the
   // pixel-tuned physics never shift with screen size. `fit` maps that design
@@ -279,6 +283,16 @@ export class Renderer {
     // Drawn after the per-state scene so they always sit on top, but still in
     // design space (before we drop back to screen space for the motes).
     if (input.state !== 'title') this.drawCornerControls(input);
+
+    // Register the WIN-card drag handle LAST of all buttons, so first-match
+    // hit-testing lets EVERY real button win over it — including the EXIT/AGAIN
+    // corner controls, which a dragged card can otherwise sit on top of and
+    // shadow (a dragged card parked top-right would swallow EXIT taps). The
+    // card body is only a drag target where no button is.
+    if (this.winCardHitRect) {
+      this.register('win_card', this.winCardHitRect);
+      this.winCardHitRect = null;
+    }
 
     // Collision debris is positioned in design space — render it with the scene.
     this.burstLayer.draw(ctx);
@@ -973,17 +987,18 @@ export class Renderer {
     // what they're really doing every time the AGAIN button appears.
     this.drawCarseFooter(card.carseY, card.x + card.width / 2);
 
-    // The whole WIN card is a drag handle — registered LAST and biggest, so
-    // hoveredButton (first-match in insertion order) lets AGAIN and the ✕ win
-    // over it. A drag that starts on the card body (not a button) moves it.
+    // The whole WIN card is a drag handle. Captured here, registered at the
+    // END of render() (after the corner controls) so first-match hit-testing
+    // lets AGAIN, ✕, AND the EXIT/AGAIN corner pills all win over it. A drag
+    // only starts on bare card body where no button sits.
     if (input.outcome.kind === 'win') {
-      this.register('win_card', {
+      this.winCardHitRect = {
         label: '',
         x: card.x,
         y: card.y,
         width: card.width,
         height: card.height,
-      });
+      };
     }
   }
 
