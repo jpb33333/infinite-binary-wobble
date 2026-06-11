@@ -273,7 +273,15 @@ struct ContentView: View {
     if outcome == .win && model.winCardDismissed { return }
 
     let statsLine = playStatsLine()
-    let geo = outcomeCardGeometry(outcome, w: w, h: h, hasStats: statsLine != nil)
+    let base = outcomeCardGeometry(outcome, w: w, h: h, hasStats: statsLine != nil)
+    // WIN cards are draggable (GameModel.winCardOffset); everything on the
+    // card — panel, text, AGAIN, ✕, footer — rides the same offset.
+    let off = outcome == .win ? model.winCardOffset : .zero
+    let geo = OutcomeCardGeometry(
+      rect: base.rect.offsetBy(dx: off.x, dy: off.y),
+      buttonY: base.buttonY + off.y,
+      carseY: base.carseY + off.y
+    )
     drawOutcomeCard(&ctx, outcome: outcome, w: w, h: h, statsLine: statsLine, geometry: geo)
 
     // The merger is the whole moment — punch it back through the card.
@@ -281,17 +289,25 @@ struct ContentView: View {
       drawSupernova(&ctx, at: nova.pos, elapsed: model.elapsed - nova.t0, mergedMass: nova.mergedMass, time: time)
     }
 
-    let again = CGRect(x: w / 2 - 90, y: geo.buttonY, width: 180, height: 44)
+    let again = CGRect(x: geo.rect.midX - 90, y: geo.buttonY, width: 180, height: 44)
     drawButton(&ctx, label: "Again", rect: again, primary: outcomeCopy(outcome).titleColor)
     model.buttons[.again] = again
 
     if outcome == .win {
-      let c = CGPoint(x: geo.rect.maxX - 26, y: geo.rect.minY + 26)
-      drawCloseButton(&ctx, center: c, r: 13, color: outcomeCopy(outcome).titleColor)
-      model.buttons[.dismissWin] = CGRect(x: c.x - 20, y: c.y - 20, width: 40, height: 40)
+      // Legibility-floor the ✕'s VISUAL disc (its hit target was already
+      // 44pt-inflated by hitButton; the drawn disc was a ~6pt speck — JP
+      // couldn't see that dismissal existed).
+      let closeR = Typography.compensate(13)
+      let c = CGPoint(x: geo.rect.maxX - closeR - 13, y: geo.rect.minY + closeR + 13)
+      drawCloseButton(&ctx, center: c, r: closeR, color: outcomeCopy(outcome).titleColor)
+      let hit = closeR + 9
+      model.buttons[.dismissWin] = CGRect(x: c.x - hit, y: c.y - hit, width: hit * 2, height: hit * 2)
+      // The card itself is the drag handle — registered LAST and biggest, so
+      // AGAIN and ✕ (smaller rects) always win the hit test.
+      model.buttons[.winCard] = geo.rect
     }
 
-    drawCarseFooter(&ctx, topY: geo.carseY, w: w)
+    drawCarseFooter(&ctx, topY: geo.carseY, centerX: geo.rect.midX)
   }
 
   private func playStatsLine() -> String? {

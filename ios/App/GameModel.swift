@@ -15,6 +15,10 @@ enum GameState {
 enum ButtonID: Hashable {
   case begin, explainer, dismissExplainer, lockIn, massMinus, massPlus
   case exit, again, dismissWin
+  // The WIN card's whole rect — registered so touchBegan can route a drag
+  // that starts on the card (its real buttons still win the hit test: the
+  // registry resolves to the SMALLEST containing rect).
+  case winCard
 }
 
 private let COUNTDOWN_SECONDS = 3.0
@@ -61,8 +65,14 @@ final class GameModel: ObservableObject {
   let reducedMotion = UIAccessibility.isReduceMotionEnabled
 
   // Input
-  enum DragKind { case position, velocity }
+  enum DragKind { case position, velocity, winCard }
   private var activeDrag: DragKind?
+  // WIN-card drag (JP feature request, 2026-06-10): the card can be moved
+  // around the screen so the infinite wobble stays watchable WITHOUT losing
+  // the live stats line — dismissal (✕) remains for a fully clear view.
+  // Offset is in design px from the card's home position; reset every round.
+  private(set) var winCardOffset: CGPoint = .zero
+  private var cardDragAnchor: CGPoint = .zero
   /// True from the first gesture event until release — distinguishes "began"
   /// from "moved" regardless of how far the first event travelled.
   private(set) var touchActive = false
@@ -178,6 +188,7 @@ final class GameModel: ObservableObject {
     supernova = nil
     countdownRemaining = COUNTDOWN_SECONDS
     winCardDismissed = false
+    winCardOffset = .zero
     explainerOpen = false
     activeDrag = nil
   }
@@ -221,6 +232,7 @@ final class GameModel: ObservableObject {
     simAccum = 0
     supernova = nil
     winCardDismissed = false
+    winCardOffset = .zero
     state = .simulate
   }
 
@@ -287,6 +299,13 @@ final class GameModel: ObservableObject {
   func touchBegan(at p: CGPoint) {
     touchActive = true
     if let btn = hitButton(at: p) {
+      if btn == .winCard {
+        // Start dragging the WIN card. Real buttons on the card (AGAIN, ✕)
+        // never reach here — smaller rects win the hit test.
+        activeDrag = .winCard
+        cardDragAnchor = CGPoint(x: p.x - winCardOffset.x, y: p.y - winCardOffset.y)
+        return
+      }
       handleButton(btn)
       return
     }
@@ -307,15 +326,31 @@ final class GameModel: ObservableObject {
   }
 
   func touchMoved(to p: CGPoint) {
+    if activeDrag == .winCard {
+      winCardOffset = clampedCardOffset(CGPoint(x: p.x - cardDragAnchor.x, y: p.y - cardDragAnchor.y))
+      return
+    }
     guard state == .setupP1 || state == .setupP2 else { return }
     switch activeDrag {
     case .position:
       mutateActiveSpec { $0.pos = clampToInBounds(p, layout, $0.player) }
     case .velocity:
       dragVelocity(to: p)
-    case nil:
+    case .winCard, nil:
       break
     }
+  }
+
+  /// Keep the dragged WIN card fully on-canvas (8 px margin) so it can't be
+  /// flung somewhere unrecoverable.
+  private func clampedCardOffset(_ raw: CGPoint) -> CGPoint {
+    let base = outcomeCardGeometry(.win, w: layout.canvas.width, h: layout.canvas.height, hasStats: true).rect
+    let margin: CGFloat = 8
+    let minX = margin - base.minX
+    let maxX = layout.canvas.width - base.width - margin - base.minX
+    let minY = margin - base.minY
+    let maxY = layout.canvas.height - base.height - margin - base.minY
+    return CGPoint(x: min(max(raw.x, minX), maxX), y: min(max(raw.y, minY), maxY))
   }
 
   func touchEnded() {
