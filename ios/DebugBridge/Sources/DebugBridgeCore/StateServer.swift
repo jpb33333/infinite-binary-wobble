@@ -349,11 +349,24 @@ public final class StateServer {
         }
 
         rotatedToken = newToken
-        bootTokenValid = false
-        // Best-effort scrub of on-disk boot token file.
-        try? FileManager.default.removeItem(atPath: bootTokenPath)
+        // DEVIATION from the upstream template (which scrubbed the file and
+        // set bootTokenValid = false): re-MINT the file token instead.
+        // Xcode 26's CoreDevice drops the USB tunnel between devicectl
+        // invocations, and the Mac daemon's re-bootstrap path re-reads the
+        // sandbox token file — a scrubbed file wedges every re-bootstrap
+        // until the app restarts (hit live, 2026-06-10). Minting a fresh
+        // file token preserves the security property that matters: every
+        // PREVIOUSLY-scraped credential (the os_log boot token, any prior
+        // file copy) is dead the moment rotation lands. The file itself is
+        // 0600 inside the app sandbox, reachable only via paired-Mac
+        // developer tooling — the same trust boundary the boot flow already
+        // accepts.
+        bootToken = UUID().uuidString
+        bootTokenValid = true
+        try? bootToken.write(toFile: bootTokenPath, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: bootTokenPath)
 
-        logger.notice("Boot token rotated; original now invalid")
+        logger.notice("Boot token rotated; prior credentials now invalid")
         send(connection: connection, status: 200, body: ["ok": true])
     }
 
