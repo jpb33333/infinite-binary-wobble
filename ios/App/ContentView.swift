@@ -9,7 +9,7 @@ import WobblePhysics
 //   2. design space (contain-fit) — court, stars, trails, HUD, cards, bursts
 //   3. screen space again — ambient motes on top
 struct ContentView: View {
-  @State private var model = GameModel()
+  @StateObject private var model = GameModel()
 
   var body: some View {
     GeometryReader { geo in
