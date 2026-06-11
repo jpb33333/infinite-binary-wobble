@@ -45,6 +45,13 @@ export class Game {
   // infinite wobble can be watched unobstructed; the orbit keeps advancing
   // underneath. Reset whenever a fresh play begins (or we return to title).
   private winCardDismissed = false;
+  // Design-space drag offset of the WIN card from its home position. Lets the
+  // player slide the card aside to watch the wobble without losing the stats
+  // line (✕ still fully dismisses). Reset every fresh play. `cardDragAnchor`
+  // is the pointer→offset delta captured at drag start.
+  private winCardOffset = { x: 0, y: 0 };
+  private draggingCard = false;
+  private cardDragAnchor = { x: 0, y: 0 };
   // True while the optional "what is a binary star?" explainer card is open on
   // the title screen. A simple boolean rather than a new GameStateKind: it's a
   // modal aside over the existing title, not a distinct phase of the game.
@@ -185,6 +192,14 @@ export class Game {
       this.winCardDismissed = true;
       return;
     }
+    // Anywhere else on the WIN card body → start dragging it. (dismiss_win and
+    // again are registered first, so hoveredButton resolves them before
+    // win_card — the buttons always win a direct tap.)
+    if (btn === 'win_card' && this.state === 'resolved' && this.outcome?.kind === 'win') {
+      this.draggingCard = true;
+      this.cardDragAnchor = { x: p.x - this.winCardOffset.x, y: p.y - this.winCardOffset.y };
+      return;
+    }
     if (btn === 'lock_in' && (this.state === 'setup_p1' || this.state === 'setup_p2')) {
       const spec = this.activeSpec();
       if (spec && Math.hypot(spec.vel.x, spec.vel.y) >= 1) {
@@ -248,11 +263,19 @@ export class Game {
   }
 
   private onPointerMove(e: PointerEvent): void {
-    if (this.posControl.isGrabbing || this.arrowControl.isGrabbing) {
+    if (this.posControl.isGrabbing || this.arrowControl.isGrabbing || this.draggingCard) {
       e.preventDefault();
     }
     const p = this.renderer.screenToLogical(e);
     this.hover = p;
+
+    if (this.draggingCard) {
+      this.winCardOffset = this.clampCardOffset({
+        x: p.x - this.cardDragAnchor.x,
+        y: p.y - this.cardDragAnchor.y,
+      });
+      return;
+    }
 
     if (this.state === 'setup_p1' || this.state === 'setup_p2') {
       const spec = this.activeSpec();
@@ -268,6 +291,28 @@ export class Game {
   private onPointerUp(_e: PointerEvent): void {
     this.posControl.release();
     this.arrowControl.release();
+    this.draggingCard = false;
+  }
+
+  // Keep the dragged WIN card fully on-canvas (8 px margin) so it can't be
+  // flung somewhere unrecoverable. Card geometry mirrors drawOutcomeCard's WIN
+  // branch (600 wide, bottom-anchored 72 px above the HUD); the offset is
+  // clamped against the design-space canvas, so it's orientation-correct.
+  private clampCardOffset(raw: { x: number; y: number }): { x: number; y: number } {
+    const { width: w, height: h } = this.renderer.layout.canvas;
+    const cardW = 600;
+    const cardH = 232 + 28; // WIN card + stats line (always present on a win)
+    const homeX = (w - cardW) / 2;
+    const homeY = h - cardH - 72;
+    const margin = 8;
+    const minX = margin - homeX;
+    const maxX = w - cardW - margin - homeX;
+    const minY = margin - homeY;
+    const maxY = h - cardH - margin - homeY;
+    return {
+      x: Math.min(Math.max(raw.x, minX), maxX),
+      y: Math.min(Math.max(raw.y, minY), maxY),
+    };
   }
 
   private onWheel(e: WheelEvent): void {
@@ -299,6 +344,8 @@ export class Game {
     this.supernova = null;
     this.countdownRemaining = COUNTDOWN_SECONDS;
     this.winCardDismissed = false;
+    this.winCardOffset = { x: 0, y: 0 };
+    this.draggingCard = false;
     this.explainerOpen = false;
     this.posControl.release();
     this.arrowControl.release();
@@ -326,6 +373,8 @@ export class Game {
     this.simAccum = 0;
     this.supernova = null;
     this.winCardDismissed = false;
+    this.winCardOffset = { x: 0, y: 0 };
+    this.draggingCard = false;
     this.explainerOpen = false;
     this.posControl.release();
     this.arrowControl.release();
@@ -374,6 +423,8 @@ export class Game {
     this.simAccum = 0;
     this.supernova = null;
     this.winCardDismissed = false;
+    this.winCardOffset = { x: 0, y: 0 };
+    this.draggingCard = false;
     // Count this play (a simulation actually started). Optimistic + async;
     // no-op when metering is disabled or the player is already unlocked.
     this.meter.consumePlay();
@@ -453,9 +504,14 @@ export class Game {
   private updateCursor(): void {
     const canvas = this.renderer.canvas;
     let desired: string = 'default';
-    if (this.hover) {
+    if (this.draggingCard) {
+      desired = 'grabbing';
+    } else if (this.hover) {
       const btn = this.renderer.hoveredButton(this.hover);
-      if (btn) {
+      if (btn === 'win_card') {
+        // The card body is a drag handle, not a click target.
+        desired = 'grab';
+      } else if (btn) {
         desired = 'pointer';
       } else if (this.state === 'setup_p1' || this.state === 'setup_p2') {
         const spec = this.activeSpec();
@@ -542,6 +598,7 @@ export class Game {
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
       winCardDismissed: this.winCardDismissed,
+      winCardOffset: this.winCardOffset,
       explainerOpen: this.explainerOpen,
       stats: this.statsSummary,
       meter: this.meter.view,

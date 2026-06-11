@@ -1,4 +1,4 @@
-import { palette, fonts, rgba } from '../theme.ts';
+import { palette, fonts, rgba, cpx, lineHeightFor } from '../theme.ts';
 import type { Outcome } from '../game/outcomes.ts';
 import type { StatsSummary } from '../game/stats.ts';
 
@@ -60,7 +60,7 @@ export function drawSessionStats(
     `${winRatePct}% wobble rate`;
 
   ctx.fillStyle = rgba(palette.cream, 0.55);
-  ctx.font = `500 12px ${fonts.sans}`;
+  ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
   // Sit between the subtitle (h*0.38 + 64) and the BEGIN button (h*0.62).
   const headY = h * 0.51;
   ctx.fillText(head, w / 2, headY);
@@ -80,7 +80,7 @@ export function drawSessionStats(
   }
   if (parts.length > 0) {
     ctx.fillStyle = rgba(palette.rose, 0.55);
-    ctx.font = `italic 400 13px ${fonts.serif}`;
+    ctx.font = `italic 400 ${cpx(13)}px ${fonts.serif}`;
     ctx.fillText(parts.join('  ·  '), w / 2, headY + 22);
   }
   ctx.restore();
@@ -96,10 +96,10 @@ export function drawPhaseLabel(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = rgba(palette.cream, 0.5);
-  ctx.font = `500 11px ${fonts.sans}`;
+  ctx.font = `500 ${cpx(11)}px ${fonts.sans}`;
   ctx.fillText('— phase —', w / 2, 36);
   ctx.fillStyle = highlightColor;
-  ctx.font = `400 22px ${fonts.serif}`;
+  ctx.font = `400 ${cpx(22)}px ${fonts.serif}`;
   ctx.fillText(text, w / 2, 64);
   ctx.restore();
 }
@@ -113,17 +113,21 @@ export function drawHud(
   ctx.save();
   const padX = 36;
   const baseY = h - 28;
-  ctx.font = `500 11px ${fonts.sans}`;
+  // Label sits one compensated value-line above the value. The original fixed
+  // 16px gap was tuned for an uncompensated 18px value; the legibility floor
+  // makes that value taller in portrait, so the label would overprint it.
+  const labelGap = lineHeightFor(18);
+  ctx.font = `500 ${cpx(11)}px ${fonts.sans}`;
   ctx.textBaseline = 'alphabetic';
   let x = padX;
   for (const f of fields) {
     ctx.fillStyle = rgba(palette.cream, 0.55);
     ctx.textAlign = 'left';
-    ctx.fillText(f.label.toUpperCase(), x, baseY - 16);
+    ctx.fillText(f.label.toUpperCase(), x, baseY - labelGap);
     ctx.fillStyle = f.color;
-    ctx.font = `400 18px ${fonts.serif}`;
+    ctx.font = `400 ${cpx(18)}px ${fonts.serif}`;
     ctx.fillText(f.value, x, baseY);
-    ctx.font = `500 11px ${fonts.sans}`;
+    ctx.font = `500 ${cpx(11)}px ${fonts.sans}`;
     const valWidth = ctx.measureText(f.value).width;
     x += Math.max(140, valWidth + 60);
     if (x > w - padX - 100) break;
@@ -174,7 +178,7 @@ export function drawButton(
   ctx.fillStyle = text;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `600 14px ${fonts.sans}`;
+  ctx.font = `600 ${cpx(14)}px ${fonts.sans}`;
   const letterSpacing = 1.2;
   drawSpacedText(ctx, btn.label.toUpperCase(), btn.x + btn.width / 2, btn.y + btn.height / 2 + 1, letterSpacing);
   ctx.restore();
@@ -201,7 +205,9 @@ export function drawCloseButton(
   ctx.stroke();
 
   const k = r * 0.42;
-  ctx.lineWidth = 1.6;
+  // Glyph stroke scales with the disc — radii are legibility-floored upstream
+  // (cpx), so a fixed 1.6 would look hairline-thin on a bumped-up ✕.
+  ctx.lineWidth = Math.max(1.6, r * 0.14);
   ctx.lineCap = 'round';
   ctx.strokeStyle = rgba(color, hovered ? 1 : 0.8);
   ctx.beginPath();
@@ -222,7 +228,7 @@ export function drawTooltip(
   placement: 'above' | 'below' = 'above',
 ): void {
   ctx.save();
-  ctx.font = `500 13px ${fonts.sans}`;
+  ctx.font = `500 ${cpx(13)}px ${fonts.sans}`;
   ctx.textBaseline = 'middle';
   const padX = 10;
   const metrics = ctx.measureText(text);
@@ -253,6 +259,10 @@ export function drawOutcomeCard(
   w: number,
   h: number,
   statsLine: string | null = null,
+  // WIN cards are draggable (Game.winCardOffset). The offset shifts the panel,
+  // text, buttons and footer together; everything centres on the card, not the
+  // canvas, so a horizontal drag keeps text glued to the panel.
+  offset: { x: number; y: number } = { x: 0, y: 0 },
 ): {
   titleColor: string;
   titleText: string;
@@ -262,6 +272,7 @@ export function drawOutcomeCard(
   x: number;
   y: number;
   width: number;
+  height: number;
 } {
   const card = outcomeText(outcome);
   const isWin = outcome.kind === 'win';
@@ -282,12 +293,13 @@ export function drawOutcomeCard(
   const statsExtra = statsLine ? 28 : 0;
   const cardW = isWin ? 600 : 660;
   const cardH = (isWin ? 232 : 308) + statsExtra;
-  const cx = (w - cardW) / 2;
+  const cx = (w - cardW) / 2 + offset.x;
   // WIN card is bottom-anchored; the bottom 56px belong to the HUD strip
   // (label baseline at h−44, value baseline at h−28, ascenders to ~h−53).
   // Margin must clear that band with breathing room or the card's translucent
   // fill bleeds over the labels.
-  const cy = isWin ? h - cardH - 72 : (h - cardH) / 2;
+  const cy = (isWin ? h - cardH - 72 : (h - cardH) / 2) + offset.y;
+  const mid = cx + cardW / 2; // card centre — text rides the drag offset
 
   ctx.save();
   ctx.beginPath();
@@ -304,25 +316,25 @@ export function drawOutcomeCard(
   ctx.textBaseline = 'middle';
   ctx.fillStyle = card.titleColor;
   ctx.font = `400 ${isWin ? 30 : 44}px ${fonts.serif}`;
-  ctx.fillText(card.titleText, w / 2, cy + (isWin ? 40 : 76));
+  ctx.fillText(card.titleText, mid, cy + (isWin ? 40 : 76));
 
   ctx.fillStyle = palette.rose;
-  ctx.font = `italic 400 ${isWin ? 16 : 19}px ${fonts.serif}`;
-  ctx.fillText(card.bodyText, w / 2, cy + (isWin ? 72 : 122));
+  ctx.font = `italic 400 ${cpx(isWin ? 16 : 19)}px ${fonts.serif}`;
+  ctx.fillText(card.bodyText, mid, cy + (isWin ? 72 : 122));
 
   if (statsLine) {
     // Sit between the body line and the AGAIN button. Subtle — it's a
     // reading-of-the-moment, not a competition with the title.
     ctx.fillStyle = rgba(palette.cream, 0.55);
-    ctx.font = `500 12px ${fonts.sans}`;
-    ctx.fillText(statsLine, w / 2, cy + (isWin ? 100 : 152));
+    ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
+    ctx.fillText(statsLine, mid, cy + (isWin ? 100 : 152));
   }
   ctx.restore();
 
   const buttonY = (isWin ? cy + 96 : cy + 156) + statsExtra;
   // Carse footer goes below the button, still inside the card.
   const carseY = buttonY + 44 + 8; // button height + small gap
-  return { ...card, buttonY, carseY, x: cx, y: cy, width: cardW };
+  return { ...card, buttonY, carseY, x: cx, y: cy, width: cardW, height: cardH };
 }
 
 function outcomeText(outcome: Outcome): {
@@ -375,7 +387,7 @@ export function drawTitleExplainerLink(
   hovered: boolean,
 ): CanvasButton {
   ctx.save();
-  ctx.font = `italic 400 15px ${fonts.serif}`;
+  ctx.font = `italic 400 ${cpx(15)}px ${fonts.serif}`;
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
 
@@ -444,13 +456,13 @@ export function drawExplainerCard(
   const padX = 56; // inner horizontal padding
   const textW = cardW - padX * 2;
   const paraGap = 14; // blank space between paragraphs
-  const bodyLineH = 24;
   const bodySize = 17;
+  const bodyLineH = lineHeightFor(bodySize); // follows the legibility floor
 
   // Measure the wrapped body up front so the card height fits the prose exactly
   // — no clipped lines, no dead space — at any of the wrapped paragraph counts.
   ctx.save();
-  ctx.font = `italic 400 ${bodySize}px ${fonts.serif}`;
+  ctx.font = `italic 400 ${cpx(bodySize)}px ${fonts.serif}`;
   const wrappedParas = EXPLAINER_BODY.map(p => wrapText(ctx, p, textW));
   ctx.restore();
   const totalBodyLines = wrappedParas.reduce((n, lines) => n + lines.length, 0);
@@ -486,7 +498,7 @@ export function drawExplainerCard(
 
   // Body — centred, wrapped, paragraph by paragraph.
   ctx.fillStyle = palette.rose;
-  ctx.font = `italic 400 ${bodySize}px ${fonts.serif}`;
+  ctx.font = `italic 400 ${cpx(bodySize)}px ${fonts.serif}`;
   let y = cy + titleTop + titleToBody;
   for (const lines of wrappedParas) {
     for (const line of lines) {
@@ -498,9 +510,10 @@ export function drawExplainerCard(
   ctx.restore();
 
   // ✕ to dismiss, top-right of the card — same construction as the WIN card.
-  const closeR = 13;
-  const closeX = cx + cardW - 26;
-  const closeY = cy + 26;
+  // Legibility-floored disc: 13px design lands at ~6px on a phone otherwise.
+  const closeR = cpx(13);
+  const closeX = cx + cardW - closeR - 13;
+  const closeY = cy + closeR + 13;
   drawCloseButton(ctx, closeX, closeY, closeR, palette.cream, closeHovered);
 
   return { closeX, closeY, closeR };
@@ -611,11 +624,11 @@ export function drawPaywallCard(
   ctx.fillText(`${meter.limit} wobbles in.`, w / 2, cy + 72);
 
   ctx.fillStyle = palette.rose;
-  ctx.font = `italic 400 18px ${fonts.serif}`;
+  ctx.font = `italic 400 ${cpx(18)}px ${fonts.serif}`;
   ctx.fillText(`You’ve watched ${meter.limit} free plays unfold.`, w / 2, cy + 116);
 
   ctx.fillStyle = rgba(palette.cream, 0.65);
-  ctx.font = `500 13px ${fonts.sans}`;
+  ctx.font = `500 ${cpx(13)}px ${fonts.sans}`;
   ctx.fillText(
     'Pay what it’s worth to you — from $1 — to keep playing, forever.',
     w / 2,

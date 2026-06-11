@@ -1,4 +1,4 @@
-import { palette, fonts, rgba, blendHex } from '../theme.ts';
+import { palette, fonts, rgba, blendHex, setViewScale, cpx, lineHeightFor } from '../theme.ts';
 import type { CourtLayout, BodySpec, GameStateKind } from '../game/states.ts';
 import { layoutForViewport, LIMITS } from '../game/states.ts';
 import {
@@ -50,6 +50,9 @@ export interface RenderInput {
   // and its AGAIN button are then suppressed so the orbit fills the screen;
   // AGAIN reappears in the top-right control cluster instead.
   winCardDismissed: boolean;
+  // Design-space drag offset for the WIN card (0,0 = home). Lets the player
+  // move the card aside to watch the wobble while keeping the live stats line.
+  winCardOffset: { x: number; y: number };
   // Set when the two bodies have merged; carries the merger location,
   // wall-time elapsed since the collision, and the combined mass. The
   // Renderer uses this to animate flash → shockwave → persistent remnant
@@ -223,6 +226,11 @@ export class Renderer {
   render(input: RenderInput): void {
     const { ctx } = this;
 
+    // Feed the live contain-fit scale to the type system so sub-floor text can
+    // hold the on-screen legibility floor (theme.ts cpx). Must precede any
+    // drawing or text measurement this frame.
+    setViewScale(this.fit.scale);
+
     // ── Full-bleed backdrop (screen space) ──
     // Void fills the entire raw buffer — court area and letterbox margins
     // alike, with no seam at the fit-rect edge.
@@ -316,7 +324,7 @@ export class Renderer {
         ctx.save();
         ctx.textAlign = 'center';
         ctx.fillStyle = rgba(palette.cream, 0.4);
-        ctx.font = `500 12px ${fonts.sans}`;
+        ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
         ctx.fillText(`${Math.max(0, input.meter.remaining)} free plays left`, w / 2, h * 0.62 + 72);
         ctx.restore();
       }
@@ -491,7 +499,7 @@ export class Renderer {
       // Communicate why the button isn't lively — needs a velocity to launch.
       ctx.save();
       ctx.fillStyle = rgba(palette.terracotta, 0.85);
-      ctx.font = `italic 500 12px ${fonts.sans}`;
+      ctx.font = `italic 500 ${cpx(12)}px ${fonts.sans}`;
       ctx.textAlign = 'center';
       ctx.fillText(
         'drag from the star to give it a direction',
@@ -505,15 +513,19 @@ export class Renderer {
   private drawSetupHelp(activePlayer: 1 | 2): void {
     const { ctx } = this;
     const portrait = this.layout.orientation === 'portrait';
+    // Three lines, not four: legibility-compensated text is ~1.7× taller, and
+    // the old four-line block overflowed the gap between the phase label and
+    // the court's top edge in portrait (mirrors the iOS /ios-qa fix). The exit
+    // affordance moves to the canvas bottom, clear of both courts.
     const lines = [
       'DRAG OUTWARD from the star to throw it.',
-      'TAP your court to reposition the star.',
-      'TAP − or + to set mass.',
+      'TAP your court to reposition.  − / + sets mass.',
       `Max velocity ${LIMITS.maxVelocityPerBody} px/s.`,
     ];
     ctx.save();
-    ctx.font = `400 12px ${fonts.sans}`;
+    ctx.font = `400 ${cpx(12)}px ${fonts.sans}`;
     ctx.fillStyle = rgba(palette.cream, 0.45);
+    const lh = lineHeightFor(12); // compensated text needs a wider advance
     let x: number;
     let y: number;
     if (portrait) {
@@ -522,7 +534,7 @@ export class Renderer {
       // center line for P2 (line at 640, court at 770).
       ctx.textAlign = 'center';
       x = this.layout.canvas.width / 2;
-      y = activePlayer === 1 ? 88 : this.layout.centerLine.at + 28;
+      y = activePlayer === 1 ? 94 : this.layout.centerLine.at + 32;
     } else {
       // Landscape: stacked in the active player's top corner, above the
       // court's top edge at y=200.
@@ -532,16 +544,15 @@ export class Renderer {
     }
     for (const line of lines) {
       ctx.fillText(line, x, y);
-      y += 18;
+      y += lh;
     }
-    // Exit affordance, set apart by a blank line and dimmer alpha so the
-    // primary controls don't compete with it. Names both routes — ESC for
-    // keyboards, the EXIT pill for touch. Only surfaced during setup; by
-    // the time the player reaches countdown / sim they already know.
-    y += 8;
+    // Exit affordance at the canvas bottom, set apart and dimmer so the primary
+    // controls don't compete with it. Names both routes — ESC for keyboards,
+    // the EXIT pill for touch.
+    ctx.textAlign = 'center';
     ctx.fillStyle = rgba(palette.cream, 0.3);
-    ctx.font = `italic 400 11px ${fonts.sans}`;
-    ctx.fillText('ESC or the EXIT pill returns to title.', x, y);
+    ctx.font = `italic 400 ${cpx(11)}px ${fonts.sans}`;
+    ctx.fillText('ESC or the EXIT pill returns to title.', this.layout.canvas.width / 2, this.layout.canvas.height - 30);
     ctx.restore();
   }
 
@@ -623,8 +634,11 @@ export class Renderer {
         { label: 'rel. speed', value: `${o.vRel.toFixed(0)} px/s`, color: palette.rose },
         { label: 'energy', value: boundText, color: boundColor },
         { label: 'ecc.', value: eccText, color: palette.cream },
-        { label: 'period', value: periodText, color: palette.rose },
+        // ORBITS before PERIOD: compensated columns are wider, so the portrait
+        // HUD truncates after the first few fields — and orbits is the counter
+        // the win condition is ABOUT. Period + time are the sacrificial tail.
         { label: 'orbits', value: String(input.classifier.orbits), color: palette.cream },
+        { label: 'period', value: periodText, color: palette.rose },
         { label: 'time', value: `${input.sim.time.toFixed(1)} s`, color: palette.rose },
       ]);
     }
@@ -904,12 +918,15 @@ export class Renderer {
     // orbit keeps advancing in update(); AGAIN/EXIT live in the corner cluster.
     if (input.outcome.kind === 'win' && input.winCardDismissed) return;
     const statsLine = this.formatPlayStats(input);
+    // WIN cards ride the drag offset; LOSE cards are fixed (sim is frozen).
+    const offset = input.outcome.kind === 'win' ? input.winCardOffset : { x: 0, y: 0 };
     const card = drawOutcomeCard(
       this.ctx,
       input.outcome,
       this.layout.canvas.width,
       this.layout.canvas.height,
       statsLine,
+      offset,
     );
 
     // The merger event is the whole moment for a collision outcome — let it
@@ -922,7 +939,7 @@ export class Renderer {
 
     const btn: CanvasButton = {
       label: 'Again',
-      x: this.layout.canvas.width / 2 - 90,
+      x: card.x + card.width / 2 - 90,
       y: card.buttonY,
       width: 180,
       height: 44,
@@ -932,15 +949,15 @@ export class Renderer {
     this.register('again', btn);
 
     // WIN cards get a ✕ in their top-right corner: tap to dismiss the card and
-    // watch the infinite wobble unobstructed. The visible disc is small, but
-    // the hit rectangle is finger-sized (40px) for touch.
+    // watch the infinite wobble unobstructed. The disc is legibility-floored
+    // (a ~6px speck at phone scale otherwise) and the hit rect is finger-sized.
     if (input.outcome.kind === 'win') {
-      const closeR = 13;
-      const ccx = card.x + card.width - 26;
-      const ccy = card.y + 26;
+      const closeR = cpx(13);
+      const ccx = card.x + card.width - closeR - 13;
+      const ccy = card.y + closeR + 13;
       const closeHovered = this.hoveredButton(input.hover) === 'dismiss_win';
       drawCloseButton(this.ctx, ccx, ccy, closeR, card.titleColor, closeHovered);
-      const hit = 20;
+      const hit = closeR + 9;
       this.register('dismiss_win', {
         label: '',
         x: ccx - hit,
@@ -954,18 +971,30 @@ export class Renderer {
     // the position drawOutcomeCard computed. The finite-game / infinite-game
     // distinction is the whole point of the game; this reminds the players
     // what they're really doing every time the AGAIN button appears.
-    this.drawCarseFooter(card.carseY);
+    this.drawCarseFooter(card.carseY, card.x + card.width / 2);
+
+    // The whole WIN card is a drag handle — registered LAST and biggest, so
+    // hoveredButton (first-match in insertion order) lets AGAIN and the ✕ win
+    // over it. A drag that starts on the card body (not a button) moves it.
+    if (input.outcome.kind === 'win') {
+      this.register('win_card', {
+        label: '',
+        x: card.x,
+        y: card.y,
+        width: card.width,
+        height: card.height,
+      });
+    }
   }
 
-  private drawCarseFooter(topY: number): void {
+  private drawCarseFooter(topY: number, centerX: number): void {
     const { ctx } = this;
-    const w = this.layout.canvas.width;
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillStyle = rgba(palette.rose, 0.55);
-    ctx.font = `italic 400 12px ${fonts.serif}`;
-    const lineHeight = 16;
+    ctx.font = `italic 400 ${cpx(12)}px ${fonts.serif}`;
+    const lineHeight = lineHeightFor(12); // compensated text needs a wider advance
     const lines = [
       'Remember, this is just a finite game.',
       'The real infinite game is played for its own sake',
@@ -973,7 +1002,7 @@ export class Renderer {
     ];
     let y = topY;
     for (const line of lines) {
-      ctx.fillText(line, w / 2, y);
+      ctx.fillText(line, centerX, y);
       y += lineHeight;
     }
     ctx.restore();
