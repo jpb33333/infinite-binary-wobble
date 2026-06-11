@@ -29,6 +29,12 @@ public enum DebugBridgeUIWiring {
     public static func installAll() {
         ScreenshotBridge.resolver = { ScreenshotBridgeImpl.capturePNG() }
         ElementsBridge.resolver = { ElementsBridgeImpl.snapshot() }
+        // NOTE: this app deliberately RE-OVERRIDES MutationBridge.resolver in
+        // DebugBridgeBootstrap to route tap/swipe straight into GameModel —
+        // synthesized touches (MutationBridgeImpl → DebugBridgeTouch) never
+        // reach SwiftUI's gesture environment on iOS 26. The screenshot +
+        // elements resolvers above stay live; only the mutation path is
+        // superseded. MutationBridgeImpl is kept as the upstream fallback.
         MutationBridge.resolver = { op, payload in MutationBridgeImpl.dispatch(op: op, payload: payload) }
     }
 }
