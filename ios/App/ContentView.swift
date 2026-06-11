@@ -9,7 +9,7 @@ import WobblePhysics
 //   2. design space (contain-fit) — court, stars, trails, HUD, cards, bursts
 //   3. screen space again — ambient motes on top
 struct ContentView: View {
-  @StateObject private var model = GameModel()
+  @State private var model = GameModel()
 
   var body: some View {
     GeometryReader { geo in
@@ -24,7 +24,12 @@ struct ContentView: View {
       }
       .background(Palette.voidDeep.ignoresSafeArea())
       .gesture(dragGesture)
-      .onAppear { model.viewResized(to: geo.size) }
+      .onAppear {
+        model.viewResized(to: geo.size)
+        #if DEBUG
+        DebugBridgeBootstrap.installOnce(model: model)
+        #endif
+      }
       .onChange(of: geo.size) { _, newSize in model.viewResized(to: newSize) }
       .statusBarHidden(true)
       .persistentSystemOverlays(.hidden)
