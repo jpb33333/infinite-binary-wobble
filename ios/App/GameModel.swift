@@ -104,6 +104,11 @@ final class GameModel: ObservableObject {
     // doesn't rotate the player's intent. Mid-sim needs no remap: bodies are
     // absolute and the camera re-centres the barycenter every frame.
     activeDrag = nil
+    // A WIN card dragged in the old orientation carries an offset clamped to
+    // the OLD canvas; reapplied to the transposed canvas it can strand the
+    // card off-screen until the next touch. Recenter it on the flip (caught
+    // by /ship review). clampedCardOffset re-derives bounds in the new space.
+    winCardOffset = clampedCardOffset(winCardOffset)
     remap(&specs.p1, from: old, to: newLayout)
     remap(&specs.p2, from: old, to: newLayout)
   }
