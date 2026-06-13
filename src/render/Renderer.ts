@@ -7,6 +7,7 @@ import {
   starCountForViewport,
   type StarSpec,
 } from './starfield.ts';
+import { drawComet } from './comet.ts';
 import { computeFit, type Fit } from './fit.ts';
 import { drawCourt } from './court.ts';
 import { drawStar, dimmed, STYLE_P1, STYLE_P2, type StarStyle } from './star.ts';
@@ -245,8 +246,9 @@ export class Renderer {
     // scaled by DPR only — no fit transform), so the atmosphere bleeds to
     // every edge regardless of the letterbox.
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    // Frozen twinkle phase + no drifting motes under reduced motion.
+    // Frozen twinkle phase + no comet + no drifting motes under reduced motion.
     drawStarfield(ctx, this.starfield, this.reducedMotion ? 0 : input.time, this.viewW, this.viewH);
+    if (!this.reducedMotion) drawComet(ctx, input.time, this.viewW, this.viewH);
     if (!this.reducedMotion) this.ambientLayer.ambient(this.viewW, this.viewH, input.dt);
 
     // ── Scene (design space via the contain-fit transform) ──
