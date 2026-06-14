@@ -48,6 +48,11 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   ships — the paywall is unreachable while the backend is dark.)
 
 ### Changed
+- **The homepage footer dropped its personal dedication and the studio name is
+  now Gamerboygirl Gaming.** The title screen previously carried a "For Natalia /
+  From JP" couplet above the copyright; the footer is now just the copyright
+  line, which reads **© Gamerboygirl Gaming 2026** (the LICENSE copyright holder
+  changed to match, superseding the earlier Carousella Gaming name).
 - **The "what is a binary star?" explainer link moved from the top-right
   corner to centred just above the BEGIN button** — where a curious
   first-timer is already looking, and in the thumb zone on phones. Same quiet
