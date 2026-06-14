@@ -4,11 +4,11 @@
 > the explainer card, no About screen) — this is the final copy waiting for
 > that view. Notes: the bundled fonts + `FontLicenses.txt` it relies on now
 > live at `ios/App/Resources/`. The copyright identity was **decided
-> 2026-06-10: Carousella Gaming** — when this screen is built, render the
-> copyright line as "© 2026 Carousella Gaming. All rights reserved." instead
+> 2026-06-10: Gamerboygirl Gaming** — when this screen is built, render the
+> copyright line as "© 2026 Gamerboygirl Gaming. All rights reserved." instead
 > of the "J.P. Bowditch" wording pinned verbatim below (the LICENSE and the
-> live footer already say Carousella; see
-> `docs/plans/carousella-copyright.md`).
+> live footer already say Gamerboygirl; see
+> `docs/plans/gamerboygirl-copyright.md`).
 
 ---
 

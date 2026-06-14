@@ -1,6 +1,6 @@
-# Carousella Gaming — making the copyright real
+# Gamerboygirl Gaming — making the copyright real
 
-_Decided 2026-06-10: **Carousella Gaming** is the company building Infinite
+_Decided 2026-06-10: **Gamerboygirl Gaming** is the company building Infinite
 Binary Wobble and the copyright holder on everything it ships. The notices in
 this repo now say so consistently (LICENSE, the live footer, the future iOS
 About screen). This file is the practical checklist for making that legally
@@ -13,22 +13,22 @@ is a short session with a small-business attorney before the first sale._
   is copyrighted (Berne Convention) — no registration needed for the right to
   exist. Registration (step 3) only strengthens *enforcement*.
 - **The notices are consistent** as of this commit: `LICENSE` says
-  "Copyright (c) 2026 Carousella Gaming", the site footer says
-  "© Carousella Gaming 2026", and `docs/ios/ABOUT-SCREEN.md` directs the
+  "Copyright (c) 2026 Gamerboygirl Gaming", the site footer says
+  "© Gamerboygirl Gaming 2026", and `docs/ios/ABOUT-SCREEN.md` directs the
   future About screen to match.
 - **Third-party assets are compliant**: Cardo + Inter ship under SIL OFL with
   full license text + per-file SHA-256 provenance
   (`ios/App/Resources/FontLicenses.txt`); the About screen carries the credit
   line. Nothing else in the tree is third-party.
 
-## Step 1 — make Carousella Gaming a legal person (before charging money)
+## Step 1 — make Gamerboygirl Gaming a legal person (before charging money)
 
 A name can't own copyright; a person or legal entity can. Two routes:
 
 | | **Single-member LLC** (recommended) | **Sole proprietor + DBA** |
 |---|---|---|
-| What it is | "Carousella Gaming LLC", a real entity | You, trading as "Carousella Gaming" |
-| Copyright vests in | the LLC | JP personally (d/b/a Carousella) |
+| What it is | "Gamerboygirl Gaming LLC", a real entity | You, trading as "Gamerboygirl Gaming" |
+| Copyright vests in | the LLC | JP personally (d/b/a Gamerboygirl) |
 | Liability shield | yes — matters once strangers pay you | none |
 | Cost/effort | state filing fee (~$50–$500 by state, some states add a publication step) + free EIN from the IRS | county/state DBA filing, usually < $100 |
 
@@ -42,7 +42,7 @@ day one, not migrated later.
 Everything written so far was authored by JP personally (the entity didn't
 exist). Once the LLC exists, sign a **one-page IP assignment**: JP assigns all
 right, title, and interest in the Infinite Binary Wobble code, art, and copy
-(identify the repos + date range) to Carousella Gaming LLC. Date it, both
+(identify the repos + date range) to Gamerboygirl Gaming LLC. Date it, both
 "parties" sign (yes, you sign twice), keep it with the company records. This
 is the piece people skip and regret in diligence later.
 
@@ -60,28 +60,28 @@ fees** in US enforcement — without it you can only chase actual damages.
   registration covering the game as shipped is enough to start; re-register
   on major versions if it ever matters.
 
-## Step 4 — Apple: publish AS Carousella Gaming
+## Step 4 — Apple: publish AS Gamerboygirl Gaming
 
 The App Store **seller name** comes from the developer account type:
 
 - **Personal enrollment** → apps appear under "JP Bowditch". Cannot be
   rebranded per-app.
-- **Organization enrollment** → apps appear under "Carousella Gaming". Needs:
+- **Organization enrollment** → apps appear under "Gamerboygirl Gaming". Needs:
   the legal entity (step 1), a **D-U-N-S number** (free from Dun & Bradstreet,
   allow days–weeks), and authority to bind the company.
 
 Decide **before** the first App Store submission — switching account types
 later is painful. Also set the App Store Connect per-app copyright field to
-`2026 Carousella Gaming`. (V1-LOCK's checklist mechanics still apply;
+`2026 Gamerboygirl Gaming`. (V1-LOCK's checklist mechanics still apply;
 its "© J.P. Bowditch" values are superseded.)
 
 ## Step 5 — names and the trademark lane (separate from copyright)
 
-Copyright covers the code/art; the **names** "Carousella Gaming" and
+Copyright covers the code/art; the **names** "Gamerboygirl Gaming" and
 "Infinite Binary Wobble" are trademark territory:
 
 - Now (free/cheap): search USPTO's trademark database for conflicts on both
-  names; register the **carousella domain** you want anyway — ROADMAP Phase A
+  names; register the **gamerboygirl domain** you want anyway — ROADMAP Phase A
   needs a custom domain for the API and site fronting, so one purchase serves
   both purposes. Use ™ informally if you like (no filing needed).
 - Later (once revenue is real): a USPTO application is ~$250–$350 per class;
@@ -90,7 +90,7 @@ Copyright covers the code/art; the **names** "Carousella Gaming" and
 
 ## Open, deliberately deferred
 
-- **MIT vs proprietary.** The repo is private and stays MIT with Carousella
+- **MIT vs proprietary.** The repo is private and stays MIT with Gamerboygirl
   as holder. MIT only governs the code *if distributed* — selling access to
   the hosted game and the App Store app is unaffected. Revisit only if the
   repo is ever opened or takes outside contributions.
@@ -99,7 +99,7 @@ Copyright covers the code/art; the **names** "Carousella Gaming" and
 
 ## Order of operations (condensed)
 
-1. Form Carousella Gaming LLC + EIN + bank account *(before taking money)*
+1. Form Gamerboygirl Gaming LLC + EIN + bank account *(before taking money)*
 2. Sign the JP → LLC IP assignment *(same week as 1)*
 3. D-U-N-S number → Apple Developer **organization** enrollment *(before App
    Store submission; D-U-N-S takes days–weeks, start early)*

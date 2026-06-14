@@ -108,7 +108,7 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   About-screen copy is flagged to use it when that screen is built. The
   practical to-company checklist (LLC, IP assignment, Copyright Office
   registration, Apple organization enrollment, trademark lane) lives in
-  `docs/plans/carousella-copyright.md`.
+  `docs/plans/gamerboygirl-copyright.md`.
 - **Golden-fixture exporter writes both copies, with guardrails.**
   `npm run export:fixtures` now emits identical fixtures to `tests/fixtures/`
   *and* `ios/WobblePhysics/Tests/WobblePhysicsTests/Fixtures/` (the copy the

@@ -6,7 +6,7 @@
 > superseded standalone V1 only; where this document conflicts with the code
 > in `ios/`, **the code is current**. Known divergences:
 > - **Bundle id:** pins `com.jpbowditch.InfiniteBinaryWobble`; the in-repo app
->   uses `com.carousella.infinitebinarywobble` (`ios/project.yml`).
+>   uses `com.gamerboygirl.infinitebinarywobble` (`ios/project.yml`).
 > - **Orientation:** pins landscape-only; the in-repo app ships portrait AND
 >   landscape (stacked-courts portrait layout).
 > - **Stats:** pins UserDefaults persistence (to seed the v1.1 meter); the
