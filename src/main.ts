@@ -37,7 +37,7 @@ const dedication = document.createElement('footer');
 dedication.className = 'dedication';
 const copyright = document.createElement('p');
 copyright.className = 'dedication__copyright';
-copyright.textContent = '© Gameboygirl Gaming 2026';
+copyright.textContent = '© Gamerboygirl Gaming 2026';
 dedication.append(copyright);
 document.body.append(dedication);
 
