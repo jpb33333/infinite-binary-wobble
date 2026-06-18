@@ -41,6 +41,7 @@ import {
   type CanvasButton,
 } from './overlay.ts';
 import { bodyRadius } from '../physics/Body.ts';
+import { showsCornerAgain } from './cornerControls.ts';
 import type { Body } from '../physics/Body.ts';
 import type { Simulation } from '../physics/Simulation.ts';
 import type { OutcomeClassifier, Outcome } from '../game/outcomes.ts';
@@ -1118,9 +1119,13 @@ export class Renderer {
     this.register('to_title', exitBtn);
 
     if (
-      input.state === 'resolved' &&
-      ((input.unravel && !input.sandboxOutcome) ||
-        (input.outcome?.kind === 'win' && input.winCardDismissed))
+      showsCornerAgain({
+        state: input.state,
+        sandboxOutcome: input.sandboxOutcome,
+        unravel: !!input.unravel,
+        outcomeKind: input.outcome?.kind ?? null,
+        winCardDismissed: input.winCardDismissed,
+      })
     ) {
       const againW = 110;
       const againBtn: CanvasButton = {
