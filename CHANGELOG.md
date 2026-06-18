@@ -16,7 +16,9 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   streak crosses the sky roughly every 24 seconds for a few seconds, then it's
   empty sky again — a little life in the void, on the title screen and during
   play alike. It rides the same screen-space atmosphere layer as the starfield
-  and freezes (with the twinkle and stardust) under reduced motion.
+  and freezes (with the twinkle and stardust) under reduced motion. Now on iOS
+  as well, ported bit-for-bit so the Swift sky shows the same comet at the same
+  moments.
 
 ### Fixed
 - **Text is legible on phones** — on the web game and the iOS app alike. Both
@@ -64,6 +66,20 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   gentle (each star swayed 20–100% of its brightness); it now breathes more
   visibly (10–100%) without any star blinking fully out. Still frozen under
   reduced motion.
+- **The iOS app caught up to the web game's explainer.** The in-app "binary
+  stars" explainer gained the same line the web copy did ("…to an astronomer,
+  a binary star is a wobble of light."), and the "what is a binary star?" link
+  reads bigger (15→18px). iOS keeps the link top-right of the title rather than
+  centring it above BEGIN like the web does.
+- **The iOS render pass moved out of the SwiftUI view into a `GameRenderer`** —
+  the Swift analogue of the web `Renderer`. ContentView is back to owning just
+  the model, the canvas, and the drag gesture; the tappable-button registry is
+  now built and committed once per frame instead of mutated mid-draw. No
+  behavioural change.
+- **The iOS bundle identifier is now `com.bowditch.infinitebinarywobble`**
+  (was `com.carousella.*`), finishing the Bowditch Gaming rename before the
+  first App Store submission — the bundle id is permanent once an app record
+  exists.
 
 ### For contributors
 - **Live-device iOS QA harness** (`ios/DebugBridge/`, `/ios-qa`): a debug-only
