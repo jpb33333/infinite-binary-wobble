@@ -8,9 +8,9 @@
 >   old 100 default; `FREE_PLAY_LIMIT = "200"` in `api-worker/wrangler.toml`.
 >   Best-effort by design: a determined web player re-earning plays
 >   (cookie clear / new device) is accepted.
-> - **Copyright holder: Gamerboygirl Gaming** (the company building the game) —
+> - **Copyright holder: Bowditch Gaming** (the company building the game) —
 >   supersedes this doc's "© JP Bowditch 2026"; matches the live footer and
->   now the LICENSE line. See `docs/plans/gamerboygirl-copyright.md`.
+>   now the LICENSE line. See `docs/plans/bowditch-copyright.md`.
 > Also note: the Seeds bullet quotes the dedication as "A love letter to
 > Natalia" where the shipped footer reads "For Natalia / From JP".
 

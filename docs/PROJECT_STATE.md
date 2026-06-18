@@ -114,7 +114,7 @@ Dependency graph: `Vec2` (leaf) ← `Body`; `gravity`←`Body`; `integrator`←`
 
 | File | Role |
 |---|---|
-| `main.ts` | Entry point: iframe frame-buster, `#stage` canvas lookup, the DOM copyright footer ("© Gamerboygirl Gaming 2026", title screen only), boots `Game`. |
+| `main.ts` | Entry point: iframe frame-buster, `#stage` canvas lookup, the DOM copyright footer ("© Bowditch Gaming 2026", title screen only), boots `Game`. |
 | `theme.ts` | `palette`, `fonts`, `rgba()`, `blendHex()`. The single source of color. |
 | `utils/clamp.ts` | `clamp(value, min, max)`. |
 | `style.css` | Global styles, `@font-face`, `#stage` sizing (`100dvh` for iOS Safari's collapsing toolbar), the dedication/noscript/iframe-refusal styles, `touch-action: none`. Portrait is **playable** (stacked courts) — the old "rotate your phone" prompt is gone. (`prefers-reduced-motion` is honored in `Renderer.ts` via a live `matchMedia` listener, not CSS.) |
@@ -298,7 +298,7 @@ Toolchain: `typescript ~6.0.2`, `vite ^8.0.16`, `vitest ^4.1.8`; zero runtime de
 
 ## 9. Version & changelog state
 
-`package.json` is at **`0.5.0`**, matching the dated **`0.5.0`** section in `CHANGELOG.md` (metering integrity + PR CI gate + iOS asset harvest + the 200-free-plays and Gamerboygirl Gaming decisions), above `0.4.0` (portrait mode, PWA install, the native iOS app, softened-energy fix) and the earlier sections. The rule that keeps them honest: cut a dated changelog section and bump the manifest in the **same** change so they never diverge.
+`package.json` is at **`0.5.0`**, matching the dated **`0.5.0`** section in `CHANGELOG.md` (metering integrity + PR CI gate + iOS asset harvest + the 200-free-plays and Bowditch Gaming decisions), above `0.4.0` (portrait mode, PWA install, the native iOS app, softened-energy fix) and the earlier sections. The rule that keeps them honest: cut a dated changelog section and bump the manifest in the **same** change so they never diverge.
 
 ---
 
@@ -329,4 +329,4 @@ What's actually next, in order (see `ROADMAP.md` for the sequenced version):
 1. **Phase 0 provisioning** — the only blocker for everything monetization: Cloudflare account + custom domain, Stripe, Turnstile, Apple keys. Human-only.
 2. **Phases A–C** — front the site, deploy `api-worker/`, wire web metering end-to-end (200 free plays → Stripe pay-what-you-want).
 3. **iOS commerce** (Phases E/F) — StoreKit 2 + App Attest in the app; their server verifications in the Worker (currently fail-closed stubs).
-4. **App Store track** — Apple **organization** enrollment (needs the Gamerboygirl Gaming entity + D-U-N-S — see `docs/plans/gamerboygirl-copyright.md`), privacy-label update when metering ships, TestFlight, submit. The harvested `docs/ios/ROADMAP-IOS.md` carries the product direction beyond V1 (saved/sent wobbles).
+4. **App Store track** — Apple **organization** enrollment (needs the Bowditch Gaming entity + D-U-N-S — see `docs/plans/bowditch-copyright.md`), privacy-label update when metering ships, TestFlight, submit. The harvested `docs/ios/ROADMAP-IOS.md` carries the product direction beyond V1 (saved/sent wobbles).
