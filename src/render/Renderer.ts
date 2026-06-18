@@ -83,7 +83,7 @@ export interface RenderInput {
   // unravel eases out below 1 to keep the whole spreading system in frame).
   cameraZoom: number;
   // How the sandbox failed, or null while it runs. Drives the game-over card.
-  sandboxOutcome: 'collapse' | 'extinction' | null;
+  sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null;
   // Per-session scoreboard rendered on the title screen and (briefly) above
   // the AGAIN button on each resolve. The Game owns the cookie; the Renderer
   // just paints the summary.
@@ -116,6 +116,10 @@ export interface RenderInput {
 // Earth's drawn radius (fixed — it's a planet, far lighter than any star, so
 // its mass-radius would be a 2px speck).
 const EARTH_DRAW_R = 5;
+// Floor on a body's on-screen radius in the unravel, so nothing shrinks to a
+// sub-pixel dot when the camera is zoomed all the way out (4×) to follow a
+// slingshot. Applied in screen px, converted to world units by the live zoom.
+const MIN_UNRAVEL_SCREEN_R = 3;
 
 // Pseudo-3D depth: the viewer sits VIEW_DIST in front of the z = 0 plane. A body
 // nearer the viewer (z > 0) draws bigger + brighter; farther (z < 0) smaller +
@@ -709,10 +713,16 @@ export class Renderer {
         })),
       ];
       drawables.sort((a, b) => a.z - b.z); // far (low z) first → near drawn on top
+      // Keep every body at least MIN_UNRAVEL_SCREEN_R px on screen even when the
+      // camera pulls all the way back, so a slingshot Earth stays visible (not a
+      // sub-pixel dot) right out to the ejection boundary. The draw is inside the
+      // cz-scaled transform, so divide the screen floor by cz to get world units.
+      const cz = input.cameraZoom;
       for (const d of drawables) {
         const ds = depthScale(d.z);
         const style = { ...d.style, haloAlpha: d.style.haloAlpha * Math.min(1.3, Math.max(0.5, ds)) };
-        drawStar(ctx, d.x, d.y, d.r * ds, style, input.time);
+        const r = Math.max(d.r * ds, MIN_UNRAVEL_SCREEN_R / cz);
+        drawStar(ctx, d.x, d.y, r, style, input.time);
       }
     } else {
       if (input.sim) this.drawPredictedOrbits(input.sim);

@@ -12,6 +12,7 @@ import type { Body } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
 import { EarthState } from './earth.ts';
+import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
 import { palette, lineHeightFor } from '../theme.ts';
@@ -21,17 +22,10 @@ const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
 const EARTH_MASS = 0.02; // a planet — feels the suns, barely tugs them back
 const EARTH_ORBIT = 850; // px from the barycenter where a planet is dropped in
-// Soft leash: past this distance from the suns' barycenter a planet gets an
-// inward nudge so a slingshot returns fast enough to watch (a gentle fake —
-// real gravity alone can fling it away for ages). Tuned by feel.
-const PLANET_LEASH = 1300;
-const LEASH_ACCEL = 500; // px/s² inward beyond the leash (≈8× the suns' pull there)
-// Dynamic camera zoom for the unravel: ease out to keep the whole spreading
-// system in frame so trajectories read as a whole. The two-body game stays at
-// zoom 1 (its orbit is bounded and the view is play-tuned).
-const CAMERA_MIN_ZOOM = 0.3; // furthest the camera pulls back (≈3× wider view)
-const CAMERA_MARGIN = 0.8; // fraction of the short axis the system fills
-const CAMERA_EASE = 2.5; // zoom easing rate, per second (smooth, not jumpy)
+// Dynamic camera zoom + the planet-ejection boundary live in ./camera.ts (pure,
+// shared, unit-tested). There is no leash any more: real gravity is allowed to
+// slingshot a planet out, and a planet flung past planetEjectRadius — the edge
+// of the most-zoomed-out view — is lost to the dark (an ejection game-over).
 // The sandbox can be LOST: it collapses into a black hole when the stars all
 // fall together (≤1 left), or humanity goes extinct if every planet stays dead
 // this long (civilizations get a grace window to reboot first).
@@ -75,7 +69,7 @@ export class Game {
   private cameraZoom = 1;
   // How the sandbox finally fails (null while it's still running): the system
   // collapses to a black hole, or every civilization dies out.
-  private sandboxOutcome: 'collapse' | 'extinction' | null = null;
+  private sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null = null;
   private extinctionTimer = 0;
 
   private hover: { x: number; y: number } | null = null;
@@ -661,23 +655,37 @@ export class Game {
     if (this.earths.length > 0) {
       const planets = new Set(this.earths.map(e => e.body));
       const suns = this.nbody.bodies.filter(b => !planets.has(b));
-      const com = this.systemCOM();
       for (const earth of this.earths) {
         earth.update(dt, suns);
-        this.leashPlanet(earth.body, com, dt);
         earth.trail.push(earth.body.pos.x, earth.body.pos.y);
       }
     }
     this.checkSandboxOutcome(dt);
   }
 
-  // The sandbox fails in two ways. COLLAPSE: the stars all fall together (≤ 1
-  // left — they have merged, or detonated to nothing) → a black hole, universe
-  // over. EXTINCTION: planets exist but every one has been dead longer than the
-  // grace window (civilizations get a chance to reboot first).
+  // The sandbox fails in three ways. EJECTION: a planet is slingshot past the
+  // edge of the most-zoomed-out view (planetEjectRadius) → lost to the dark.
+  // COLLAPSE: the stars all fall together (≤ 1 left — merged, or detonated to
+  // nothing) → a black hole, universe over. EXTINCTION: planets exist but every
+  // one has been dead longer than the grace window (civilizations get a chance to
+  // reboot first).
   private checkSandboxOutcome(dt: number): void {
     if (!this.nbody || this.sandboxOutcome) return;
     const planets = new Set(this.earths.map(e => e.body));
+    // EJECTION: any planet flung past the camera's furthest pull-back. Measured
+    // from the same barycenter the camera zoom fits around, so at the instant of
+    // loss the planet sits right at the readable edge of the frame.
+    if (this.earths.length > 0) {
+      const com = this.systemCOM();
+      const { width: w, height: h } = this.renderer.layout.canvas;
+      const ejectR = planetEjectRadius(Math.min(w, h));
+      for (const e of this.earths) {
+        if (Math.hypot(e.body.pos.x - com.x, e.body.pos.y - com.y) > ejectR) {
+          this.sandboxOutcome = 'ejection';
+          return;
+        }
+      }
+    }
     const starCount = this.nbody.bodies.filter(b => !planets.has(b)).length;
     if (starCount <= 1) {
       this.sandboxOutcome = 'collapse';
@@ -691,18 +699,6 @@ export class Game {
     }
   }
 
-  // Soft leash: beyond PLANET_LEASH from the barycenter, add an inward nudge so
-  // a slingshot returns fast enough to stay watchable (a gentle fake on top of
-  // real gravity).
-  private leashPlanet(body: Body, com: { x: number; y: number }, dt: number): void {
-    const dx = com.x - body.pos.x;
-    const dy = com.y - body.pos.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist <= PLANET_LEASH || dist < 1e-6) return;
-    const inv = 1 / dist;
-    body.vel.x += dx * inv * LEASH_ACCEL * dt;
-    body.vel.y += dy * inv * LEASH_ACCEL * dt;
-  }
 
   // A collision fused two stars. Retire the consumed tracks, give the merged
   // star a fresh track, and fire a transient flash at the merger point. The
@@ -916,7 +912,7 @@ export class Game {
         if (d > maxExtent) maxExtent = d;
       }
       const { width: w, height: h } = this.renderer.layout.canvas;
-      const fitRadius = (Math.min(w, h) / 2) * CAMERA_MARGIN;
+      const fitRadius = cameraFitRadius(Math.min(w, h));
       const fit = maxExtent > 1 ? fitRadius / maxExtent : 1;
       target = Math.max(CAMERA_MIN_ZOOM, Math.min(1, fit));
     }

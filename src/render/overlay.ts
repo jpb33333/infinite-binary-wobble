@@ -482,7 +482,7 @@ export function drawEarthStatus(
 // every civilization died out. Centered + dimmed; returns the AGAIN anchor.
 export function drawSandboxOver(
   ctx: CanvasRenderingContext2D,
-  outcome: 'collapse' | 'extinction',
+  outcome: 'collapse' | 'extinction' | 'ejection',
   w: number,
   h: number,
 ): { titleColor: string; buttonY: number; x: number; y: number; width: number; height: number } {
@@ -492,11 +492,18 @@ export function drawSandboxOver(
   ctx.restore();
 
   const titleColor = palette.danger;
-  const title = outcome === 'collapse' ? 'The universe collapsed.' : 'Humanity is extinct.';
+  const title =
+    outcome === 'collapse'
+      ? 'The universe collapsed.'
+      : outcome === 'extinction'
+        ? 'Humanity is extinct.'
+        : 'Lost to the dark.';
   const body =
     outcome === 'collapse'
       ? 'The stars all fell together — a black hole, and everything with it.'
-      : 'Every civilization is ash. No one is left to watch the sky.';
+      : outcome === 'extinction'
+        ? 'Every civilization is ash. No one is left to watch the sky.'
+        : 'A close pass flung your world out of the system — into the endless cold.';
 
   const cardW = 660;
   const cardH = 236;
