@@ -31,6 +31,7 @@ import {
   drawButton,
   drawTooltip,
   drawOutcomeCard,
+  drawSandboxOver,
   drawStarTooltip,
   drawEarthTooltip,
   drawEarthStatus,
@@ -79,6 +80,11 @@ export interface RenderInput {
   // watch-forever instead of getting clipped off the edge. null in non-sim
   // states (no offset needed).
   cameraOffset: { x: number; y: number } | null;
+  // Camera zoom about the barycenter (1 = the two-body game's fixed view; the
+  // unravel eases out below 1 to keep the whole spreading system in frame).
+  cameraZoom: number;
+  // How the sandbox failed, or null while it runs. Drives the game-over card.
+  sandboxOutcome: 'collapse' | 'extinction' | null;
   // Per-session scoreboard rendered on the title screen and (briefly) above
   // the AGAIN button on each resolve. The Game owns the cookie; the Renderer
   // just paints the summary.
@@ -665,7 +671,12 @@ export class Renderer {
     // The court, starfield and HUD stay canvas-fixed.
     ctx.save();
     if (input.cameraOffset) {
-      ctx.translate(input.cameraOffset.x, input.cameraOffset.y);
+      // Barycenter follow + zoom about the canvas centre: world point P draws at
+      // centre + (P − COM)·zoom. With zoom = 1 this is exactly the old translate.
+      const cz = input.cameraZoom;
+      ctx.translate(w / 2, h / 2);
+      ctx.scale(cz, cz);
+      ctx.translate(input.cameraOffset.x - w / 2, input.cameraOffset.y - h / 2);
     }
 
     if (input.unravel) {
@@ -775,46 +786,49 @@ export class Renderer {
   private drawHoveredStarTooltip(input: RenderInput): void {
     if (!input.hover || this.hoveredButton(input.hover)) return;
     const cam = input.cameraOffset ?? { x: 0, y: 0 };
+    const z = input.cameraZoom;
+    const cx = this.layout.canvas.width / 2;
+    const cy = this.layout.canvas.height / 2;
+    // Project a world point to screen exactly as the camera transform does
+    // (barycenter follow + zoom), so the hit-test matches what's drawn.
+    const projX = (wx: number): number => cx + (wx + cam.x - cx) * z;
+    const projY = (wy: number): number => cy + (wy + cam.y - cy) * z;
+    const HOVER_PAD = 12;
 
     // Planets first — their tooltip is the Trisolaris readout, not a star class.
     for (const e of input.earths) {
-      const ex = e.body.pos.x + cam.x;
-      const ey = e.body.pos.y + cam.y;
-      if (Math.hypot(input.hover.x - ex, input.hover.y - ey) <= EARTH_DRAW_R + 14) {
-        const placement = ey - EARTH_DRAW_R < 120 ? 'below' : 'above';
-        drawEarthTooltip(
-          this.ctx,
-          e,
-          ex,
-          placement === 'above' ? ey - EARTH_DRAW_R : ey + EARTH_DRAW_R,
-          placement,
-        );
+      const ex = projX(e.body.pos.x);
+      const ey = projY(e.body.pos.y);
+      const r = EARTH_DRAW_R * depthScale(e.body.z) * z;
+      if (Math.hypot(input.hover.x - ex, input.hover.y - ey) <= r + HOVER_PAD) {
+        const placement = ey - r < 120 ? 'below' : 'above';
+        drawEarthTooltip(this.ctx, e, ex, placement === 'above' ? ey - r : ey + r, placement);
         return;
       }
     }
 
-    let candidates: { mass: number; mergedCount: number; x: number; y: number }[] = [];
+    let candidates: { mass: number; mergedCount: number; x: number; y: number; r: number }[] = [];
     if (input.unravel) {
       candidates = input.unravel.map(t => ({
         mass: t.body.mass,
         mergedCount: t.mergedCount,
-        x: t.body.pos.x + cam.x,
-        y: t.body.pos.y + cam.y,
+        x: projX(t.body.pos.x),
+        y: projY(t.body.pos.y),
+        r: bodyRadius(t.body.mass) * depthScale(t.body.z) * z,
       }));
     } else if (input.sim && !input.supernova) {
       candidates = [input.sim.a, input.sim.b].map(b => ({
         mass: b.mass,
         mergedCount: 1,
-        x: b.pos.x + cam.x,
-        y: b.pos.y + cam.y,
+        x: projX(b.pos.x),
+        y: projY(b.pos.y),
+        r: bodyRadius(b.mass) * depthScale(b.z) * z,
       }));
     }
-    const HOVER_PAD = 12;
     for (const c of candidates) {
-      const r = bodyRadius(c.mass);
-      if (Math.hypot(input.hover.x - c.x, input.hover.y - c.y) <= r + HOVER_PAD) {
-        const placement = c.y - r < 120 ? 'below' : 'above';
-        drawStarTooltip(this.ctx, c.mass, c.mergedCount, c.x, placement === 'above' ? c.y - r : c.y + r, placement);
+      if (Math.hypot(input.hover.x - c.x, input.hover.y - c.y) <= c.r + HOVER_PAD) {
+        const placement = c.y - c.r < 120 ? 'below' : 'above';
+        drawStarTooltip(this.ctx, c.mass, c.mergedCount, c.x, placement === 'above' ? c.y - c.r : c.y + c.r, placement);
         return;
       }
     }
@@ -1100,7 +1114,8 @@ export class Renderer {
 
     if (
       input.state === 'resolved' &&
-      (input.unravel || (input.outcome?.kind === 'win' && input.winCardDismissed))
+      ((input.unravel && !input.sandboxOutcome) ||
+        (input.outcome?.kind === 'win' && input.winCardDismissed))
     ) {
       const againW = 110;
       const againBtn: CanvasButton = {
@@ -1120,7 +1135,11 @@ export class Renderer {
     // Top-left sandbox controls — repeatable: keep feeding the problem until it
     // collapses. A star is a disruptor (danger red); a planet is a victim
     // (earth blue) whose civilization rides the chaos.
-    if (input.state === 'resolved' && (input.outcome?.kind === 'win' || input.unravel)) {
+    if (
+      input.state === 'resolved' &&
+      (input.outcome?.kind === 'win' || input.unravel) &&
+      !input.sandboxOutcome
+    ) {
       const sbW = 150;
       const starBtn: CanvasButton = { label: 'Add Star', x: 16, y: top, width: sbW, height: pillH };
       drawButton(ctx, starBtn, { primary: palette.danger, hovered: hoveredName === 'add_star' });
@@ -1147,9 +1166,32 @@ export class Renderer {
 
     if (!input.outcome) return;
 
-    // The three-body unravel runs forever, like the WIN it grew from — no card,
-    // no end. renderSimulate already painted the scene; the EXIT/AGAIN corner
-    // cluster (drawCornerControls) is the way out.
+    // The sandbox failed — collapse (black hole) or extinction. Game-over card.
+    if (input.sandboxOutcome) {
+      const over = drawSandboxOver(
+        this.ctx,
+        input.sandboxOutcome,
+        this.layout.canvas.width,
+        this.layout.canvas.height,
+      );
+      const btn: CanvasButton = {
+        label: 'Again',
+        x: over.x + over.width / 2 - 90,
+        y: over.buttonY,
+        width: 180,
+        height: 44,
+      };
+      drawButton(this.ctx, btn, {
+        primary: over.titleColor,
+        hovered: this.hoveredButton(input.hover) === 'again',
+      });
+      this.register('again', btn);
+      return;
+    }
+
+    // The three-body unravel otherwise runs forever, like the WIN it grew from —
+    // no card; renderSimulate painted the scene + the EXIT/AGAIN corner cluster
+    // (drawCornerControls) is the way out.
     if (input.unravel) return;
 
     // Player tapped the ✕ on a WIN card: leave the wobble unobstructed. The

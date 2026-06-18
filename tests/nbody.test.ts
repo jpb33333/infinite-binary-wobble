@@ -178,4 +178,25 @@ describe('N-body PEFRL conserves the invariants (3 bodies)', () => {
     // Something actually moved out of the z = 0 plane — this is real 3D.
     expect(Math.max(...nb.bodies.map(b => Math.abs(b.z)))).toBeGreaterThan(1);
   });
+
+  test('an over-mass 2-body collision detonates to zero survivors without crashing', () => {
+    // The terminal "everything fell together" case (the Game reads this as a
+    // collapse → black-hole game over). The physics must handle 0 bodies cleanly.
+    const nb = new NBodySimulation(
+      [createBody(5, vec2(-100, 0), vec2(60, 0)), createBody(5, vec2(100, 0), vec2(-60, 0))],
+      PHYSICS.G,
+      PHYSICS.SOFTENING,
+    );
+    let event = null;
+    for (let i = 0; i < 3000 && nb.bodies.length > 0; i++) {
+      const e = nb.step(PHYSICS.DT);
+      if (e) event = e;
+    }
+    expect(event && event.supernova).toBe(true);
+    expect(nb.bodies.length).toBe(0);
+    // Degenerate state is graceful, not a throw / NaN.
+    expect(nb.centerOfMass()).toEqual({ x: 0, y: 0 });
+    expect(nb.energy()).toBe(0);
+    expect(nb.momentum()).toEqual({ x: 0, y: 0, z: 0 });
+  });
 });

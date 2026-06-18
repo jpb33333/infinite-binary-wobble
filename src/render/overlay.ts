@@ -478,6 +478,57 @@ export function drawEarthStatus(
   ctx.restore();
 }
 
+// Game-over card for the sandbox: the system collapsed into a black hole, or
+// every civilization died out. Centered + dimmed; returns the AGAIN anchor.
+export function drawSandboxOver(
+  ctx: CanvasRenderingContext2D,
+  outcome: 'collapse' | 'extinction',
+  w: number,
+  h: number,
+): { titleColor: string; buttonY: number; x: number; y: number; width: number; height: number } {
+  ctx.save();
+  ctx.fillStyle = rgba(palette.voidDeep, 0.72);
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+
+  const titleColor = palette.danger;
+  const title = outcome === 'collapse' ? 'The universe collapsed.' : 'Humanity is extinct.';
+  const body =
+    outcome === 'collapse'
+      ? 'The stars all fell together — a black hole, and everything with it.'
+      : 'Every civilization is ash. No one is left to watch the sky.';
+
+  const cardW = 660;
+  const cardH = 236;
+  const cx = (w - cardW) / 2;
+  const cy = (h - cardH) / 2;
+  const mid = cx + cardW / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  roundedRectPath(ctx, cx, cy, cardW, cardH, 18);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.92);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(titleColor, 0.6);
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = titleColor;
+  ctx.font = `400 44px ${fonts.serif}`;
+  ctx.fillText(title, mid, cy + 74);
+  ctx.fillStyle = palette.rose;
+  ctx.font = `italic 400 ${cpx(18)}px ${fonts.serif}`;
+  ctx.fillText(body, mid, cy + 122);
+  ctx.fillStyle = rgba(palette.cream, 0.55);
+  ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
+  ctx.fillText('The infinite game is only won by playing again.', mid, cy + 150);
+  ctx.restore();
+
+  return { titleColor, buttonY: cy + 172, x: cx, y: cy, width: cardW, height: cardH };
+}
+
 export function drawOutcomeCard(
   ctx: CanvasRenderingContext2D,
   outcome: Outcome,
@@ -667,7 +718,7 @@ const EXPLAINER_BODY: readonly string[] = [
   'Often only one is bright enough to see. It wobbles, tugged by a companion no one can find — to an astronomer, a binary star is a wobble of light.',
   'Neither star leads. Neither follows. Each bends the other’s path — and when the balance is right, the dance holds for billions of years.',
   'When it isn’t, they fall together, or fly apart.',
-  'You are about to be such a pair.',
+  'You are about to be such a pair. But remember — other bodies that enter your system can influence it, and even destabilize it permanently.',
 ];
 
 export function drawExplainerCard(

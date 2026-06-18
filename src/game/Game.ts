@@ -26,6 +26,16 @@ const EARTH_ORBIT = 850; // px from the barycenter where a planet is dropped in
 // real gravity alone can fling it away for ages). Tuned by feel.
 const PLANET_LEASH = 1300;
 const LEASH_ACCEL = 500; // px/s² inward beyond the leash (≈8× the suns' pull there)
+// Dynamic camera zoom for the unravel: ease out to keep the whole spreading
+// system in frame so trajectories read as a whole. The two-body game stays at
+// zoom 1 (its orbit is bounded and the view is play-tuned).
+const CAMERA_MIN_ZOOM = 0.3; // furthest the camera pulls back (≈3× wider view)
+const CAMERA_MARGIN = 0.8; // fraction of the short axis the system fills
+const CAMERA_EASE = 2.5; // zoom easing rate, per second (smooth, not jumpy)
+// The sandbox can be LOST: it collapses into a black hole when the stars all
+// fall together (≤1 left), or humanity goes extinct if every planet stays dead
+// this long (civilizations get a grace window to reboot first).
+const EXTINCTION_GRACE = 6; // seconds
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
 
 export class Game {
@@ -60,6 +70,12 @@ export class Game {
   // climate + civilization. Empty until "Add Planet"; earths[0] is the one the
   // persistent surface panel reads. Reset every fresh round.
   private earths: EarthState[] = [];
+  // Eased camera zoom for the unravel (1 = the two-body game's fixed view).
+  private cameraZoom = 1;
+  // How the sandbox finally fails (null while it's still running): the system
+  // collapses to a black hole, or every civilization dies out.
+  private sandboxOutcome: 'collapse' | 'extinction' | null = null;
+  private extinctionTimer = 0;
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -233,7 +249,10 @@ export class Game {
     // into the stable binary and let the three-body problem take it apart.
     // Open-ended sandbox: keep feeding the problem until it collapses. Both are
     // repeatable, available on a WIN or any time the system is running.
-    const sandboxOpen = this.state === 'resolved' && (this.outcome?.kind === 'win' || this.nbody !== null);
+    const sandboxOpen =
+      this.state === 'resolved' &&
+      (this.outcome?.kind === 'win' || this.nbody !== null) &&
+      !this.sandboxOutcome;
     if (btn === 'add_star' && sandboxOpen) {
       this.addStar();
       return;
@@ -392,6 +411,9 @@ export class Game {
     this.nbody = null;
     this.unravelTracks = [];
     this.earths = [];
+    this.cameraZoom = 1;
+    this.sandboxOutcome = null;
+    this.extinctionTimer = 0;
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -425,6 +447,9 @@ export class Game {
     this.nbody = null;
     this.unravelTracks = [];
     this.earths = [];
+    this.cameraZoom = 1;
+    this.sandboxOutcome = null;
+    this.extinctionTimer = 0;
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -480,6 +505,9 @@ export class Game {
     this.nbody = null;
     this.unravelTracks = [];
     this.earths = [];
+    this.cameraZoom = 1;
+    this.sandboxOutcome = null;
+    this.extinctionTimer = 0;
     this.outcome = null;
     this.burstedOnResolve = false;
     this.simAccum = 0;
@@ -639,6 +667,27 @@ export class Game {
         earth.trail.push(earth.body.pos.x, earth.body.pos.y);
       }
     }
+    this.checkSandboxOutcome(dt);
+  }
+
+  // The sandbox fails in two ways. COLLAPSE: the stars all fall together (≤ 1
+  // left — they have merged, or detonated to nothing) → a black hole, universe
+  // over. EXTINCTION: planets exist but every one has been dead longer than the
+  // grace window (civilizations get a chance to reboot first).
+  private checkSandboxOutcome(dt: number): void {
+    if (!this.nbody || this.sandboxOutcome) return;
+    const planets = new Set(this.earths.map(e => e.body));
+    const starCount = this.nbody.bodies.filter(b => !planets.has(b)).length;
+    if (starCount <= 1) {
+      this.sandboxOutcome = 'collapse';
+      return;
+    }
+    if (this.earths.length > 0 && this.earths.every(e => e.population <= 0.05)) {
+      this.extinctionTimer += dt;
+      if (this.extinctionTimer > EXTINCTION_GRACE) this.sandboxOutcome = 'extinction';
+    } else {
+      this.extinctionTimer = 0;
+    }
   }
 
   // Soft leash: beyond PLANET_LEASH from the barycenter, add an inward nudge so
@@ -787,7 +836,7 @@ export class Game {
         // its trails + merges. It never stops on a collision; merged stars just
         // carry on, watchable as long as the WIN it grew out of.
         if (this.nbody) {
-          this.advanceNBody(dt);
+          if (!this.sandboxOutcome) this.advanceNBody(dt);
           break;
         }
         // For WINs, the wobble keeps going — it really is infinite. Keep the
@@ -848,7 +897,30 @@ export class Game {
           }
         : null,
       cameraOffset: this.computeCameraOffset(),
+      cameraZoom: this.computeCameraZoom(dt),
+      sandboxOutcome: this.sandboxOutcome,
     });
+  }
+
+  // Ease the camera zoom toward whatever fits the whole system in frame. Only
+  // the unravel pulls back (its bodies fling wide); the two-body game holds at
+  // zoom 1. Smoothed so a slingshot doesn't snap the view.
+  private computeCameraZoom(dt: number): number {
+    let target = 1;
+    if (this.nbody && this.state === 'resolved' && this.nbody.bodies.length > 0) {
+      const com = this.systemCOM();
+      let maxExtent = 0;
+      for (const b of this.nbody.bodies) {
+        const d = Math.hypot(b.pos.x - com.x, b.pos.y - com.y);
+        if (d > maxExtent) maxExtent = d;
+      }
+      const { width: w, height: h } = this.renderer.layout.canvas;
+      const fitRadius = (Math.min(w, h) / 2) * CAMERA_MARGIN;
+      const fit = maxExtent > 1 ? fitRadius / maxExtent : 1;
+      target = Math.max(CAMERA_MIN_ZOOM, Math.min(1, fit));
+    }
+    this.cameraZoom += (target - this.cameraZoom) * Math.min(1, dt * CAMERA_EASE);
+    return this.cameraZoom;
   }
 
   // Centre the camera on the barycenter so the orbit stays watchable even
