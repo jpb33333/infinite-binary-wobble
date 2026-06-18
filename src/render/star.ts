@@ -74,16 +74,6 @@ export const STYLE_P2: StarStyle = {
   haloRadiusFactor: 2.6,
 };
 
-// The intruding third star in the post-win three-body unravel. Bright danger
-// red so it reads as the threat that breaks the binary — the one deliberate
-// hot note in the warm field.
-export const STYLE_P3: StarStyle = {
-  primary: palette.danger,
-  core: palette.cream,
-  haloAlpha: 0.95,
-  haloRadiusFactor: 2.8,
-};
-
 // A star added to the sandbox (repeatable "Add Star"). Warm gold so added
 // stars read as their own kind, distinct from the two player stars and the
 // red intruder/merged remnants.

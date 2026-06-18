@@ -1,6 +1,7 @@
 import type { Body } from './Body.ts';
 import { createBody, bodyRadius } from './Body.ts';
 import { vec2 } from './Vec2.ts';
+import { sanitizeMass, sanitizePosComponent, sanitizeVelComponent } from './Simulation.ts';
 
 // A collision event. Below the supernova mass the two stars fuse into one
 // (`supernova: false`, `body` = the fused star, momentum conserved). At or
@@ -21,7 +22,7 @@ export interface MergeEvent {
 // distance (game-feel-tuned, not SI).
 const SUPERNOVA_MASS = 9;
 const BLAST_STRENGTH = 2.0e6;
-const BLAST_VMAX = 500;
+export const BLAST_VMAX = 500;
 // Stars merge only on a genuine DEEP overlap, not a graze — their centres must
 // come within this fraction of the summed radii. Grazing passes slingshot
 // instead, so the three-body chaos lasts far longer before collapsing to a
@@ -182,6 +183,25 @@ export function minPairSeparation(bodies: Body[]): number {
   return min;
 }
 
+// Sanitize a body entering the system to finite, bounded components — the same
+// defence-in-depth the two-body Simulation.create applies at its boundary,
+// extended to the 3D z / vz the unravel adds. Normal play never produces
+// non-finite inputs (every source is either a sanitized two-body Body or a value
+// derived from finite randomness behind a mass>0 guard); this catches a
+// DevTools-mutated Body before one NaN can poison every body through gravity.
+// Idempotent on already-clean values, so re-sanitizing sim.a/sim.b is a no-op
+// and two-body golden parity is untouched.
+function sanitizeBody(body: Body): Body {
+  body.mass = sanitizeMass(body.mass);
+  body.pos.x = sanitizePosComponent(body.pos.x);
+  body.pos.y = sanitizePosComponent(body.pos.y);
+  body.z = sanitizePosComponent(body.z);
+  body.vel.x = sanitizeVelComponent(body.vel.x);
+  body.vel.y = sanitizeVelComponent(body.vel.y);
+  body.vz = sanitizeVelComponent(body.vz);
+  return body;
+}
+
 // Public facade for the three-body unravel — mirrors Simulation's shape
 // (time, primed accel, a per-substep minimum separation) so the Game drives it
 // the same way it drives the two-body Simulation.
@@ -200,6 +220,7 @@ export class NBodySimulation {
   readonly noMerge = new Set<Body>();
 
   constructor(bodies: Body[], G: number, softening: number) {
+    bodies.forEach(sanitizeBody); // finite, bounded boundary (see sanitizeBody)
     this.bodies = bodies;
     this.G = G;
     this.softening = softening;
@@ -222,6 +243,7 @@ export class NBodySimulation {
   // Add a body to the running system (e.g. a planet dropped in mid-unravel). It
   // feels gravity from the next step on; `noMerge` keeps a planet from fusing.
   addBody(body: Body, noMerge = false): void {
+    sanitizeBody(body); // same finite, bounded boundary as the constructor
     this.bodies.push(body);
     if (noMerge) this.noMerge.add(body);
   }

@@ -4,7 +4,7 @@ import { vec2 } from '../src/physics/Vec2.ts';
 import { applyGravity } from '../src/physics/gravity.ts';
 import { Simulation, PHYSICS } from '../src/physics/Simulation.ts';
 import { circularRelativeVelocity } from '../src/physics/orbit.ts';
-import { NBodySimulation, applyGravityN } from '../src/physics/nbody.ts';
+import { NBodySimulation, applyGravityN, BLAST_VMAX } from '../src/physics/nbody.ts';
 
 // The N-body path (src/physics/nbody.ts) powers the post-win three-body
 // unravel. It is additive — the two-body engine is the tested floor + the
@@ -198,5 +198,94 @@ describe('N-body PEFRL conserves the invariants (3 bodies)', () => {
     expect(nb.centerOfMass()).toEqual({ x: 0, y: 0 });
     expect(nb.energy()).toBe(0);
     expect(nb.momentum()).toEqual({ x: 0, y: 0, z: 0 });
+  });
+
+  test('the supernova blast impulse is capped at BLAST_VMAX and falls off with distance', () => {
+    // Two heavy stars start already overlapping, so they merge on the first step
+    // and the witnesses barely move under gravity beforehand: the velocity change
+    // ACROSS the supernova step is then essentially the blast impulse alone (the
+    // clean way to bound it — a witness's *total* speed also carries any
+    // gravitational slingshot, which the cap does not limit). Two light witnesses
+    // (at rest, exempt from merging) sit near and far on the +y axis; the nearer
+    // is flung harder (1/r² falloff) and neither impulse exceeds the cap.
+    const near = createBody(0.5, vec2(0, 70), vec2(0, 0));
+    const far = createBody(0.5, vec2(0, 500), vec2(0, 0));
+    const nb = new NBodySimulation(
+      [createBody(5, vec2(-10, 0), vec2(0, 0)), createBody(5, vec2(10, 0), vec2(0, 0)), near, far],
+      PHYSICS.G,
+      PHYSICS.SOFTENING,
+    );
+    nb.noMerge.add(near);
+    nb.noMerge.add(far);
+    let event = null;
+    let nearDV = 0;
+    let farDV = 0;
+    for (let i = 0; i < 100 && !event; i++) {
+      const nbx = near.vel.x;
+      const nby = near.vel.y;
+      const fbx = far.vel.x;
+      const fby = far.vel.y;
+      const e = nb.step(PHYSICS.DT);
+      if (e) {
+        event = e;
+        nearDV = Math.hypot(near.vel.x - nbx, near.vel.y - nby);
+        farDV = Math.hypot(far.vel.x - fbx, far.vel.y - fby);
+      }
+    }
+    expect(event && event.supernova).toBe(true);
+    expect(nearDV).toBeGreaterThan(farDV); // 1/r² falloff with distance
+    expect(farDV).toBeGreaterThan(10); // the distant witness still felt it
+    expect(nearDV).toBeLessThanOrEqual(BLAST_VMAX + 1e-6); // never exceeds the cap
+  });
+
+  test('a noMerge planet survives a head-on pass through a star (never fuses)', () => {
+    // The Trisolaris planet contract: a planet feels gravity but never merges.
+    // A tiny planet and a star aimed dead at each other overlap and pass through
+    // — the body count stays 2, no merge event fires, and momentum is conserved
+    // across the deep (Plummer-softened) close encounter.
+    const planet = createBody(0.02, vec2(-200, 0), vec2(120, 0));
+    const star = createBody(3, vec2(200, 0), vec2(-30, 0));
+    const nb = new NBodySimulation([star, planet], PHYSICS.G, PHYSICS.SOFTENING);
+    nb.noMerge.add(planet);
+    const p0 = nb.momentum();
+    let merged = null;
+    for (let i = 0; i < 4000; i++) {
+      const e = nb.step(PHYSICS.DT);
+      if (e) merged = e;
+    }
+    expect(merged).toBeNull(); // never fused
+    expect(nb.bodies.length).toBe(2);
+    expect(nb.bodies).toContain(planet); // the planet itself survived
+    const p = nb.momentum();
+    expect(Math.abs(p.x - p0.x)).toBeLessThan(1e-6);
+    expect(Math.abs(p.y - p0.y)).toBeLessThan(1e-6);
+  });
+
+  test('a NaN/Infinity-poisoned body is sanitized at the N-body boundary', () => {
+    // Defence-in-depth parity with the two-body Simulation.create boundary: a
+    // body mutated to non-finite values (e.g. via DevTools) is clamped on entry,
+    // so one NaN can't propagate through gravity and blank the whole field.
+    const good = createBody(2, vec2(-100, 0), vec2(0, 30));
+    const bad = createBody(3, vec2(100, 0), vec2(0, -20));
+    bad.pos.x = NaN;
+    bad.vz = Infinity;
+    const nb = new NBodySimulation([good, bad], PHYSICS.G, PHYSICS.SOFTENING);
+    expect(Number.isFinite(nb.bodies[1].pos.x)).toBe(true);
+    expect(Number.isFinite(nb.bodies[1].vz)).toBe(true);
+    // addBody applies the same guard.
+    const bad2 = createBody(1, vec2(NaN, NaN), vec2(-Infinity, NaN));
+    nb.addBody(bad2);
+    const added = nb.bodies[nb.bodies.length - 1];
+    expect(Number.isFinite(added.pos.x) && Number.isFinite(added.vel.x)).toBe(true);
+    // Stepping never reintroduces a non-finite component.
+    for (let i = 0; i < 200; i++) nb.step(PHYSICS.DT);
+    for (const b of nb.bodies) {
+      expect(Number.isFinite(b.pos.x) && Number.isFinite(b.pos.y) && Number.isFinite(b.z)).toBe(
+        true,
+      );
+      expect(Number.isFinite(b.vel.x) && Number.isFinite(b.vel.y) && Number.isFinite(b.vz)).toBe(
+        true,
+      );
+    }
   });
 });

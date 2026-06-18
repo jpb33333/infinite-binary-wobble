@@ -56,14 +56,15 @@ export class Game {
   // resolved state steps THIS instead of the two-body `sim` (it reuses
   // sim.a/sim.b as its first two bodies, so the binary continues unbroken and
   // p1/p2 trails keep flowing). It runs forever, like the WIN — collisions
-  // merge stars (never stop it). `trail3` seeds the intruder's track.
+  // merge stars (never stop it). Each added body gets its own track in
+  // `unravelTracks`, created as it enters — no fixed slots.
   private nbody: NBodySimulation | null = null;
   // Per-body tracks (trail + render kind) for the unravel. The body count
   // changes as stars merge, so trails follow bodies, not fixed slots.
   private unravelTracks: {
     body: Body;
     trail: Trail;
-    kind: 'p1' | 'p2' | 'p3' | 'star' | 'merged';
+    kind: 'p1' | 'p2' | 'star' | 'merged';
     mergedCount: number; // how many original stars fused into this body (1 = pristine)
   }[] = [];
   // Trisolaris: planets dropped into the (chaotic) system, each with its own

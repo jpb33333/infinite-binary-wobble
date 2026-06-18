@@ -15,7 +15,6 @@ import {
   dimmed,
   STYLE_P1,
   STYLE_P2,
-  STYLE_P3,
   STYLE_STAR,
   STYLE_EARTH,
   type StarStyle,
@@ -867,8 +866,6 @@ export class Renderer {
         return STYLE_P1;
       case 'p2':
         return STYLE_P2;
-      case 'p3':
-        return STYLE_P3;
       case 'star':
         return STYLE_STAR;
       default:
@@ -899,8 +896,6 @@ export class Renderer {
         return palette.player1;
       case 'p2':
         return palette.player2;
-      case 'p3':
-        return palette.danger;
       default:
         return palette.cream;
     }
