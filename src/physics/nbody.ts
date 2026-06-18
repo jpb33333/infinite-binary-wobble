@@ -22,6 +22,11 @@ export interface MergeEvent {
 const SUPERNOVA_MASS = 9;
 const BLAST_STRENGTH = 2.0e6;
 const BLAST_VMAX = 500;
+// Stars merge only on a genuine DEEP overlap, not a graze — their centres must
+// come within this fraction of the summed radii. Grazing passes slingshot
+// instead, so the three-body chaos lasts far longer before collapsing to a
+// stable binary. (1.0 = "surfaces touch"; lower = rarer, more chaotic.)
+const MERGE_OVERLAP = 0.5;
 
 // N-body Plummer-softened gravity + PEFRL, for the post-win "third star"
 // unravel (the three-body problem tearing a stable binary apart).
@@ -223,7 +228,8 @@ export class NBodySimulation {
         if (this.noMerge.has(b[i]) || this.noMerge.has(b[j])) continue; // a planet never fuses
         const dx = b[j].pos.x - b[i].pos.x;
         const dy = b[j].pos.y - b[i].pos.y;
-        if (Math.sqrt(dx * dx + dy * dy) < bodyRadius(b[i].mass) + bodyRadius(b[j].mass)) {
+        const contact = MERGE_OVERLAP * (bodyRadius(b[i].mass) + bodyRadius(b[j].mass));
+        if (Math.sqrt(dx * dx + dy * dy) < contact) {
           const mass = b[i].mass + b[j].mass;
           const x = (b[i].mass * b[i].pos.x + b[j].mass * b[j].pos.x) / mass;
           const y = (b[i].mass * b[i].pos.y + b[j].mass * b[j].pos.y) / mass;
