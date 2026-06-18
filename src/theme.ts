@@ -12,6 +12,13 @@ export const palette = {
   cream: '#FFC89B', // highlights, star cores
   terracotta: '#A3685C', // court lines, secondary UI, orbital trails
   wine: '#6F1D1B', // accent shadows, "unbound" warning text
+  // Bright warning red for the one peril affordance — the "Add 3rd Body"
+  // button + the intruding third star in the post-win three-body unravel. A
+  // deliberate hot break from the warm palette: it MUST read as danger.
+  danger: '#E5392F',
+  // The pale blue dot — Earth, a deliberate cool note among the warm suns
+  // (Trisolaris mode). Muted so it reads as a small distant world, not neon.
+  earth: '#7FB0C9',
 } as const;
 
 export const fonts = {

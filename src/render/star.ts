@@ -74,6 +74,25 @@ export const STYLE_P2: StarStyle = {
   haloRadiusFactor: 2.6,
 };
 
+// A star added to the sandbox (repeatable "Add Star"). Warm gold so added
+// stars read as their own kind, distinct from the two player stars and the
+// red intruder/merged remnants.
+export const STYLE_STAR: StarStyle = {
+  primary: palette.cream,
+  core: palette.cream,
+  haloAlpha: 0.9,
+  haloRadiusFactor: 2.6,
+};
+
+// Earth in Trisolaris mode — a small pale-blue world with a warm-lit core
+// (it's lit by the warm suns). Drawn at a fixed small radius, not by mass.
+export const STYLE_EARTH: StarStyle = {
+  primary: palette.earth,
+  core: palette.cream,
+  haloAlpha: 0.7,
+  haloRadiusFactor: 2.2,
+};
+
 // A dimmed variant used to show the OTHER player's star while one player is
 // in setup — they need to see it but it shouldn't compete for attention.
 export function dimmed(style: StarStyle): StarStyle {

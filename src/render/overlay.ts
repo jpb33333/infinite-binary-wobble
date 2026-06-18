@@ -253,6 +253,289 @@ export function drawTooltip(
   ctx.restore();
 }
 
+// Rough spectral classification by mass + merger history. A star with more
+// than one progenitor is a "blue straggler" — the real name for a star a merger
+// has made hotter and heavier than it has any right to be. Single stars get a
+// mass class (game-unit masses run ~1–5, merged up to ~9 before they detonate).
+function classifyStar(mass: number, mergedCount: number): string {
+  if (mergedCount > 1) return 'Blue straggler';
+  if (mass < 1.5) return 'Red dwarf';
+  if (mass < 2.5) return 'Yellow dwarf';
+  if (mass < 4) return 'White star';
+  if (mass < 6) return 'Blue-white star';
+  return 'Blue giant';
+}
+
+// Inspection tooltip for a star: classification, current mass, and (for a
+// merged star) how many stars fused into it. A small multi-line panel anchored
+// above or below the body.
+export function drawStarTooltip(
+  ctx: CanvasRenderingContext2D,
+  mass: number,
+  mergedCount: number,
+  anchorX: number,
+  anchorY: number,
+  placement: 'above' | 'below' = 'above',
+): void {
+  const title = classifyStar(mass, mergedCount);
+  const sub = [`mass ${mass.toFixed(1)}`];
+  if (mergedCount > 1) sub.push(`forged from ${mergedCount} stars`);
+
+  ctx.save();
+  const titleFont = `600 ${cpx(13)}px ${fonts.sans}`;
+  const subFont = `400 ${cpx(11)}px ${fonts.sans}`;
+  ctx.font = titleFont;
+  let textW = ctx.measureText(title).width;
+  ctx.font = subFont;
+  for (const s of sub) textW = Math.max(textW, ctx.measureText(s).width);
+
+  const padX = 12;
+  const padY = 8;
+  const lineH = lineHeightFor(12);
+  const boxW = textW + padX * 2;
+  const boxH = padY * 2 + lineH * (1 + sub.length);
+  const bx = anchorX - boxW / 2;
+  const by = placement === 'above' ? anchorY - boxH - 10 : anchorY + 10;
+
+  ctx.beginPath();
+  roundedRectPath(ctx, bx, by, boxW, boxH, 8);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.85);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(mergedCount > 1 ? palette.cream : palette.rose, 0.5);
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let ty = by + padY + lineH / 2;
+  ctx.font = titleFont;
+  ctx.fillStyle = palette.cream;
+  ctx.fillText(title, anchorX, ty);
+  ctx.font = subFont;
+  ctx.fillStyle = rgba(palette.rose, 0.85);
+  for (const s of sub) {
+    ty += lineH;
+    ctx.fillText(s, anchorX, ty);
+  }
+  ctx.restore();
+}
+
+// Trisolaris status tooltip for Earth: the era (Stable vs Chaotic), the climate
+// + how turbulent it is for surface dwellers, the surviving population, and
+// which civilization this is (they reboot after every wipe, as in the novel).
+export function drawEarthTooltip(
+  ctx: CanvasRenderingContext2D,
+  info: { population: number; civilizations: number; era: string; chaos: number; stable: boolean },
+  anchorX: number,
+  anchorY: number,
+  placement: 'above' | 'below' = 'above',
+): void {
+  const title = info.stable ? 'Stable Era' : 'Chaotic Era';
+  const climate =
+    info.era === 'scorching'
+      ? 'scorching — the suns crowd the sky'
+      : info.era === 'frozen'
+        ? 'frozen — the suns have fled'
+        : 'temperate';
+  const turbulence =
+    info.chaos < 0.15 ? 'steady skies' : info.chaos < 0.4 ? 'unsettled' : 'violent swings';
+  const pop =
+    info.population <= 0.05 ? 'no survivors' : `${info.population.toFixed(1)}B surviving`;
+  const sub = [climate, turbulence, pop, `Civilization ${info.civilizations}`];
+  const titleColor = info.stable ? palette.cream : palette.danger;
+
+  ctx.save();
+  const titleFont = `600 ${cpx(13)}px ${fonts.sans}`;
+  const subFont = `400 ${cpx(11)}px ${fonts.sans}`;
+  ctx.font = titleFont;
+  let textW = ctx.measureText(title).width;
+  ctx.font = subFont;
+  for (const s of sub) textW = Math.max(textW, ctx.measureText(s).width);
+
+  const padX = 12;
+  const padY = 8;
+  const lineH = lineHeightFor(12);
+  const boxW = textW + padX * 2;
+  const boxH = padY * 2 + lineH * (1 + sub.length);
+  const bx = anchorX - boxW / 2;
+  const by = placement === 'above' ? anchorY - boxH - 10 : anchorY + 10;
+
+  ctx.beginPath();
+  roundedRectPath(ctx, bx, by, boxW, boxH, 8);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.88);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(palette.earth, 0.55);
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let ty = by + padY + lineH / 2;
+  ctx.font = titleFont;
+  ctx.fillStyle = titleColor;
+  ctx.fillText(title, anchorX, ty);
+  ctx.font = subFont;
+  ctx.fillStyle = rgba(palette.cream, 0.85);
+  for (const s of sub) {
+    ty += lineH;
+    ctx.fillText(s, anchorX, ty);
+  }
+  ctx.restore();
+}
+
+function earthSurfaceLine(info: {
+  population: number;
+  era: string;
+  stable: boolean;
+}): string {
+  if (info.population <= 0.05) return 'Lifeless — awaiting the next dawn.';
+  if (info.era === 'scorching') return 'The seas boil; the cities burn.';
+  if (info.era === 'frozen') return 'Ice entombs the last fires.';
+  if (info.stable) return 'A golden age — humanity flourishes.';
+  return 'An uneasy calm; the sky cannot be trusted.';
+}
+
+// Persistent surface readout for a planet, bottom-left — always on (a hover
+// tooltip on a tiny moving dot is invisible). Era, what it's like down there,
+// who's left, and which civilization this is.
+export function drawEarthStatus(
+  ctx: CanvasRenderingContext2D,
+  info: { population: number; civilizations: number; era: string; chaos: number; stable: boolean },
+  _w: number,
+  h: number,
+): void {
+  const eraText = info.stable
+    ? 'Stable Era'
+    : info.era === 'scorching'
+      ? 'Chaotic Era · Scorching'
+      : info.era === 'frozen'
+        ? 'Chaotic Era · Frozen'
+        : 'Chaotic Era';
+  const eraColor = info.stable
+    ? palette.cream
+    : info.era === 'frozen'
+      ? palette.earth
+      : palette.danger;
+  const surface = earthSurfaceLine(info);
+  const stat =
+    info.population <= 0.05
+      ? `No survivors · Civilization ${info.civilizations}`
+      : `${info.population.toFixed(1)}B surviving · Civilization ${info.civilizations}`;
+
+  ctx.save();
+  const labelFont = `600 ${cpx(11)}px ${fonts.sans}`;
+  const eraFont = `400 ${cpx(20)}px ${fonts.serif}`;
+  const surfFont = `italic 400 ${cpx(14)}px ${fonts.serif}`;
+  const statFont = `500 ${cpx(11)}px ${fonts.sans}`;
+  const lhLabel = lineHeightFor(11);
+  const lhEra = lineHeightFor(20);
+  const lhSurf = lineHeightFor(14);
+  const lhStat = lineHeightFor(11);
+
+  ctx.font = labelFont;
+  let textW = ctx.measureText('EARTH').width;
+  ctx.font = eraFont;
+  textW = Math.max(textW, ctx.measureText(eraText).width);
+  ctx.font = surfFont;
+  textW = Math.max(textW, ctx.measureText(surface).width);
+  ctx.font = statFont;
+  textW = Math.max(textW, ctx.measureText(stat).width);
+
+  const padX = 16;
+  const padY = 12;
+  const boxW = textW + padX * 2;
+  const boxH = padY * 2 + lhLabel + lhEra + lhSurf + lhStat;
+  const boxX = 24;
+  const boxY = h - 28 - boxH;
+
+  ctx.beginPath();
+  roundedRectPath(ctx, boxX, boxY, boxW, boxH, 12);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.72);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(palette.earth, 0.4);
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  const tx = boxX + padX;
+  let ty = boxY + padY;
+  ctx.font = labelFont;
+  ctx.fillStyle = rgba(palette.earth, 0.9);
+  ctx.fillText('EARTH', tx, ty);
+  ty += lhLabel;
+  ctx.font = eraFont;
+  ctx.fillStyle = eraColor;
+  ctx.fillText(eraText, tx, ty);
+  ty += lhEra;
+  ctx.font = surfFont;
+  ctx.fillStyle = rgba(palette.rose, 0.9);
+  ctx.fillText(surface, tx, ty);
+  ty += lhSurf;
+  ctx.font = statFont;
+  ctx.fillStyle = rgba(palette.cream, 0.7);
+  ctx.fillText(stat, tx, ty);
+  ctx.restore();
+}
+
+// Game-over card for the sandbox: the system collapsed into a black hole, or
+// every civilization died out. Centered + dimmed; returns the AGAIN anchor.
+export function drawSandboxOver(
+  ctx: CanvasRenderingContext2D,
+  outcome: 'collapse' | 'extinction' | 'ejection',
+  w: number,
+  h: number,
+): { titleColor: string; buttonY: number; x: number; y: number; width: number; height: number } {
+  ctx.save();
+  ctx.fillStyle = rgba(palette.voidDeep, 0.72);
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+
+  const titleColor = palette.danger;
+  const title =
+    outcome === 'collapse'
+      ? 'The universe collapsed.'
+      : outcome === 'extinction'
+        ? 'Humanity is extinct.'
+        : 'Lost to the dark.';
+  const body =
+    outcome === 'collapse'
+      ? 'The stars all fell together — a black hole, and everything with it.'
+      : outcome === 'extinction'
+        ? 'Every civilization is ash. No one is left to watch the sky.'
+        : 'A close pass flung your world out of the system — into the endless cold.';
+
+  const cardW = 660;
+  const cardH = 236;
+  const cx = (w - cardW) / 2;
+  const cy = (h - cardH) / 2;
+  const mid = cx + cardW / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  roundedRectPath(ctx, cx, cy, cardW, cardH, 18);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.92);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(titleColor, 0.6);
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = titleColor;
+  ctx.font = `400 44px ${fonts.serif}`;
+  ctx.fillText(title, mid, cy + 74);
+  ctx.fillStyle = palette.rose;
+  ctx.font = `italic 400 ${cpx(18)}px ${fonts.serif}`;
+  ctx.fillText(body, mid, cy + 122);
+  ctx.fillStyle = rgba(palette.cream, 0.55);
+  ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
+  ctx.fillText('The infinite game is only won by playing again.', mid, cy + 150);
+  ctx.restore();
+
+  return { titleColor, buttonY: cy + 172, x: cx, y: cy, width: cardW, height: cardH };
+}
+
 export function drawOutcomeCard(
   ctx: CanvasRenderingContext2D,
   outcome: Outcome,
@@ -442,7 +725,7 @@ const EXPLAINER_BODY: readonly string[] = [
   'Often only one is bright enough to see. It wobbles, tugged by a companion no one can find — to an astronomer, a binary star is a wobble of light.',
   'Neither star leads. Neither follows. Each bends the other’s path — and when the balance is right, the dance holds for billions of years.',
   'When it isn’t, they fall together, or fly apart.',
-  'You are about to be such a pair.',
+  'You are about to be such a pair. But remember — other bodies that enter your system can influence it, and even destabilize it permanently.',
 ];
 
 export function drawExplainerCard(

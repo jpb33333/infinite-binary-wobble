@@ -8,7 +8,8 @@ _Last updated: 2026-06-10._
 
 ## The goal
 
-Turn the (live, free) web game into a **metered, monetized product**: 200 free
+Turn the free web game (built and hardened, but **currently offline** — see
+Status) into a **metered, monetized product**: 200 free
 plays, then pay to keep playing.
 
 - **iOS:** Apple In-App Purchase, fixed "support the dev" tiers (e.g. $1/$3/$5/$10).
@@ -21,7 +22,7 @@ plays, then pay to keep playing.
 
 | | |
 |---|---|
-| ✅ **Live** | Hardened web game (strict CSP + Trusted Types, portrait + PWA install) — https://jpb33333.github.io/infinite-binary-wobble/ |
+| ⏸️ **Built — site offline** | Hardened web game (strict CSP + Trusted Types, portrait + PWA install). Was live at https://jpb33333.github.io/infinite-binary-wobble/; **the deploy workflow is now disabled and GitHub Pages was removed (404)**, taken down pending the metered relaunch. Runs locally via `npm run dev`. |
 | ✅ **On `main`, dark/inert** | `api-worker/` backend (Stripe checkout + verified-webhook persistence, session reuse — unit-tested); web metering client (`src/net/`, refresh-first, `paywall` state) — does nothing until `VITE_API_BASE_URL` is set |
 | ✅ **Shipped (in-repo)** | Native iOS app core (`ios/`, SwiftUI Canvas, golden-parity physics, bundled fonts) — Phase D done; the standalone iOS repo is archived |
 | ⛔ **Blocked on provisioning** | Deploying the backend; enabling web metering; the Cloudflare edge headers |

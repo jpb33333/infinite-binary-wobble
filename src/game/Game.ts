@@ -6,8 +6,13 @@ import { MassControl } from '../ui/MassControl.ts';
 import { ArrowControl } from '../ui/ArrowControl.ts';
 import { inRect } from '../ui/input.ts';
 import { Simulation, PHYSICS } from '../physics/Simulation.ts';
+import { NBodySimulation, type MergeEvent } from '../physics/nbody.ts';
+import { createBody } from '../physics/Body.ts';
+import type { Body } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
+import { EarthState } from './earth.ts';
+import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
 import { palette, lineHeightFor } from '../theme.ts';
@@ -15,6 +20,16 @@ import { Meter } from '../net/meter.ts';
 
 const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
+const EARTH_MASS = 0.02; // a planet — feels the suns, barely tugs them back
+const EARTH_ORBIT = 850; // px from the barycenter where a planet is dropped in
+// Dynamic camera zoom + the planet-ejection boundary live in ./camera.ts (pure,
+// shared, unit-tested). There is no leash any more: real gravity is allowed to
+// slingshot a planet out, and a planet flung past planetEjectRadius — the edge
+// of the most-zoomed-out view — is lost to the dark (an ejection game-over).
+// The sandbox can be LOST: it collapses into a black hole when the stars all
+// fall together (≤1 left), or humanity goes extinct if every planet stays dead
+// this long (civilizations get a grace window to reboot first).
+const EXTINCTION_GRACE = 6; // seconds
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
 
 export class Game {
@@ -30,6 +45,32 @@ export class Game {
   private classifier: OutcomeClassifier | null = null;
   private outcome: Outcome | null = null;
   private trails: { p1: Trail; p2: Trail };
+
+  // Post-win "Add 3rd Body" three-body unravel. When `nbody` is set, the
+  // resolved state steps THIS instead of the two-body `sim` (it reuses
+  // sim.a/sim.b as its first two bodies, so the binary continues unbroken and
+  // p1/p2 trails keep flowing). It runs forever, like the WIN — collisions
+  // merge stars (never stop it). Each added body gets its own track in
+  // `unravelTracks`, created as it enters — no fixed slots.
+  private nbody: NBodySimulation | null = null;
+  // Per-body tracks (trail + render kind) for the unravel. The body count
+  // changes as stars merge, so trails follow bodies, not fixed slots.
+  private unravelTracks: {
+    body: Body;
+    trail: Trail;
+    kind: 'p1' | 'p2' | 'star' | 'merged';
+    mergedCount: number; // how many original stars fused into this body (1 = pristine)
+  }[] = [];
+  // Trisolaris: planets dropped into the (chaotic) system, each with its own
+  // climate + civilization. Empty until "Add Planet"; earths[0] is the one the
+  // persistent surface panel reads. Reset every fresh round.
+  private earths: EarthState[] = [];
+  // Eased camera zoom for the unravel (1 = the two-body game's fixed view).
+  private cameraZoom = 1;
+  // How the sandbox finally fails (null while it's still running): the system
+  // collapses to a black hole, or every civilization dies out.
+  private sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null = null;
+  private extinctionTimer = 0;
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -60,7 +101,10 @@ export class Game {
   // Supernova scene: { x, y } of the merger point, plus the elapsed-time
   // marker at the moment of collision so Renderer can animate the flash,
   // shockwave and remnant in real time. null at all other times.
-  private supernova: { x: number; y: number; t0: number; mergedMass: number } | null = null;
+  // `transient` merges (the three-body unravel) play only flash + shockwave —
+  // the merged star keeps moving, so no persistent remnant is drawn. The
+  // two-body collision (which freezes) keeps the remnant (transient: false).
+  private supernova: { x: number; y: number; t0: number; mergedMass: number; transient: boolean } | null = null;
   // Session scoreboard summary, recomputed only when a game is recorded.
   // Reading the cookie every frame would be silly at 60Hz.
   private statsSummary: StatsSummary = summarize(loadStats());
@@ -194,6 +238,22 @@ export class Game {
     // ✕ on the WIN card: dismiss it and let the wobble fill the screen.
     if (btn === 'dismiss_win' && this.state === 'resolved' && this.outcome?.kind === 'win') {
       this.winCardDismissed = true;
+      return;
+    }
+    // "Add 3rd Body": the peril affordance on a WIN. Drop a real third star
+    // into the stable binary and let the three-body problem take it apart.
+    // Open-ended sandbox: keep feeding the problem until it collapses. Both are
+    // repeatable, available on a WIN or any time the system is running.
+    const sandboxOpen =
+      this.state === 'resolved' &&
+      (this.outcome?.kind === 'win' || this.nbody !== null) &&
+      !this.sandboxOutcome;
+    if (btn === 'add_star' && sandboxOpen) {
+      this.addStar();
+      return;
+    }
+    if (btn === 'add_planet' && sandboxOpen) {
+      this.addPlanet();
       return;
     }
     // Anywhere else on the WIN card body → start dragging it. (dismiss_win and
@@ -343,6 +403,12 @@ export class Game {
     };
     this.trails.p1.reset();
     this.trails.p2.reset();
+    this.nbody = null;
+    this.unravelTracks = [];
+    this.earths = [];
+    this.cameraZoom = 1;
+    this.sandboxOutcome = null;
+    this.extinctionTimer = 0;
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -373,6 +439,12 @@ export class Game {
     };
     this.trails.p1.reset();
     this.trails.p2.reset();
+    this.nbody = null;
+    this.unravelTracks = [];
+    this.earths = [];
+    this.cameraZoom = 1;
+    this.sandboxOutcome = null;
+    this.extinctionTimer = 0;
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -425,6 +497,12 @@ export class Game {
     );
     this.trails.p1.reset();
     this.trails.p2.reset();
+    this.nbody = null;
+    this.unravelTracks = [];
+    this.earths = [];
+    this.cameraZoom = 1;
+    this.sandboxOutcome = null;
+    this.extinctionTimer = 0;
     this.outcome = null;
     this.burstedOnResolve = false;
     this.simAccum = 0;
@@ -473,6 +551,7 @@ export class Game {
           y: mid.y,
           t0: this.elapsed,
           mergedMass: this.sim.a.mass + this.sim.b.mass,
+          transient: false,
         };
         this.renderer.burst(mid.x, mid.y, 240, palette.cream, 360);
       } else if (o.kind === 'win') {
@@ -480,6 +559,185 @@ export class Game {
         this.renderer.burst(this.sim.b.pos.x, this.sim.b.pos.y, 24, palette.player2);
       }
     }
+  }
+
+  // Build the N-body system from the just-won binary, reusing the winning
+  // bodies + their p1/p2 trails so history flows unbroken. Shared by "Add 3rd
+  // Body" and "Add Planet Earth". No-op once the system already exists.
+  private ensureNBodyFromWin(): void {
+    if (this.nbody || !this.sim) return;
+    this.nbody = new NBodySimulation([this.sim.a, this.sim.b], PHYSICS.G, PHYSICS.SOFTENING);
+    this.unravelTracks = [
+      { body: this.sim.a, trail: this.trails.p1, kind: 'p1', mergedCount: 1 },
+      { body: this.sim.b, trail: this.trails.p2, kind: 'p2', mergedCount: 1 },
+    ];
+    // The WIN card is gone now; drop any in-progress card drag.
+    this.winCardOffset = { x: 0, y: 0 };
+    this.draggingCard = false;
+  }
+
+  // Mass-weighted barycenter of the whole running system (suns + the tiny
+  // planets, whose mass is negligible). Spawn reference for new bodies.
+  private systemCOM(): { x: number; y: number; mass: number } {
+    let M = 0;
+    let cx = 0;
+    let cy = 0;
+    for (const s of this.nbody?.bodies ?? []) {
+      M += s.mass;
+      cx += s.mass * s.pos.x;
+      cy += s.mass * s.pos.y;
+    }
+    return M > 0 ? { x: cx / M, y: cy / M, mass: M } : { x: 0, y: 0, mass: 0 };
+  }
+
+  // Add a star — repeatable. Enters from a random edge of the field, generally
+  // massive (≥ a default star), aimed inward with ±30° jitter (close enough to
+  // disrupt, never rigged). Keep feeding the problem until it collapses.
+  private addStar(): void {
+    if (!this.sim) return;
+    this.ensureNBodyFromWin();
+    if (!this.nbody) return;
+    const com = this.systemCOM();
+    const { width: w, height: h } = this.renderer.layout.canvas;
+    const mass = 2 + Math.random() * 3;
+    const theta = Math.random() * Math.PI * 2;
+    const reach = Math.max(w, h) * 0.6;
+    const speed = 150 + Math.random() * 140;
+    const aim = theta + Math.PI + (Math.random() - 0.5) * (Math.PI / 3);
+    const star = createBody(
+      mass,
+      vec2(com.x + Math.cos(theta) * reach, com.y + Math.sin(theta) * reach),
+      vec2(Math.cos(aim) * speed, Math.sin(aim) * speed),
+    );
+    star.vz = (Math.random() - 0.5) * speed; // arrive out of the plane → real 3D
+    this.nbody.addBody(star);
+    this.unravelTracks.push({
+      body: star,
+      trail: new Trail(TRAIL_CAPACITY),
+      kind: 'star',
+      mergedCount: 1,
+    });
+  }
+
+  // Trisolaris: drop a planet onto a wide, roughly-circular orbit around the
+  // barycenter — temperate at first; the suns' chaos does the rest. Repeatable.
+  private addPlanet(): void {
+    if (!this.sim) return;
+    this.ensureNBodyFromWin();
+    if (!this.nbody) return;
+    const com = this.systemCOM();
+    if (com.mass <= 0) return;
+    const ang = Math.random() * Math.PI * 2;
+    const vCirc = Math.sqrt((PHYSICS.G * com.mass) / EARTH_ORBIT);
+    const planet = createBody(
+      EARTH_MASS,
+      vec2(com.x + Math.cos(ang) * EARTH_ORBIT, com.y + Math.sin(ang) * EARTH_ORBIT),
+      vec2(-Math.sin(ang) * vCirc, Math.cos(ang) * vCirc),
+    );
+    planet.vz = (Math.random() - 0.5) * vCirc * 0.6; // a slightly inclined orbit
+    this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
+    this.earths.push(new EarthState(planet));
+  }
+
+  // Fixed-step accumulator for the three-body unravel (mirror of
+  // advancePhysics). Runs forever, like the WIN's infinite wobble — it never
+  // stops on a collision; collisions just merge and the survivors carry on.
+  private advanceNBody(dt: number): void {
+    if (!this.nbody) return;
+    this.simAccum += dt;
+    if (this.simAccum > 0.25) this.simAccum = 0.25;
+    while (this.simAccum >= PHYSICS.DT) {
+      const merge = this.nbody.step(PHYSICS.DT);
+      if (merge) this.onMerge(merge);
+      this.simAccum -= PHYSICS.DT;
+    }
+    for (const t of this.unravelTracks) t.trail.push(t.body.pos.x, t.body.pos.y);
+    if (this.earths.length > 0) {
+      const planets = new Set(this.earths.map(e => e.body));
+      const suns = this.nbody.bodies.filter(b => !planets.has(b));
+      for (const earth of this.earths) {
+        earth.update(dt, suns);
+        earth.trail.push(earth.body.pos.x, earth.body.pos.y);
+      }
+    }
+    this.checkSandboxOutcome(dt);
+  }
+
+  // The sandbox fails in three ways. EJECTION: a planet is slingshot past the
+  // edge of the most-zoomed-out view (planetEjectRadius) → lost to the dark.
+  // COLLAPSE: the stars all fall together (≤ 1 left — merged, or detonated to
+  // nothing) → a black hole, universe over. EXTINCTION: planets exist but every
+  // one has been dead longer than the grace window (civilizations get a chance to
+  // reboot first).
+  private checkSandboxOutcome(dt: number): void {
+    if (!this.nbody || this.sandboxOutcome) return;
+    const planets = new Set(this.earths.map(e => e.body));
+    // EJECTION: any planet flung past the camera's furthest pull-back. Measured
+    // from the same barycenter the camera zoom fits around, so at the instant of
+    // loss the planet sits right at the readable edge of the frame.
+    if (this.earths.length > 0) {
+      const com = this.systemCOM();
+      const { width: w, height: h } = this.renderer.layout.canvas;
+      const ejectR = planetEjectRadius(Math.min(w, h));
+      for (const e of this.earths) {
+        if (Math.hypot(e.body.pos.x - com.x, e.body.pos.y - com.y) > ejectR) {
+          this.sandboxOutcome = 'ejection';
+          return;
+        }
+      }
+    }
+    const starCount = this.nbody.bodies.filter(b => !planets.has(b)).length;
+    if (starCount <= 1) {
+      this.sandboxOutcome = 'collapse';
+      return;
+    }
+    if (this.earths.length > 0 && this.earths.every(e => e.population <= 0.05)) {
+      this.extinctionTimer += dt;
+      if (this.extinctionTimer > EXTINCTION_GRACE) this.sandboxOutcome = 'extinction';
+    } else {
+      this.extinctionTimer = 0;
+    }
+  }
+
+
+  // A collision fused two stars. Retire the consumed tracks, give the merged
+  // star a fresh track, and fire a transient flash at the merger point. The
+  // merged body then carries on — we want to watch whether the survivor is
+  // slingshot away or falls into a new orbit around the heavier mass.
+  private onMerge(event: MergeEvent): void {
+    if (!this.nbody) return;
+    const present = new Set(this.nbody.bodies);
+    // Lineage: the merged star inherits the combined progenitor count of the
+    // two stars it consumed (so the tooltip can read "forged from N stars").
+    const mergedCount = this.unravelTracks
+      .filter(t => !present.has(t.body))
+      .reduce((sum, t) => sum + t.mergedCount, 0);
+    this.unravelTracks = this.unravelTracks.filter(t => present.has(t.body));
+    // Normal fuse → track the merged star. Supernova → nothing survives the
+    // detonation (event.body is null), so no new track; nbody already rammed
+    // the blast through the survivors.
+    if (event.body && !this.unravelTracks.some(t => t.body === event.body)) {
+      this.unravelTracks.push({
+        body: event.body,
+        trail: new Trail(TRAIL_CAPACITY),
+        kind: 'merged',
+        mergedCount,
+      });
+    }
+    this.supernova = {
+      x: event.x,
+      y: event.y,
+      t0: this.elapsed,
+      mergedMass: event.mass,
+      transient: true,
+    };
+    this.renderer.burst(
+      event.x,
+      event.y,
+      event.supernova ? 320 : 180,
+      palette.cream,
+      event.supernova ? 440 : 340,
+    );
   }
 
   private activeSpec(): BodySpec | null {
@@ -571,6 +829,13 @@ export class Game {
         break;
       }
       case 'resolved': {
+        // Three-body unravel takes over and runs forever — advanceNBody handles
+        // its trails + merges. It never stops on a collision; merged stars just
+        // carry on, watchable as long as the WIN it grew out of.
+        if (this.nbody) {
+          if (!this.sandboxOutcome) this.advanceNBody(dt);
+          break;
+        }
         // For WINs, the wobble keeps going — it really is infinite. Keep the
         // classifier ticking too so the ORBITS counter on the HUD stays alive.
         if (this.sim && this.outcome?.kind === 'win') {
@@ -602,6 +867,16 @@ export class Game {
       outcome: this.outcome,
       countdownRemaining: this.countdownRemaining,
       trails: this.trails,
+      unravel: this.nbody ? this.unravelTracks : null,
+      earths: this.earths.map(e => ({
+        body: e.body,
+        trail: e.trail,
+        population: e.population,
+        civilizations: e.civilizations,
+        era: e.era,
+        chaos: e.chaos,
+        stable: e.stable,
+      })),
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
       winCardDismissed: this.winCardDismissed,
@@ -615,16 +890,49 @@ export class Game {
             y: this.supernova.y,
             elapsed: this.elapsed - this.supernova.t0,
             mergedMass: this.supernova.mergedMass,
+            transient: this.supernova.transient,
           }
         : null,
       cameraOffset: this.computeCameraOffset(),
+      cameraZoom: this.computeCameraZoom(dt),
+      sandboxOutcome: this.sandboxOutcome,
     });
+  }
+
+  // Ease the camera zoom toward whatever fits the whole system in frame. Only
+  // the unravel pulls back (its bodies fling wide); the two-body game holds at
+  // zoom 1. Smoothed so a slingshot doesn't snap the view.
+  private computeCameraZoom(dt: number): number {
+    let target = 1;
+    if (this.nbody && this.state === 'resolved' && this.nbody.bodies.length > 0) {
+      const com = this.systemCOM();
+      let maxExtent = 0;
+      for (const b of this.nbody.bodies) {
+        const d = Math.hypot(b.pos.x - com.x, b.pos.y - com.y);
+        if (d > maxExtent) maxExtent = d;
+      }
+      const { width: w, height: h } = this.renderer.layout.canvas;
+      const fitRadius = cameraFitRadius(Math.min(w, h));
+      const fit = maxExtent > 1 ? fitRadius / maxExtent : 1;
+      target = Math.max(CAMERA_MIN_ZOOM, Math.min(1, fit));
+    }
+    this.cameraZoom += (target - this.cameraZoom) * Math.min(1, dt * CAMERA_EASE);
+    return this.cameraZoom;
   }
 
   // Centre the camera on the barycenter so the orbit stays watchable even
   // when net linear momentum drifts the whole system. Returns null in
   // non-sim states where no offset should apply (title, setup, countdown).
   private computeCameraOffset(): { x: number; y: number } | null {
+    // During the three-body unravel, follow the barycenter of all three so the
+    // chaos stays watchable as it scatters.
+    if (this.nbody && this.state === 'resolved') {
+      const c = this.nbody.centerOfMass();
+      return {
+        x: this.renderer.layout.canvas.width / 2 - c.x,
+        y: this.renderer.layout.canvas.height / 2 - c.y,
+      };
+    }
     if (!this.sim) return null;
     if (this.state !== 'simulate' && this.state !== 'resolved') return null;
     const M = this.sim.a.mass + this.sim.b.mass;
