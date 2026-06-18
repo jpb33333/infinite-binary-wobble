@@ -6,6 +6,8 @@ import { MassControl } from '../ui/MassControl.ts';
 import { ArrowControl } from '../ui/ArrowControl.ts';
 import { inRect } from '../ui/input.ts';
 import { Simulation, PHYSICS } from '../physics/Simulation.ts';
+import { NBodySimulation } from '../physics/nbody.ts';
+import { createBody, bodyRadius } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
@@ -16,6 +18,9 @@ import { Meter } from '../net/meter.ts';
 const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
+// Distance from the three-body barycenter at which a star counts as ejected
+// (well past the 820 px outcome envelope → it's gone, the wobble is broken).
+const EJECT_DISTANCE = 1600;
 
 export class Game {
   private state: GameStateKind = 'title';
@@ -30,6 +35,15 @@ export class Game {
   private classifier: OutcomeClassifier | null = null;
   private outcome: Outcome | null = null;
   private trails: { p1: Trail; p2: Trail };
+
+  // Post-win "Add 3rd Body" three-body unravel. When `nbody` is set, the
+  // resolved state steps THIS instead of the two-body `sim` (it reuses
+  // sim.a/sim.b as its first two bodies, so the binary continues unbroken and
+  // p1/p2 trails keep flowing). `unravelOutcome` latches once the system
+  // resolves (a collision or an ejection); `trail3` is the intruder's trail.
+  private nbody: NBodySimulation | null = null;
+  private trail3: Trail;
+  private unravelOutcome: 'ejected' | 'collided' | null = null;
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -81,6 +95,7 @@ export class Game {
       p1: new Trail(TRAIL_CAPACITY),
       p2: new Trail(TRAIL_CAPACITY),
     };
+    this.trail3 = new Trail(TRAIL_CAPACITY);
     this.attachInput(canvas);
   }
 
@@ -194,6 +209,17 @@ export class Game {
     // ✕ on the WIN card: dismiss it and let the wobble fill the screen.
     if (btn === 'dismiss_win' && this.state === 'resolved' && this.outcome?.kind === 'win') {
       this.winCardDismissed = true;
+      return;
+    }
+    // "Add 3rd Body": the peril affordance on a WIN. Drop a real third star
+    // into the stable binary and let the three-body problem take it apart.
+    if (
+      btn === 'add_third_body' &&
+      this.state === 'resolved' &&
+      this.outcome?.kind === 'win' &&
+      !this.nbody
+    ) {
+      this.addThirdBody();
       return;
     }
     // Anywhere else on the WIN card body → start dragging it. (dismiss_win and
@@ -343,6 +369,9 @@ export class Game {
     };
     this.trails.p1.reset();
     this.trails.p2.reset();
+    this.trail3.reset();
+    this.nbody = null;
+    this.unravelOutcome = null;
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -373,6 +402,9 @@ export class Game {
     };
     this.trails.p1.reset();
     this.trails.p2.reset();
+    this.trail3.reset();
+    this.nbody = null;
+    this.unravelOutcome = null;
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -425,6 +457,9 @@ export class Game {
     );
     this.trails.p1.reset();
     this.trails.p2.reset();
+    this.trail3.reset();
+    this.nbody = null;
+    this.unravelOutcome = null;
     this.outcome = null;
     this.burstedOnResolve = false;
     this.simAccum = 0;
@@ -479,6 +514,89 @@ export class Game {
         this.renderer.burst(this.sim.a.pos.x, this.sim.a.pos.y, 24, palette.player1);
         this.renderer.burst(this.sim.b.pos.x, this.sim.b.pos.y, 24, palette.player2);
       }
+    }
+  }
+
+  // The optional "Add 3rd Body" peril on a WIN. A real third star enters from
+  // a random edge of the field and the binary becomes a true three-body
+  // system. Generally massive (≥ a default star, so it makes a difference) and
+  // aimed close enough to disrupt — but with real angular jitter, so the
+  // physics decides whether the wobble survives; the outcome is never rigged.
+  // Reuses the two winning bodies (sim.a/sim.b) as the first two, so the binary
+  // continues from its exact state and the p1/p2 trails flow unbroken.
+  private addThirdBody(): void {
+    if (!this.sim) return;
+    const { width: w, height: h } = this.renderer.layout.canvas;
+    const M = this.sim.a.mass + this.sim.b.mass;
+    const comX = (this.sim.a.mass * this.sim.a.pos.x + this.sim.b.mass * this.sim.b.pos.x) / M;
+    const comY = (this.sim.a.mass * this.sim.a.pos.y + this.sim.b.mass * this.sim.b.pos.y) / M;
+
+    // Generally massive: 2–5 (≥ the 2.5 default), random within that band.
+    const mass = 2 + Math.random() * 3;
+    // Enter from a random point around the field edge. The camera centres the
+    // binary, so a point ~0.6·(max extent) out lands at the visible boundary.
+    const theta = Math.random() * Math.PI * 2;
+    const reach = Math.max(w, h) * 0.6;
+    const x = comX + Math.cos(theta) * reach;
+    const y = comY + Math.sin(theta) * reach;
+    // Aim back toward the binary with real angular jitter (±30°) — close enough
+    // to matter, not a guaranteed direct hit. Random speed too.
+    const speed = 150 + Math.random() * 140;
+    const aim = theta + Math.PI + (Math.random() - 0.5) * (Math.PI / 3);
+
+    const third = createBody(
+      mass,
+      vec2(x, y),
+      vec2(Math.cos(aim) * speed, Math.sin(aim) * speed),
+    );
+    this.nbody = new NBodySimulation(
+      [this.sim.a, this.sim.b, third],
+      PHYSICS.G,
+      PHYSICS.SOFTENING,
+    );
+    this.unravelOutcome = null;
+    this.trail3.reset();
+    // The WIN card is gone now; drop any in-progress card drag.
+    this.winCardOffset = { x: 0, y: 0 };
+    this.draggingCard = false;
+  }
+
+  // Fixed-step accumulator for the three-body unravel (mirror of
+  // advancePhysics, stepping the N-body system instead of the two-body sim).
+  private advanceNBody(dt: number): void {
+    if (!this.nbody) return;
+    this.simAccum += dt;
+    if (this.simAccum > 0.25) this.simAccum = 0.25;
+    while (this.simAccum >= PHYSICS.DT) {
+      this.nbody.step(PHYSICS.DT);
+      this.simAccum -= PHYSICS.DT;
+    }
+  }
+
+  // The three-body system resolves when two stars touch (collision) or one is
+  // flung clear of the field (ejection). We only OBSERVE — never rig the
+  // outcome; a configuration that stays chaotic just keeps running until the
+  // player taps AGAIN/EXIT.
+  private checkUnravel(): void {
+    if (!this.nbody || this.unravelOutcome) return;
+    const bodies = this.nbody.bodies;
+    for (let i = 0; i < bodies.length; i++) {
+      for (let j = i + 1; j < bodies.length; j++) {
+        const d = Math.hypot(
+          bodies[j].pos.x - bodies[i].pos.x,
+          bodies[j].pos.y - bodies[i].pos.y,
+        );
+        if (d < bodyRadius(bodies[i].mass) + bodyRadius(bodies[j].mass)) {
+          this.unravelOutcome = 'collided';
+          const mx = (bodies[i].pos.x + bodies[j].pos.x) / 2;
+          const my = (bodies[i].pos.y + bodies[j].pos.y) / 2;
+          this.renderer.burst(mx, my, 200, palette.cream, 340);
+          return;
+        }
+      }
+    }
+    if (this.nbody.maxDistanceFromCOM() > EJECT_DISTANCE) {
+      this.unravelOutcome = 'ejected';
     }
   }
 
@@ -571,6 +689,18 @@ export class Game {
         break;
       }
       case 'resolved': {
+        // Three-body unravel takes over: step the N-body system (which shares
+        // sim.a/sim.b), keep all three trails flowing, watch for resolution.
+        if (this.nbody && this.sim) {
+          if (!this.unravelOutcome) {
+            this.advanceNBody(dt);
+            this.trails.p1.push(this.sim.a.pos.x, this.sim.a.pos.y);
+            this.trails.p2.push(this.sim.b.pos.x, this.sim.b.pos.y);
+            this.trail3.push(this.nbody.bodies[2].pos.x, this.nbody.bodies[2].pos.y);
+            this.checkUnravel();
+          }
+          break;
+        }
         // For WINs, the wobble keeps going — it really is infinite. Keep the
         // classifier ticking too so the ORBITS counter on the HUD stays alive.
         if (this.sim && this.outcome?.kind === 'win') {
@@ -602,6 +732,9 @@ export class Game {
       outcome: this.outcome,
       countdownRemaining: this.countdownRemaining,
       trails: this.trails,
+      thirdBody: this.nbody ? this.nbody.bodies[2] : null,
+      trail3: this.nbody ? this.trail3 : null,
+      unravelOutcome: this.unravelOutcome,
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
       winCardDismissed: this.winCardDismissed,
@@ -625,6 +758,15 @@ export class Game {
   // when net linear momentum drifts the whole system. Returns null in
   // non-sim states where no offset should apply (title, setup, countdown).
   private computeCameraOffset(): { x: number; y: number } | null {
+    // During the three-body unravel, follow the barycenter of all three so the
+    // chaos stays watchable as it scatters.
+    if (this.nbody && this.state === 'resolved') {
+      const c = this.nbody.centerOfMass();
+      return {
+        x: this.renderer.layout.canvas.width / 2 - c.x,
+        y: this.renderer.layout.canvas.height / 2 - c.y,
+      };
+    }
     if (!this.sim) return null;
     if (this.state !== 'simulate' && this.state !== 'resolved') return null;
     const M = this.sim.a.mass + this.sim.b.mass;

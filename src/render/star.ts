@@ -74,6 +74,16 @@ export const STYLE_P2: StarStyle = {
   haloRadiusFactor: 2.6,
 };
 
+// The intruding third star in the post-win three-body unravel. Bright danger
+// red so it reads as the threat that breaks the binary — the one deliberate
+// hot note in the warm field.
+export const STYLE_P3: StarStyle = {
+  primary: palette.danger,
+  core: palette.cream,
+  haloAlpha: 0.95,
+  haloRadiusFactor: 2.8,
+};
+
 // A dimmed variant used to show the OTHER player's star while one player is
 // in setup — they need to see it but it shouldn't compete for attention.
 export function dimmed(style: StarStyle): StarStyle {

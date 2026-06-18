@@ -385,6 +385,59 @@ function outcomeText(outcome: Outcome): {
 // the free-plays meter line that sits below the button when metering is on.
 const EXPLAINER_LINK_TEXT = 'what is a binary star?';
 
+// End card for the post-win three-body unravel. Centered + dimmed like a LOSE
+// card, but its own danger-red copy — the binary didn't lose, the player chose
+// to disturb the perfect thing. Returns the AGAIN button anchor.
+export function drawUnravelCard(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  outcome: 'ejected' | 'collided',
+): { titleColor: string; buttonY: number; x: number; y: number; width: number; height: number } {
+  ctx.save();
+  ctx.fillStyle = rgba(palette.voidDeep, 0.55);
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+
+  const titleColor = palette.danger;
+  const bodyText =
+    outcome === 'collided'
+      ? 'Two stars met, and went out together.'
+      : 'One star was flung into the void.';
+
+  const cardW = 620;
+  const cardH = 240;
+  const cx = (w - cardW) / 2;
+  const cy = (h - cardH) / 2;
+  const mid = cx + cardW / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  roundedRectPath(ctx, cx, cy, cardW, cardH, 18);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.92);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(titleColor, 0.6);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = titleColor;
+  ctx.font = `400 40px ${fonts.serif}`;
+  ctx.fillText('Three was too many.', mid, cy + 66);
+  ctx.fillStyle = palette.rose;
+  ctx.font = `italic 400 ${cpx(18)}px ${fonts.serif}`;
+  ctx.fillText(bodyText, mid, cy + 112);
+  ctx.fillStyle = rgba(palette.cream, 0.55);
+  ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
+  ctx.fillText('The three-body problem has no general stable solution.', mid, cy + 144);
+  ctx.restore();
+
+  return { titleColor, buttonY: cy + 178, x: cx, y: cy, width: cardW, height: cardH };
+}
+
 export function drawTitleExplainerLink(
   ctx: CanvasRenderingContext2D,
   w: number,

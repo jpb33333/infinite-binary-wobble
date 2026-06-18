@@ -10,7 +10,7 @@ import {
 import { drawComet } from './comet.ts';
 import { computeFit, type Fit } from './fit.ts';
 import { drawCourt } from './court.ts';
-import { drawStar, dimmed, STYLE_P1, STYLE_P2, type StarStyle } from './star.ts';
+import { drawStar, dimmed, STYLE_P1, STYLE_P2, STYLE_P3, type StarStyle } from './star.ts';
 import { Trail, drawTrail } from './trail.ts';
 import { Particles } from './particles.ts';
 import { drawVelocityArrow } from './arrow.ts';
@@ -22,6 +22,7 @@ import {
   drawButton,
   drawTooltip,
   drawOutcomeCard,
+  drawUnravelCard,
   drawCloseButton,
   drawPaywallCard,
   drawTitleExplainerLink,
@@ -75,6 +76,13 @@ export interface RenderInput {
   // over the title screen. Modal: BEGIN is suppressed underneath so the card
   // owns the input. Only ever true in the 'title' state.
   explainerOpen: boolean;
+  // Post-win three-body unravel. `thirdBody` is the intruding star (drawn +
+  // trailed alongside sim.a/sim.b) while it's active; `trail3` is its trail;
+  // `unravelOutcome` latches once the system collides or ejects. All null /
+  // absent outside the unravel.
+  thirdBody: Body | null;
+  trail3: Trail | null;
+  unravelOutcome: 'ejected' | 'collided' | null;
 }
 
 // Minimum touch-target side in CSS pixels (Apple HIG 44pt). Buttons are
@@ -625,10 +633,13 @@ export class Renderer {
       ctx.translate(input.cameraOffset.x, input.cameraOffset.y);
     }
 
-    if (input.sim) this.drawPredictedOrbits(input.sim);
+    // Two-body overlays (predicted ellipses, barycenter dot) are meaningless
+    // once a third star joins — suppress them during the unravel.
+    if (input.sim && !input.thirdBody) this.drawPredictedOrbits(input.sim);
     drawTrail(ctx, input.trails.p1, palette.player1, 0.85, 0, 2.2);
     drawTrail(ctx, input.trails.p2, palette.player2, 0.85, 0, 2.2);
-    if (input.sim && !input.supernova) this.drawBarycenter(input.sim, input.time);
+    if (input.trail3) drawTrail(ctx, input.trail3, palette.danger, 0.85, 0, 2.2);
+    if (input.sim && !input.supernova && !input.thirdBody) this.drawBarycenter(input.sim, input.time);
 
     if (input.supernova) {
       this.drawSupernova(input.supernova, input.time);
@@ -638,10 +649,15 @@ export class Renderer {
       drawStar(ctx, input.sim.a.pos.x, input.sim.a.pos.y, bodyRadius(input.sim.a.mass), styleA, input.time);
       drawStar(ctx, input.sim.b.pos.x, input.sim.b.pos.y, bodyRadius(input.sim.b.mass), styleB, input.time + 1.7);
     }
+    // The intruding third star — bright danger red, no Doppler tint (it is the
+    // disruptor; it should not blend into the binary's palette).
+    if (input.thirdBody) {
+      drawStar(ctx, input.thirdBody.pos.x, input.thirdBody.pos.y, bodyRadius(input.thirdBody.mass), STYLE_P3, input.time + 0.9);
+    }
 
     ctx.restore();
 
-    if (input.sim && input.classifier) {
+    if (input.sim && input.classifier && !input.thirdBody) {
       const o = input.sim.orbit();
       const boundText = o.bound ? 'BOUND' : 'UNBOUND';
       const boundColor = o.bound ? palette.cream : palette.wine;
@@ -676,7 +692,12 @@ export class Renderer {
           break;
       }
     }
-    drawPhaseLabel(ctx, phaseText, w, palette.rose);
+    // The unravel overrides everything: three bodies, no stable solution.
+    if (input.thirdBody) {
+      phaseText = input.unravelOutcome ? 'unbound' : 'the three-body problem';
+    }
+    const phaseColor = input.thirdBody ? palette.danger : palette.rose;
+    drawPhaseLabel(ctx, phaseText, w, phaseColor);
   }
 
   // Doppler tint — the actual mechanism by which binary stars' wobble is
@@ -908,8 +929,8 @@ export class Renderer {
 
     if (
       input.state === 'resolved' &&
-      input.outcome?.kind === 'win' &&
-      input.winCardDismissed
+      ((input.thirdBody && !input.unravelOutcome) ||
+        (input.outcome?.kind === 'win' && input.winCardDismissed))
     ) {
       const againW = 110;
       const againBtn: CanvasButton = {
@@ -932,6 +953,34 @@ export class Renderer {
     this.renderSimulate(input);
 
     if (!input.outcome) return;
+
+    // Three-body unravel takes over the resolved screen. While it's still
+    // unraveling there's no card (the chaos + the EXIT/AGAIN corner cluster are
+    // enough); once it resolves, a danger-red end card with AGAIN.
+    if (input.thirdBody || input.unravelOutcome) {
+      if (input.unravelOutcome) {
+        const ucard = drawUnravelCard(
+          this.ctx,
+          this.layout.canvas.width,
+          this.layout.canvas.height,
+          input.unravelOutcome,
+        );
+        const againBtn: CanvasButton = {
+          label: 'Again',
+          x: ucard.x + ucard.width / 2 - 90,
+          y: ucard.buttonY,
+          width: 180,
+          height: 44,
+        };
+        drawButton(this.ctx, againBtn, {
+          primary: ucard.titleColor,
+          hovered: this.hoveredButton(input.hover) === 'again',
+        });
+        this.register('again', againBtn);
+      }
+      return;
+    }
+
     // Player tapped the ✕ on a WIN card: leave the wobble unobstructed. The
     // orbit keeps advancing in update(); AGAIN/EXIT live in the corner cluster.
     if (input.outcome.kind === 'win' && input.winCardDismissed) return;
@@ -990,6 +1039,25 @@ export class Renderer {
     // distinction is the whole point of the game; this reminds the players
     // what they're really doing every time the AGAIN button appears.
     this.drawCarseFooter(card.carseY, card.x + card.width / 2);
+
+    // The peril affordance: a bright danger-red "Add 3rd Body" button floating
+    // above the WIN card, with a two-line warning. Tempts the player to break
+    // the perfect thing and watch the three-body problem take it apart.
+    if (input.outcome.kind === 'win') {
+      const mid = card.x + card.width / 2;
+      const dW = 210;
+      const dBtn: CanvasButton = { label: 'Add 3rd Body', x: mid - dW / 2, y: card.y - 66, width: dW, height: 44 };
+      this.ctx.save();
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'alphabetic';
+      this.ctx.fillStyle = rgba(palette.danger, 0.9);
+      this.ctx.font = `italic 400 ${cpx(12)}px ${fonts.serif}`;
+      this.ctx.fillText('Three-body systems are unstable.', mid, dBtn.y - 16 - lineHeightFor(12));
+      this.ctx.fillText('A third star will likely tear the wobble apart.', mid, dBtn.y - 16);
+      this.ctx.restore();
+      drawButton(this.ctx, dBtn, { primary: palette.danger, hovered: this.hoveredButton(input.hover) === 'add_third_body' });
+      this.register('add_third_body', dBtn);
+    }
 
     // The whole WIN card is a drag handle. Captured here, registered at the
     // END of render() (after the corner controls) so first-match hit-testing
