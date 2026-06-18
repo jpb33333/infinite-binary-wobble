@@ -49,6 +49,7 @@ struct GameRenderer {
     case .countdown: renderCountdown(&scene, w: w, h: h, time: time)
     case .simulate: renderSimulate(&scene, w: w, h: h, time: time)
     case .resolved: renderResolved(&scene, w: w, h: h, time: time)
+    case .paywall: renderPaywall(&scene, w: w, h: h)
     }
 
     if model.state != .title { drawCornerControls(&scene, w: w) }
@@ -280,6 +281,50 @@ struct GameRenderer {
     }
 
     drawCarseFooter(&ctx, topY: geo.carseY, centerX: geo.rect.midX)
+  }
+
+  /// The 200-play wall: a one-time unlock (StoreKit), with Restore — Apple
+  /// requires it for non-consumables — and the corner EXIT to back out. The Buy
+  /// label carries StoreKit's localized price once the product loads.
+  private mutating func renderPaywall(_ ctx: inout GraphicsContext, w: CGFloat, h: CGFloat) {
+    ctx.fill(Path(CGRect(x: 0, y: 0, width: w, height: h)), with: .color(Palette.voidDeep.opacity(0.55)))
+    drawPhaseLabel(&ctx, text: "the free orbit ends", w: w, color: Palette.terracotta)
+
+    let cardW: CGFloat = 560, cardH: CGFloat = 300
+    let rect = CGRect(x: (w - cardW) / 2, y: (h - cardH) / 2, width: cardW, height: cardH)
+    let card = Path(roundedRect: rect, cornerRadius: 18)
+    ctx.fill(card, with: .color(Palette.voidDeep.opacity(0.92)))
+    ctx.stroke(card, with: .color(Palette.terracotta.opacity(0.6)), lineWidth: 1)
+
+    ctx.draw(
+      ctx.resolve(Text("You've used your \(PlayMeter.freePlayLimit) free plays.")
+        .font(Fonts.serif(28)).foregroundColor(Palette.cream)),
+      at: CGPoint(x: rect.midX, y: rect.minY + 56), anchor: .center
+    )
+    ctx.draw(
+      ctx.resolve(Text("Unlock unlimited play, forever — a one-time purchase.")
+        .font(Fonts.serif(16, italic: true)).foregroundColor(Palette.rose)),
+      at: CGPoint(x: rect.midX, y: rect.minY + 96), anchor: .center
+    )
+
+    // Buy: label carries StoreKit's localized price; "…" while a call is in flight.
+    let priceSuffix = model.store.displayPrice.map { "  ·  \($0)" } ?? ""
+    let buyLabel = model.store.working ? "…" : "Unlock\(priceSuffix)"
+    let buy = CGRect(x: rect.midX - 120, y: rect.minY + 138, width: 240, height: 46)
+    drawButton(&ctx, label: buyLabel, rect: buy, primary: Palette.cream)
+    buttons[.buy] = buy
+
+    let restore = CGRect(x: rect.midX - 90, y: buy.maxY + 14, width: 180, height: 40)
+    drawButton(&ctx, label: "Restore", rect: restore, primary: Palette.terracotta)
+    buttons[.restore] = restore
+
+    // Fail-open: a transient error surfaces here, never a hard block.
+    if let note = model.store.note {
+      ctx.draw(
+        ctx.resolve(Text(note).font(Fonts.sans(12, weight: .medium)).foregroundColor(Palette.wine)),
+        at: CGPoint(x: rect.midX, y: restore.maxY + 18), anchor: .center
+      )
+    }
   }
 
   private func playStatsLine() -> String? {
