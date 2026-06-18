@@ -1,0 +1,30 @@
+{
+  "identifier" : "A1B2C3D4-0000-0000-0000-000000000001",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "A1B2C3D4-0000-0000-0000-000000000002",
+      "localizations" : [
+        {
+          "description" : "Unlock unlimited play — remove the free-play limit, forever.",
+          "displayName" : "Unlimited Play",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.bowditch.infinitebinarywobble.unlock",
+      "referenceName" : "Unlimited Play",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
