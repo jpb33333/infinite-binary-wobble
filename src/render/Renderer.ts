@@ -10,7 +10,15 @@ import {
 import { drawComet } from './comet.ts';
 import { computeFit, type Fit } from './fit.ts';
 import { drawCourt } from './court.ts';
-import { drawStar, dimmed, STYLE_P1, STYLE_P2, type StarStyle } from './star.ts';
+import {
+  drawStar,
+  dimmed,
+  STYLE_P1,
+  STYLE_P2,
+  STYLE_STAR,
+  STYLE_EARTH,
+  type StarStyle,
+} from './star.ts';
 import { Trail, drawTrail } from './trail.ts';
 import { Particles } from './particles.ts';
 import { drawVelocityArrow } from './arrow.ts';
@@ -22,6 +30,10 @@ import {
   drawButton,
   drawTooltip,
   drawOutcomeCard,
+  drawSandboxOver,
+  drawStarTooltip,
+  drawEarthTooltip,
+  drawEarthStatus,
   drawCloseButton,
   drawPaywallCard,
   drawTitleExplainerLink,
@@ -58,13 +70,20 @@ export interface RenderInput {
   // wall-time elapsed since the collision, and the combined mass. The
   // Renderer uses this to animate flash → shockwave → persistent remnant
   // in place of drawing the two original bodies.
-  supernova: { x: number; y: number; elapsed: number; mergedMass: number } | null;
+  // `transient` (three-body merges) play flash + shockwave only — the merged
+  // star keeps moving, so no persistent remnant is painted at the merge point.
+  supernova: { x: number; y: number; elapsed: number; mergedMass: number; transient: boolean } | null;
   // World → canvas translation applied to the simulated content (trails,
   // stars, predicted orbits, barycenter, supernova). Tracks the barycenter
   // so a drifting binary stays centred on screen — the orbit becomes
   // watch-forever instead of getting clipped off the edge. null in non-sim
   // states (no offset needed).
   cameraOffset: { x: number; y: number } | null;
+  // Camera zoom about the barycenter (1 = the two-body game's fixed view; the
+  // unravel eases out below 1 to keep the whole spreading system in frame).
+  cameraZoom: number;
+  // How the sandbox failed, or null while it runs. Drives the game-over card.
+  sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null;
   // Per-session scoreboard rendered on the title screen and (briefly) above
   // the AGAIN button on each resolve. The Game owns the cookie; the Renderer
   // just paints the summary.
@@ -75,6 +94,39 @@ export interface RenderInput {
   // over the title screen. Modal: BEGIN is suppressed underneath so the card
   // owns the input. Only ever true in the 'title' state.
   explainerOpen: boolean;
+  // Post-win three-body unravel: the live per-body tracks (each a body + its
+  // trail + a render kind). The body count changes as stars merge, so the
+  // renderer draws from this list rather than fixed slots. null outside the
+  // unravel (the two-body sim/trails path is used then).
+  unravel: { body: Body; trail: Trail; kind: string; mergedCount: number }[] | null;
+  // Trisolaris: planets dropped into the system, each with its live climate +
+  // civilization readout. Empty until "Add Planet"; earths[0] drives the
+  // persistent surface panel, all are drawn + hoverable.
+  earths: {
+    body: Body;
+    trail: Trail;
+    population: number;
+    civilizations: number;
+    era: string;
+    chaos: number;
+    stable: boolean;
+  }[];
+}
+
+// Earth's drawn radius (fixed — it's a planet, far lighter than any star, so
+// its mass-radius would be a 2px speck).
+const EARTH_DRAW_R = 5;
+// Floor on a body's on-screen radius in the unravel, so nothing shrinks to a
+// sub-pixel dot when the camera is zoomed all the way out (4×) to follow a
+// slingshot. Applied in screen px, converted to world units by the live zoom.
+const MIN_UNRAVEL_SCREEN_R = 3;
+
+// Pseudo-3D depth: the viewer sits VIEW_DIST in front of the z = 0 plane. A body
+// nearer the viewer (z > 0) draws bigger + brighter; farther (z < 0) smaller +
+// dimmer. Clamped so a body that swings deep doesn't balloon or vanish.
+const VIEW_DIST = 1500;
+function depthScale(z: number): number {
+  return Math.min(1.8, Math.max(0.45, VIEW_DIST / (VIEW_DIST - z)));
 }
 
 // Minimum touch-target side in CSS pixels (Apple HIG 44pt). Buttons are
@@ -622,26 +674,75 @@ export class Renderer {
     // The court, starfield and HUD stay canvas-fixed.
     ctx.save();
     if (input.cameraOffset) {
-      ctx.translate(input.cameraOffset.x, input.cameraOffset.y);
+      // Barycenter follow + zoom about the canvas centre: world point P draws at
+      // centre + (P − COM)·zoom. With zoom = 1 this is exactly the old translate.
+      const cz = input.cameraZoom;
+      ctx.translate(w / 2, h / 2);
+      ctx.scale(cz, cz);
+      ctx.translate(input.cameraOffset.x - w / 2, input.cameraOffset.y - h / 2);
     }
 
-    if (input.sim) this.drawPredictedOrbits(input.sim);
-    drawTrail(ctx, input.trails.p1, palette.player1, 0.85, 0, 2.2);
-    drawTrail(ctx, input.trails.p2, palette.player2, 0.85, 0, 2.2);
-    if (input.sim && !input.supernova) this.drawBarycenter(input.sim, input.time);
+    if (input.unravel) {
+      // Three-body unravel, rendered top-down with pseudo-3D depth: trails are
+      // the flat projection of each path; the bodies are z-sorted (far first)
+      // and scaled in size + brightness by depth, so they visibly pass in front
+      // of and behind one another. Two-body overlays (predicted ellipses,
+      // barycenter, Doppler tint) don't apply here.
+      for (const t of input.unravel) {
+        drawTrail(ctx, t.trail, this.trailColorForKind(t.kind), 0.85, 0, 2.2);
+      }
+      for (const e of input.earths) {
+        drawTrail(ctx, e.trail, palette.earth, 0.7, 0, 1.6);
+      }
+      if (input.supernova) this.drawSupernova(input.supernova, input.time);
 
-    if (input.supernova) {
-      this.drawSupernova(input.supernova, input.time);
-    } else if (input.sim) {
-      const styleA = this.dopplerTinted(STYLE_P1, input.sim.a);
-      const styleB = this.dopplerTinted(STYLE_P2, input.sim.b);
-      drawStar(ctx, input.sim.a.pos.x, input.sim.a.pos.y, bodyRadius(input.sim.a.mass), styleA, input.time);
-      drawStar(ctx, input.sim.b.pos.x, input.sim.b.pos.y, bodyRadius(input.sim.b.mass), styleB, input.time + 1.7);
+      const drawables = [
+        ...input.unravel.map(t => ({
+          z: t.body.z,
+          x: t.body.pos.x,
+          y: t.body.pos.y,
+          r: bodyRadius(t.body.mass),
+          style: this.styleForKind(t.kind),
+        })),
+        ...input.earths.map(e => ({
+          z: e.body.z,
+          x: e.body.pos.x,
+          y: e.body.pos.y,
+          r: EARTH_DRAW_R,
+          style: this.earthStyle(e.era),
+        })),
+      ];
+      drawables.sort((a, b) => a.z - b.z); // far (low z) first → near drawn on top
+      // Keep every body at least MIN_UNRAVEL_SCREEN_R px on screen even when the
+      // camera pulls all the way back, so a slingshot Earth stays visible (not a
+      // sub-pixel dot) right out to the ejection boundary. The draw is inside the
+      // cz-scaled transform, so divide the screen floor by cz to get world units.
+      const cz = input.cameraZoom;
+      for (const d of drawables) {
+        const ds = depthScale(d.z);
+        const style = { ...d.style, haloAlpha: d.style.haloAlpha * Math.min(1.3, Math.max(0.5, ds)) };
+        const r = Math.max(d.r * ds, MIN_UNRAVEL_SCREEN_R / cz);
+        drawStar(ctx, d.x, d.y, r, style, input.time);
+      }
+    } else {
+      if (input.sim) this.drawPredictedOrbits(input.sim);
+      drawTrail(ctx, input.trails.p1, palette.player1, 0.85, 0, 2.2);
+      drawTrail(ctx, input.trails.p2, palette.player2, 0.85, 0, 2.2);
+      if (input.sim && !input.supernova) this.drawBarycenter(input.sim, input.time);
+
+      if (input.supernova) {
+        this.drawSupernova(input.supernova, input.time);
+      } else if (input.sim) {
+        const styleA = this.dopplerTinted(STYLE_P1, input.sim.a);
+        const styleB = this.dopplerTinted(STYLE_P2, input.sim.b);
+        drawStar(ctx, input.sim.a.pos.x, input.sim.a.pos.y, bodyRadius(input.sim.a.mass), styleA, input.time);
+        drawStar(ctx, input.sim.b.pos.x, input.sim.b.pos.y, bodyRadius(input.sim.b.mass), styleB, input.time + 1.7);
+      }
     }
 
     ctx.restore();
 
-    if (input.sim && input.classifier) {
+    if (input.sim && input.classifier && !input.unravel) {
       const o = input.sim.orbit();
       const boundText = o.bound ? 'BOUND' : 'UNBOUND';
       const boundColor = o.bound ? palette.cream : palette.wine;
@@ -676,7 +777,70 @@ export class Renderer {
           break;
       }
     }
-    drawPhaseLabel(ctx, phaseText, w, palette.rose);
+    // The unravel overrides everything: three bodies, no stable solution.
+    if (input.unravel) phaseText = 'the three-body problem';
+    const phaseColor = input.unravel ? palette.danger : palette.rose;
+    drawPhaseLabel(ctx, phaseText, w, phaseColor);
+
+    // Inspection tooltip — hover/tap a star to read its class, mass, lineage.
+    this.drawHoveredStarTooltip(input);
+    // Persistent surface readout for the first planet — always on, so Earth's
+    // fate is never hidden behind a hover on a tiny moving dot.
+    if (input.earths.length > 0) drawEarthStatus(ctx, input.earths[0], w, h);
+  }
+
+  // If the pointer is over a star (accounting for the camera offset), draw an
+  // inspection tooltip: classification, current mass, and merge lineage. Works
+  // for the two-body system and the three-body unravel; buttons take priority.
+  private drawHoveredStarTooltip(input: RenderInput): void {
+    if (!input.hover || this.hoveredButton(input.hover)) return;
+    const cam = input.cameraOffset ?? { x: 0, y: 0 };
+    const z = input.cameraZoom;
+    const cx = this.layout.canvas.width / 2;
+    const cy = this.layout.canvas.height / 2;
+    // Project a world point to screen exactly as the camera transform does
+    // (barycenter follow + zoom), so the hit-test matches what's drawn.
+    const projX = (wx: number): number => cx + (wx + cam.x - cx) * z;
+    const projY = (wy: number): number => cy + (wy + cam.y - cy) * z;
+    const HOVER_PAD = 12;
+
+    // Planets first — their tooltip is the Trisolaris readout, not a star class.
+    for (const e of input.earths) {
+      const ex = projX(e.body.pos.x);
+      const ey = projY(e.body.pos.y);
+      const r = EARTH_DRAW_R * depthScale(e.body.z) * z;
+      if (Math.hypot(input.hover.x - ex, input.hover.y - ey) <= r + HOVER_PAD) {
+        const placement = ey - r < 120 ? 'below' : 'above';
+        drawEarthTooltip(this.ctx, e, ex, placement === 'above' ? ey - r : ey + r, placement);
+        return;
+      }
+    }
+
+    let candidates: { mass: number; mergedCount: number; x: number; y: number; r: number }[] = [];
+    if (input.unravel) {
+      candidates = input.unravel.map(t => ({
+        mass: t.body.mass,
+        mergedCount: t.mergedCount,
+        x: projX(t.body.pos.x),
+        y: projY(t.body.pos.y),
+        r: bodyRadius(t.body.mass) * depthScale(t.body.z) * z,
+      }));
+    } else if (input.sim && !input.supernova) {
+      candidates = [input.sim.a, input.sim.b].map(b => ({
+        mass: b.mass,
+        mergedCount: 1,
+        x: projX(b.pos.x),
+        y: projY(b.pos.y),
+        r: bodyRadius(b.mass) * depthScale(b.z) * z,
+      }));
+    }
+    for (const c of candidates) {
+      if (Math.hypot(input.hover.x - c.x, input.hover.y - c.y) <= c.r + HOVER_PAD) {
+        const placement = c.y - c.r < 120 ? 'below' : 'above';
+        drawStarTooltip(this.ctx, c.mass, c.mergedCount, c.x, placement === 'above' ? c.y - c.r : c.y + c.r, placement);
+        return;
+      }
+    }
   }
 
   // Doppler tint — the actual mechanism by which binary stars' wobble is
@@ -701,6 +865,50 @@ export class Renderer {
     const target = shift > 0 ? palette.cream : palette.wine;
     const amount = Math.abs(shift) * MAX_BLEND;
     return { ...style, primary: blendHex(style.primary, target, amount) };
+  }
+
+  // Render style for an unravel track by kind. The merged remnant is a
+  // cream-cored fusion of the two player colors (it records what was lost),
+  // pulsing a touch larger so it reads as the heavier body.
+  private styleForKind(kind: string): StarStyle {
+    switch (kind) {
+      case 'p1':
+        return STYLE_P1;
+      case 'p2':
+        return STYLE_P2;
+      case 'star':
+        return STYLE_STAR;
+      default:
+        return {
+          primary: blendHex(palette.player1, palette.player2, 0.5),
+          core: palette.cream,
+          haloAlpha: 0.9,
+          haloRadiusFactor: 3.0,
+        };
+    }
+  }
+
+  // Earth, tinted by its climate so its state reads at a glance: red-hot when
+  // scorching, dim/cold when frozen, pale blue when temperate.
+  private earthStyle(era: string): StarStyle {
+    if (era === 'scorching') {
+      return { ...STYLE_EARTH, primary: blendHex(palette.earth, palette.danger, 0.6) };
+    }
+    if (era === 'frozen') {
+      return { ...STYLE_EARTH, primary: blendHex(palette.earth, palette.voidDeep, 0.4), haloAlpha: 0.5 };
+    }
+    return STYLE_EARTH;
+  }
+
+  private trailColorForKind(kind: string): string {
+    switch (kind) {
+      case 'p1':
+        return palette.player1;
+      case 'p2':
+        return palette.player2;
+      default:
+        return palette.cream;
+    }
   }
 
   // Each body traces its own ellipse around the barycenter focus. With the
@@ -795,7 +1003,7 @@ export class Renderer {
   // The flash + shock ring carry the "supernova" moment; the remnant gives
   // the card something to sit on top of when the eye returns to it.
   private drawSupernova(
-    s: { x: number; y: number; elapsed: number; mergedMass: number },
+    s: { x: number; y: number; elapsed: number; mergedMass: number; transient: boolean },
     time: number,
   ): void {
     const { ctx } = this;
@@ -837,10 +1045,13 @@ export class Renderer {
       }
     }
 
-    // Phase 3 — persistent merged remnant. Combined mass → larger body;
+    // Phase 3 — persistent merged remnant. Skipped for a transient (three-body
+    // merge) flash: there the merged star is a live body that keeps moving, so
+    // a fixed remnant here would ghost a second star at the merge point.
+    // Combined mass → larger body;
     // primary color is a blend of P1 + P2 so the visual records what was
     // lost. Gently pulses to read as alive rather than a sticker.
-    if (t > 0.25) {
+    if (t > 0.25 && !s.transient) {
       const settle = Math.min(1, (t - 0.25) / 0.6);
       const radius = bodyRadius(s.mergedMass) * (0.7 + 0.5 * settle);
       const pulse = 0.5 + 0.5 * Math.sin(time * 2.4);
@@ -908,8 +1119,8 @@ export class Renderer {
 
     if (
       input.state === 'resolved' &&
-      input.outcome?.kind === 'win' &&
-      input.winCardDismissed
+      ((input.unravel && !input.sandboxOutcome) ||
+        (input.outcome?.kind === 'win' && input.winCardDismissed))
     ) {
       const againW = 110;
       const againBtn: CanvasButton = {
@@ -925,6 +1136,33 @@ export class Renderer {
       });
       this.register('again', againBtn);
     }
+
+    // Top-left sandbox controls — repeatable: keep feeding the problem until it
+    // collapses. A star is a disruptor (danger red); a planet is a victim
+    // (earth blue) whose civilization rides the chaos.
+    if (
+      input.state === 'resolved' &&
+      (input.outcome?.kind === 'win' || input.unravel) &&
+      !input.sandboxOutcome
+    ) {
+      const sbW = 150;
+      const starBtn: CanvasButton = { label: 'Add Star', x: 16, y: top, width: sbW, height: pillH };
+      drawButton(ctx, starBtn, { primary: palette.danger, hovered: hoveredName === 'add_star' });
+      this.register('add_star', starBtn);
+      const planetBtn: CanvasButton = { label: 'Add Planet', x: 16, y: top + pillH + 10, width: sbW, height: pillH };
+      drawButton(ctx, planetBtn, {
+        primary: palette.earth,
+        text: palette.voidDeep,
+        hovered: hoveredName === 'add_planet',
+      });
+      this.register('add_planet', planetBtn);
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = rgba(palette.cream, 0.5);
+      ctx.font = `italic 400 ${cpx(11)}px ${fonts.serif}`;
+      ctx.fillText('Keep adding until it collapses.', 16, top + (pillH + 10) * 2 + 14);
+      ctx.restore();
+    }
   }
 
   private renderResolved(input: RenderInput): void {
@@ -932,6 +1170,35 @@ export class Renderer {
     this.renderSimulate(input);
 
     if (!input.outcome) return;
+
+    // The sandbox failed — collapse (black hole) or extinction. Game-over card.
+    if (input.sandboxOutcome) {
+      const over = drawSandboxOver(
+        this.ctx,
+        input.sandboxOutcome,
+        this.layout.canvas.width,
+        this.layout.canvas.height,
+      );
+      const btn: CanvasButton = {
+        label: 'Again',
+        x: over.x + over.width / 2 - 90,
+        y: over.buttonY,
+        width: 180,
+        height: 44,
+      };
+      drawButton(this.ctx, btn, {
+        primary: over.titleColor,
+        hovered: this.hoveredButton(input.hover) === 'again',
+      });
+      this.register('again', btn);
+      return;
+    }
+
+    // The three-body unravel otherwise runs forever, like the WIN it grew from —
+    // no card; renderSimulate painted the scene + the EXIT/AGAIN corner cluster
+    // (drawCornerControls) is the way out.
+    if (input.unravel) return;
+
     // Player tapped the ✕ on a WIN card: leave the wobble unobstructed. The
     // orbit keeps advancing in update(); AGAIN/EXIT live in the corner cluster.
     if (input.outcome.kind === 'win' && input.winCardDismissed) return;
@@ -990,6 +1257,9 @@ export class Renderer {
     // distinction is the whole point of the game; this reminds the players
     // what they're really doing every time the AGAIN button appears.
     this.drawCarseFooter(card.carseY, card.x + card.width / 2);
+
+    // (The "disturb it" controls — Add Star / Add Planet — live in the
+    // top-left corner cluster now, repeatable; see drawCornerControls.)
 
     // The whole WIN card is a drag handle. Captured here, registered at the
     // END of render() (after the corner controls) so first-match hit-testing
