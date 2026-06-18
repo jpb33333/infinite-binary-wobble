@@ -69,6 +69,10 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.9"
         TARGETED_DEVICE_FAMILY: "1,2"
+        # App icon: a single 1024 opaque (no-alpha) PNG in the asset catalog,
+        # rendered procedurally from the real engine (eccentricity-matched
+        # binary-wobble ∞). Required for App Store submission.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Automatic signing. Personal (free) team selected in Xcode 2026-06-10
         # and persisted here so headless xcodebuild needs no GUI. Team IDs are
         # not secret (they ship in every IPA's embedded.mobileprovision).
