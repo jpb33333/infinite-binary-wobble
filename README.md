@@ -70,12 +70,12 @@ This is a vanilla-TypeScript canvas app built with Vite. No runtime dependencies
 
 - `npm install` — once.
 - `npm run dev` — Vite dev server with HMR (the dev server strips the CSP `<meta>` tag so blob-worker console noise doesn't appear; production keeps the tight CSP).
-- `npm test` — run the Vitest suite once (43 tests across physics, outcomes, fit, layout, starfield, and the metering client).
+- `npm test` — run the Vitest suite once (44 tests across physics, outcomes, fit, layout, starfield, and the metering client).
 - `npm run test:watch` — Vitest in watch mode.
 - `npm run build` — type-check (`tsc`) then bundle to `dist/` (static; deployable under any subpath, `base` is relative).
 - `npm run preview` — serve the built bundle locally.
 
-Pushing to `main` triggers the GitHub Actions workflow (`.github/workflows/deploy.yml`): it runs the tests, builds, and deploys `dist/` to GitHub Pages. The live site is https://jpb33333.github.io/infinite-binary-wobble/.
+A GitHub Actions workflow (`.github/workflows/deploy.yml`) builds and deploys `dist/` to GitHub Pages on push to `main`. **It is currently disabled and the public site is offline** — the game was taken down pending the metered relaunch, so https://jpb33333.github.io/infinite-binary-wobble/ now returns 404. Run it locally with `npm run dev`.
 
 Phones work too: landscape plays full-bleed, portrait gets a real stacked layout (P1 top / P2 bottom), and the site is installable as a web app (Add to Home Screen).
 
