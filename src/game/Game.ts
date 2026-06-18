@@ -6,8 +6,9 @@ import { MassControl } from '../ui/MassControl.ts';
 import { ArrowControl } from '../ui/ArrowControl.ts';
 import { inRect } from '../ui/input.ts';
 import { Simulation, PHYSICS } from '../physics/Simulation.ts';
-import { NBodySimulation } from '../physics/nbody.ts';
-import { createBody, bodyRadius } from '../physics/Body.ts';
+import { NBodySimulation, type MergeEvent } from '../physics/nbody.ts';
+import { createBody } from '../physics/Body.ts';
+import type { Body } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
@@ -18,9 +19,6 @@ import { Meter } from '../net/meter.ts';
 const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
-// Distance from the three-body barycenter at which a star counts as ejected
-// (well past the 820 px outcome envelope → it's gone, the wobble is broken).
-const EJECT_DISTANCE = 1600;
 
 export class Game {
   private state: GameStateKind = 'title';
@@ -39,11 +37,13 @@ export class Game {
   // Post-win "Add 3rd Body" three-body unravel. When `nbody` is set, the
   // resolved state steps THIS instead of the two-body `sim` (it reuses
   // sim.a/sim.b as its first two bodies, so the binary continues unbroken and
-  // p1/p2 trails keep flowing). `unravelOutcome` latches once the system
-  // resolves (a collision or an ejection); `trail3` is the intruder's trail.
+  // p1/p2 trails keep flowing). It runs forever, like the WIN — collisions
+  // merge stars (never stop it). `trail3` seeds the intruder's track.
   private nbody: NBodySimulation | null = null;
   private trail3: Trail;
-  private unravelOutcome: 'ejected' | 'collided' | null = null;
+  // Per-body tracks (trail + render kind) for the unravel. The body count
+  // changes as stars merge, so trails follow bodies, not fixed slots.
+  private unravelTracks: { body: Body; trail: Trail; kind: 'p1' | 'p2' | 'p3' | 'merged' }[] = [];
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -74,7 +74,10 @@ export class Game {
   // Supernova scene: { x, y } of the merger point, plus the elapsed-time
   // marker at the moment of collision so Renderer can animate the flash,
   // shockwave and remnant in real time. null at all other times.
-  private supernova: { x: number; y: number; t0: number; mergedMass: number } | null = null;
+  // `transient` merges (the three-body unravel) play only flash + shockwave —
+  // the merged star keeps moving, so no persistent remnant is drawn. The
+  // two-body collision (which freezes) keeps the remnant (transient: false).
+  private supernova: { x: number; y: number; t0: number; mergedMass: number; transient: boolean } | null = null;
   // Session scoreboard summary, recomputed only when a game is recorded.
   // Reading the cookie every frame would be silly at 60Hz.
   private statsSummary: StatsSummary = summarize(loadStats());
@@ -371,7 +374,7 @@ export class Game {
     this.trails.p2.reset();
     this.trail3.reset();
     this.nbody = null;
-    this.unravelOutcome = null;
+    this.unravelTracks = [];
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -404,7 +407,7 @@ export class Game {
     this.trails.p2.reset();
     this.trail3.reset();
     this.nbody = null;
-    this.unravelOutcome = null;
+    this.unravelTracks = [];
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -459,7 +462,7 @@ export class Game {
     this.trails.p2.reset();
     this.trail3.reset();
     this.nbody = null;
-    this.unravelOutcome = null;
+    this.unravelTracks = [];
     this.outcome = null;
     this.burstedOnResolve = false;
     this.simAccum = 0;
@@ -508,6 +511,7 @@ export class Game {
           y: mid.y,
           t0: this.elapsed,
           mergedMass: this.sim.a.mass + this.sim.b.mass,
+          transient: false,
         };
         this.renderer.burst(mid.x, mid.y, 240, palette.cream, 360);
       } else if (o.kind === 'win') {
@@ -554,50 +558,57 @@ export class Game {
       PHYSICS.G,
       PHYSICS.SOFTENING,
     );
-    this.unravelOutcome = null;
     this.trail3.reset();
+    // Reuse the winning bodies' trails (p1/p2) so the binary's history flows
+    // unbroken into the unravel; the intruder gets the fresh trail3.
+    this.unravelTracks = [
+      { body: this.sim.a, trail: this.trails.p1, kind: 'p1' },
+      { body: this.sim.b, trail: this.trails.p2, kind: 'p2' },
+      { body: third, trail: this.trail3, kind: 'p3' },
+    ];
     // The WIN card is gone now; drop any in-progress card drag.
     this.winCardOffset = { x: 0, y: 0 };
     this.draggingCard = false;
   }
 
   // Fixed-step accumulator for the three-body unravel (mirror of
-  // advancePhysics, stepping the N-body system instead of the two-body sim).
+  // advancePhysics). Runs forever, like the WIN's infinite wobble — it never
+  // stops on a collision; collisions just merge and the survivors carry on.
   private advanceNBody(dt: number): void {
     if (!this.nbody) return;
     this.simAccum += dt;
     if (this.simAccum > 0.25) this.simAccum = 0.25;
     while (this.simAccum >= PHYSICS.DT) {
-      this.nbody.step(PHYSICS.DT);
+      const merge = this.nbody.step(PHYSICS.DT);
+      if (merge) this.onMerge(merge);
       this.simAccum -= PHYSICS.DT;
     }
+    for (const t of this.unravelTracks) t.trail.push(t.body.pos.x, t.body.pos.y);
   }
 
-  // The three-body system resolves when two stars touch (collision) or one is
-  // flung clear of the field (ejection). We only OBSERVE — never rig the
-  // outcome; a configuration that stays chaotic just keeps running until the
-  // player taps AGAIN/EXIT.
-  private checkUnravel(): void {
-    if (!this.nbody || this.unravelOutcome) return;
-    const bodies = this.nbody.bodies;
-    for (let i = 0; i < bodies.length; i++) {
-      for (let j = i + 1; j < bodies.length; j++) {
-        const d = Math.hypot(
-          bodies[j].pos.x - bodies[i].pos.x,
-          bodies[j].pos.y - bodies[i].pos.y,
-        );
-        if (d < bodyRadius(bodies[i].mass) + bodyRadius(bodies[j].mass)) {
-          this.unravelOutcome = 'collided';
-          const mx = (bodies[i].pos.x + bodies[j].pos.x) / 2;
-          const my = (bodies[i].pos.y + bodies[j].pos.y) / 2;
-          this.renderer.burst(mx, my, 200, palette.cream, 340);
-          return;
-        }
-      }
+  // A collision fused two stars. Retire the consumed tracks, give the merged
+  // star a fresh track, and fire a transient flash at the merger point. The
+  // merged body then carries on — we want to watch whether the survivor is
+  // slingshot away or falls into a new orbit around the heavier mass.
+  private onMerge(event: MergeEvent): void {
+    if (!this.nbody) return;
+    const present = new Set(this.nbody.bodies);
+    this.unravelTracks = this.unravelTracks.filter(t => present.has(t.body));
+    if (!this.unravelTracks.some(t => t.body === event.body)) {
+      this.unravelTracks.push({
+        body: event.body,
+        trail: new Trail(TRAIL_CAPACITY),
+        kind: 'merged',
+      });
     }
-    if (this.nbody.maxDistanceFromCOM() > EJECT_DISTANCE) {
-      this.unravelOutcome = 'ejected';
-    }
+    this.supernova = {
+      x: event.x,
+      y: event.y,
+      t0: this.elapsed,
+      mergedMass: event.mass,
+      transient: true,
+    };
+    this.renderer.burst(event.x, event.y, 180, palette.cream, 340);
   }
 
   private activeSpec(): BodySpec | null {
@@ -689,16 +700,11 @@ export class Game {
         break;
       }
       case 'resolved': {
-        // Three-body unravel takes over: step the N-body system (which shares
-        // sim.a/sim.b), keep all three trails flowing, watch for resolution.
-        if (this.nbody && this.sim) {
-          if (!this.unravelOutcome) {
-            this.advanceNBody(dt);
-            this.trails.p1.push(this.sim.a.pos.x, this.sim.a.pos.y);
-            this.trails.p2.push(this.sim.b.pos.x, this.sim.b.pos.y);
-            this.trail3.push(this.nbody.bodies[2].pos.x, this.nbody.bodies[2].pos.y);
-            this.checkUnravel();
-          }
+        // Three-body unravel takes over and runs forever — advanceNBody handles
+        // its trails + merges. It never stops on a collision; merged stars just
+        // carry on, watchable as long as the WIN it grew out of.
+        if (this.nbody) {
+          this.advanceNBody(dt);
           break;
         }
         // For WINs, the wobble keeps going — it really is infinite. Keep the
@@ -732,9 +738,7 @@ export class Game {
       outcome: this.outcome,
       countdownRemaining: this.countdownRemaining,
       trails: this.trails,
-      thirdBody: this.nbody ? this.nbody.bodies[2] : null,
-      trail3: this.nbody ? this.trail3 : null,
-      unravelOutcome: this.unravelOutcome,
+      unravel: this.nbody ? this.unravelTracks : null,
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
       winCardDismissed: this.winCardDismissed,
@@ -748,6 +752,7 @@ export class Game {
             y: this.supernova.y,
             elapsed: this.elapsed - this.supernova.t0,
             mergedMass: this.supernova.mergedMass,
+            transient: this.supernova.transient,
           }
         : null,
       cameraOffset: this.computeCameraOffset(),

@@ -29,16 +29,19 @@ describe('N-body reduces to the two-body engine when N = 2', () => {
   });
 
   test('NBodySimulation([a,b]) tracks Simulation step-for-step', () => {
-    const m1 = 2;
-    const m2 = 3;
+    // Near-circular so the pair never gets close enough to merge — this checks
+    // pure integrator equivalence, not the merge path.
+    const m = 2;
+    const r = 400;
+    const v = circularRelativeVelocity(m, m, r, PHYSICS.G) / 2;
     const sim = Simulation.create(
-      m1, vec2(-200, 0), vec2(0, 60),
-      m2, vec2(200, 0), vec2(0, -40),
+      m, vec2(-r / 2, 0), vec2(0, +v),
+      m, vec2(+r / 2, 0), vec2(0, -v),
     );
     const nb = new NBodySimulation(
       [
-        createBody(m1, vec2(-200, 0), vec2(0, 60)),
-        createBody(m2, vec2(200, 0), vec2(0, -40)),
+        createBody(m, vec2(-r / 2, 0), vec2(0, +v)),
+        createBody(m, vec2(+r / 2, 0), vec2(0, -v)),
       ],
       PHYSICS.G,
       PHYSICS.SOFTENING,
@@ -59,20 +62,50 @@ describe('N-body reduces to the two-body engine when N = 2', () => {
 
 describe('N-body PEFRL conserves the invariants (3 bodies)', () => {
   test('total linear momentum is conserved to machine precision', () => {
+    // Hierarchical (tight circular binary + a distant bound third) so nothing
+    // merges — a clean test of the integrator's momentum conservation.
+    const m = 2;
+    const r = 250;
+    const v = circularRelativeVelocity(m, m, r, PHYSICS.G) / 2;
     const nb = new NBodySimulation(
       [
-        createBody(2, vec2(-150, 0), vec2(0, 70)),
-        createBody(3, vec2(150, 0), vec2(0, -50)),
-        createBody(1.5, vec2(0, 300), vec2(-40, 0)),
+        createBody(m, vec2(-r / 2, 0), vec2(0, +v)),
+        createBody(m, vec2(+r / 2, 0), vec2(0, -v)),
+        createBody(1.5, vec2(0, 1300), vec2(200, 0)),
       ],
       PHYSICS.G,
       PHYSICS.SOFTENING,
     );
     const p0 = nb.momentum();
     for (let i = 0; i < 4000; i++) nb.step(PHYSICS.DT);
+    expect(nb.bodies.length).toBe(3); // no merge in this configuration
     const p = nb.momentum();
     // Internal pair forces cancel exactly (Newton's third law), so every kick
     // is momentum-neutral; only float round-off accumulates.
+    expect(Math.abs(p.x - p0.x)).toBeLessThan(1e-6);
+    expect(Math.abs(p.y - p0.y)).toBeLessThan(1e-6);
+  });
+
+  test('a head-on collision merges, conserving mass and momentum', () => {
+    const nb = new NBodySimulation(
+      [
+        createBody(2, vec2(-120, 0), vec2(70, 0)),
+        createBody(3, vec2(120, 0), vec2(-70, 0)),
+      ],
+      PHYSICS.G,
+      PHYSICS.SOFTENING,
+    );
+    const p0 = nb.momentum();
+    let event = null;
+    for (let i = 0; i < 3000 && nb.bodies.length > 1; i++) {
+      const e = nb.step(PHYSICS.DT);
+      if (e) event = e;
+    }
+    expect(nb.bodies.length).toBe(1);
+    expect(event).not.toBeNull();
+    expect(nb.bodies[0].mass).toBeCloseTo(5, 9); // 2 + 3, exactly
+    // Perfectly inelastic merge still conserves total momentum.
+    const p = nb.momentum();
     expect(Math.abs(p.x - p0.x)).toBeLessThan(1e-6);
     expect(Math.abs(p.y - p0.y)).toBeLessThan(1e-6);
   });
@@ -89,7 +122,7 @@ describe('N-body PEFRL conserves the invariants (3 bodies)', () => {
       [
         createBody(m, vec2(-r / 2, 0), vec2(0, +v)),
         createBody(m, vec2(+r / 2, 0), vec2(0, -v)),
-        createBody(0.5, vec2(0, 1200), vec2(90, 0)),
+        createBody(0.5, vec2(0, 1200), vec2(200, 0)),
       ],
       PHYSICS.G,
       PHYSICS.SOFTENING,

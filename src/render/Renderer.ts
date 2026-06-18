@@ -22,7 +22,6 @@ import {
   drawButton,
   drawTooltip,
   drawOutcomeCard,
-  drawUnravelCard,
   drawCloseButton,
   drawPaywallCard,
   drawTitleExplainerLink,
@@ -59,7 +58,9 @@ export interface RenderInput {
   // wall-time elapsed since the collision, and the combined mass. The
   // Renderer uses this to animate flash → shockwave → persistent remnant
   // in place of drawing the two original bodies.
-  supernova: { x: number; y: number; elapsed: number; mergedMass: number } | null;
+  // `transient` (three-body merges) play flash + shockwave only — the merged
+  // star keeps moving, so no persistent remnant is painted at the merge point.
+  supernova: { x: number; y: number; elapsed: number; mergedMass: number; transient: boolean } | null;
   // World → canvas translation applied to the simulated content (trails,
   // stars, predicted orbits, barycenter, supernova). Tracks the barycenter
   // so a drifting binary stays centred on screen — the orbit becomes
@@ -76,13 +77,11 @@ export interface RenderInput {
   // over the title screen. Modal: BEGIN is suppressed underneath so the card
   // owns the input. Only ever true in the 'title' state.
   explainerOpen: boolean;
-  // Post-win three-body unravel. `thirdBody` is the intruding star (drawn +
-  // trailed alongside sim.a/sim.b) while it's active; `trail3` is its trail;
-  // `unravelOutcome` latches once the system collides or ejects. All null /
-  // absent outside the unravel.
-  thirdBody: Body | null;
-  trail3: Trail | null;
-  unravelOutcome: 'ejected' | 'collided' | null;
+  // Post-win three-body unravel: the live per-body tracks (each a body + its
+  // trail + a render kind). The body count changes as stars merge, so the
+  // renderer draws from this list rather than fixed slots. null outside the
+  // unravel (the two-body sim/trails path is used then).
+  unravel: { body: Body; trail: Trail; kind: string }[] | null;
 }
 
 // Minimum touch-target side in CSS pixels (Apple HIG 44pt). Buttons are
@@ -633,31 +632,36 @@ export class Renderer {
       ctx.translate(input.cameraOffset.x, input.cameraOffset.y);
     }
 
-    // Two-body overlays (predicted ellipses, barycenter dot) are meaningless
-    // once a third star joins — suppress them during the unravel.
-    if (input.sim && !input.thirdBody) this.drawPredictedOrbits(input.sim);
-    drawTrail(ctx, input.trails.p1, palette.player1, 0.85, 0, 2.2);
-    drawTrail(ctx, input.trails.p2, palette.player2, 0.85, 0, 2.2);
-    if (input.trail3) drawTrail(ctx, input.trail3, palette.danger, 0.85, 0, 2.2);
-    if (input.sim && !input.supernova && !input.thirdBody) this.drawBarycenter(input.sim, input.time);
+    if (input.unravel) {
+      // Three-body unravel: draw each tracked body + its trail from the live
+      // list (the count changes as stars merge). Two-body overlays — predicted
+      // ellipses, the barycenter dot, Doppler tint — don't apply here.
+      for (const t of input.unravel) {
+        drawTrail(ctx, t.trail, this.trailColorForKind(t.kind), 0.85, 0, 2.2);
+      }
+      if (input.supernova) this.drawSupernova(input.supernova, input.time);
+      for (const t of input.unravel) {
+        drawStar(ctx, t.body.pos.x, t.body.pos.y, bodyRadius(t.body.mass), this.styleForKind(t.kind), input.time);
+      }
+    } else {
+      if (input.sim) this.drawPredictedOrbits(input.sim);
+      drawTrail(ctx, input.trails.p1, palette.player1, 0.85, 0, 2.2);
+      drawTrail(ctx, input.trails.p2, palette.player2, 0.85, 0, 2.2);
+      if (input.sim && !input.supernova) this.drawBarycenter(input.sim, input.time);
 
-    if (input.supernova) {
-      this.drawSupernova(input.supernova, input.time);
-    } else if (input.sim) {
-      const styleA = this.dopplerTinted(STYLE_P1, input.sim.a);
-      const styleB = this.dopplerTinted(STYLE_P2, input.sim.b);
-      drawStar(ctx, input.sim.a.pos.x, input.sim.a.pos.y, bodyRadius(input.sim.a.mass), styleA, input.time);
-      drawStar(ctx, input.sim.b.pos.x, input.sim.b.pos.y, bodyRadius(input.sim.b.mass), styleB, input.time + 1.7);
-    }
-    // The intruding third star — bright danger red, no Doppler tint (it is the
-    // disruptor; it should not blend into the binary's palette).
-    if (input.thirdBody) {
-      drawStar(ctx, input.thirdBody.pos.x, input.thirdBody.pos.y, bodyRadius(input.thirdBody.mass), STYLE_P3, input.time + 0.9);
+      if (input.supernova) {
+        this.drawSupernova(input.supernova, input.time);
+      } else if (input.sim) {
+        const styleA = this.dopplerTinted(STYLE_P1, input.sim.a);
+        const styleB = this.dopplerTinted(STYLE_P2, input.sim.b);
+        drawStar(ctx, input.sim.a.pos.x, input.sim.a.pos.y, bodyRadius(input.sim.a.mass), styleA, input.time);
+        drawStar(ctx, input.sim.b.pos.x, input.sim.b.pos.y, bodyRadius(input.sim.b.mass), styleB, input.time + 1.7);
+      }
     }
 
     ctx.restore();
 
-    if (input.sim && input.classifier && !input.thirdBody) {
+    if (input.sim && input.classifier && !input.unravel) {
       const o = input.sim.orbit();
       const boundText = o.bound ? 'BOUND' : 'UNBOUND';
       const boundColor = o.bound ? palette.cream : palette.wine;
@@ -693,10 +697,8 @@ export class Renderer {
       }
     }
     // The unravel overrides everything: three bodies, no stable solution.
-    if (input.thirdBody) {
-      phaseText = input.unravelOutcome ? 'unbound' : 'the three-body problem';
-    }
-    const phaseColor = input.thirdBody ? palette.danger : palette.rose;
+    if (input.unravel) phaseText = 'the three-body problem';
+    const phaseColor = input.unravel ? palette.danger : palette.rose;
     drawPhaseLabel(ctx, phaseText, w, phaseColor);
   }
 
@@ -722,6 +724,40 @@ export class Renderer {
     const target = shift > 0 ? palette.cream : palette.wine;
     const amount = Math.abs(shift) * MAX_BLEND;
     return { ...style, primary: blendHex(style.primary, target, amount) };
+  }
+
+  // Render style for an unravel track by kind. The merged remnant is a
+  // cream-cored fusion of the two player colors (it records what was lost),
+  // pulsing a touch larger so it reads as the heavier body.
+  private styleForKind(kind: string): StarStyle {
+    switch (kind) {
+      case 'p1':
+        return STYLE_P1;
+      case 'p2':
+        return STYLE_P2;
+      case 'p3':
+        return STYLE_P3;
+      default:
+        return {
+          primary: blendHex(palette.player1, palette.player2, 0.5),
+          core: palette.cream,
+          haloAlpha: 0.9,
+          haloRadiusFactor: 3.0,
+        };
+    }
+  }
+
+  private trailColorForKind(kind: string): string {
+    switch (kind) {
+      case 'p1':
+        return palette.player1;
+      case 'p2':
+        return palette.player2;
+      case 'p3':
+        return palette.danger;
+      default:
+        return palette.cream;
+    }
   }
 
   // Each body traces its own ellipse around the barycenter focus. With the
@@ -816,7 +852,7 @@ export class Renderer {
   // The flash + shock ring carry the "supernova" moment; the remnant gives
   // the card something to sit on top of when the eye returns to it.
   private drawSupernova(
-    s: { x: number; y: number; elapsed: number; mergedMass: number },
+    s: { x: number; y: number; elapsed: number; mergedMass: number; transient: boolean },
     time: number,
   ): void {
     const { ctx } = this;
@@ -858,10 +894,13 @@ export class Renderer {
       }
     }
 
-    // Phase 3 — persistent merged remnant. Combined mass → larger body;
+    // Phase 3 — persistent merged remnant. Skipped for a transient (three-body
+    // merge) flash: there the merged star is a live body that keeps moving, so
+    // a fixed remnant here would ghost a second star at the merge point.
+    // Combined mass → larger body;
     // primary color is a blend of P1 + P2 so the visual records what was
     // lost. Gently pulses to read as alive rather than a sticker.
-    if (t > 0.25) {
+    if (t > 0.25 && !s.transient) {
       const settle = Math.min(1, (t - 0.25) / 0.6);
       const radius = bodyRadius(s.mergedMass) * (0.7 + 0.5 * settle);
       const pulse = 0.5 + 0.5 * Math.sin(time * 2.4);
@@ -929,8 +968,7 @@ export class Renderer {
 
     if (
       input.state === 'resolved' &&
-      ((input.thirdBody && !input.unravelOutcome) ||
-        (input.outcome?.kind === 'win' && input.winCardDismissed))
+      (input.unravel || (input.outcome?.kind === 'win' && input.winCardDismissed))
     ) {
       const againW = 110;
       const againBtn: CanvasButton = {
@@ -954,32 +992,10 @@ export class Renderer {
 
     if (!input.outcome) return;
 
-    // Three-body unravel takes over the resolved screen. While it's still
-    // unraveling there's no card (the chaos + the EXIT/AGAIN corner cluster are
-    // enough); once it resolves, a danger-red end card with AGAIN.
-    if (input.thirdBody || input.unravelOutcome) {
-      if (input.unravelOutcome) {
-        const ucard = drawUnravelCard(
-          this.ctx,
-          this.layout.canvas.width,
-          this.layout.canvas.height,
-          input.unravelOutcome,
-        );
-        const againBtn: CanvasButton = {
-          label: 'Again',
-          x: ucard.x + ucard.width / 2 - 90,
-          y: ucard.buttonY,
-          width: 180,
-          height: 44,
-        };
-        drawButton(this.ctx, againBtn, {
-          primary: ucard.titleColor,
-          hovered: this.hoveredButton(input.hover) === 'again',
-        });
-        this.register('again', againBtn);
-      }
-      return;
-    }
+    // The three-body unravel runs forever, like the WIN it grew from — no card,
+    // no end. renderSimulate already painted the scene; the EXIT/AGAIN corner
+    // cluster (drawCornerControls) is the way out.
+    if (input.unravel) return;
 
     // Player tapped the ✕ on a WIN card: leave the wobble unobstructed. The
     // orbit keeps advancing in update(); AGAIN/EXIT live in the corner cluster.

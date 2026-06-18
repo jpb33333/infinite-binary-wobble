@@ -1,4 +1,17 @@
 import type { Body } from './Body.ts';
+import { createBody, bodyRadius } from './Body.ts';
+import { vec2 } from './Vec2.ts';
+
+// A merge event: two stars touched and fused into one. Carries the merger
+// point + combined mass (for the flash) and the new body (so the caller can
+// retrack it). Momentum is conserved across the merge; kinetic energy is not
+// (perfectly inelastic — that lost energy IS the collision).
+export interface MergeEvent {
+  x: number;
+  y: number;
+  mass: number;
+  body: Body;
+}
 
 // N-body Plummer-softened gravity + PEFRL, for the post-win "third star"
 // unravel (the three-body problem tearing a stable binary apart).
@@ -166,11 +179,41 @@ export class NBodySimulation {
     this.initialEnergy = totalEnergy(bodies, G, softening);
   }
 
-  step(dt: number): void {
+  // Advance one fixed step, then resolve at most one collision into a merge.
+  // Returns the merge event for the caller to animate, or null. The system is
+  // never stopped — after a merge it simply has one fewer body and keeps going.
+  step(dt: number): MergeEvent | null {
     pefrlStepN(this.bodies, dt, this.G, this.softening);
     this.time += dt;
     const m = minPairSeparation(this.bodies);
     if (m < this.minSeparation) this.minSeparation = m;
+    return this.resolveCollision();
+  }
+
+  // Merge the first overlapping pair (surfaces touching) into a single body —
+  // perfectly inelastic: combined mass, momentum-conserving velocity, COM
+  // position. One pair per call; a rare simultaneous second overlap resolves on
+  // the next step. Returns the merger, or null when nothing touched.
+  private resolveCollision(): MergeEvent | null {
+    const b = this.bodies;
+    for (let i = 0; i < b.length; i++) {
+      for (let j = i + 1; j < b.length; j++) {
+        const dx = b[j].pos.x - b[i].pos.x;
+        const dy = b[j].pos.y - b[i].pos.y;
+        if (Math.sqrt(dx * dx + dy * dy) < bodyRadius(b[i].mass) + bodyRadius(b[j].mass)) {
+          const mass = b[i].mass + b[j].mass;
+          const x = (b[i].mass * b[i].pos.x + b[j].mass * b[j].pos.x) / mass;
+          const y = (b[i].mass * b[i].pos.y + b[j].mass * b[j].pos.y) / mass;
+          const vx = (b[i].mass * b[i].vel.x + b[j].mass * b[j].vel.x) / mass;
+          const vy = (b[i].mass * b[i].vel.y + b[j].mass * b[j].vel.y) / mass;
+          const merged = createBody(mass, vec2(x, y), vec2(vx, vy));
+          b.splice(j, 1);
+          b[i] = merged;
+          return { x, y, mass, body: merged };
+        }
+      }
+    }
+    return null;
   }
 
   energy(): number {
@@ -183,18 +226,5 @@ export class NBodySimulation {
 
   centerOfMass(): { x: number; y: number } {
     return centerOfMass(this.bodies);
-  }
-
-  // Farthest any body currently sits from the barycenter — ejection detection.
-  maxDistanceFromCOM(): number {
-    const c = this.centerOfMass();
-    let max = 0;
-    for (const b of this.bodies) {
-      const dx = b.pos.x - c.x;
-      const dy = b.pos.y - c.y;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d > max) max = d;
-    }
-    return max;
   }
 }
