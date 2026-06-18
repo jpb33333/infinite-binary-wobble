@@ -74,3 +74,24 @@ targets:
         # not secret (they ship in every IPA's embedded.mobileprovision).
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: B52N5TMBSW
+    # Run the app-layer unit tests through the app's own scheme:
+    #   xcodebuild test -scheme InfiniteBinaryWobble -destination 'platform=iOS Simulator,...'
+    scheme:
+      testTargets:
+        - InfiniteBinaryWobbleTests
+  # App-layer unit tests (PlayMeter, monetization gate, …). Hosted by the app
+  # so the test bundle can `@testable import InfiniteBinaryWobble`. The physics
+  # package keeps its own swift-test suite under WobblePhysics/.
+  InfiniteBinaryWobbleTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+    dependencies:
+      - target: InfiniteBinaryWobble
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bowditch.infinitebinarywobble.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: B52N5TMBSW
