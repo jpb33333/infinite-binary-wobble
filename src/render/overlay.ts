@@ -253,6 +253,73 @@ export function drawTooltip(
   ctx.restore();
 }
 
+// Rough spectral classification by mass + merger history. A star with more
+// than one progenitor is a "blue straggler" — the real name for a star a merger
+// has made hotter and heavier than it has any right to be. Single stars get a
+// mass class (game-unit masses run ~1–5, merged up to ~9 before they detonate).
+function classifyStar(mass: number, mergedCount: number): string {
+  if (mergedCount > 1) return 'Blue straggler';
+  if (mass < 1.5) return 'Red dwarf';
+  if (mass < 2.5) return 'Yellow dwarf';
+  if (mass < 4) return 'White star';
+  if (mass < 6) return 'Blue-white star';
+  return 'Blue giant';
+}
+
+// Inspection tooltip for a star: classification, current mass, and (for a
+// merged star) how many stars fused into it. A small multi-line panel anchored
+// above or below the body.
+export function drawStarTooltip(
+  ctx: CanvasRenderingContext2D,
+  mass: number,
+  mergedCount: number,
+  anchorX: number,
+  anchorY: number,
+  placement: 'above' | 'below' = 'above',
+): void {
+  const title = classifyStar(mass, mergedCount);
+  const sub = [`mass ${mass.toFixed(1)}`];
+  if (mergedCount > 1) sub.push(`forged from ${mergedCount} stars`);
+
+  ctx.save();
+  const titleFont = `600 ${cpx(13)}px ${fonts.sans}`;
+  const subFont = `400 ${cpx(11)}px ${fonts.sans}`;
+  ctx.font = titleFont;
+  let textW = ctx.measureText(title).width;
+  ctx.font = subFont;
+  for (const s of sub) textW = Math.max(textW, ctx.measureText(s).width);
+
+  const padX = 12;
+  const padY = 8;
+  const lineH = lineHeightFor(12);
+  const boxW = textW + padX * 2;
+  const boxH = padY * 2 + lineH * (1 + sub.length);
+  const bx = anchorX - boxW / 2;
+  const by = placement === 'above' ? anchorY - boxH - 10 : anchorY + 10;
+
+  ctx.beginPath();
+  roundedRectPath(ctx, bx, by, boxW, boxH, 8);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.85);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(mergedCount > 1 ? palette.cream : palette.rose, 0.5);
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let ty = by + padY + lineH / 2;
+  ctx.font = titleFont;
+  ctx.fillStyle = palette.cream;
+  ctx.fillText(title, anchorX, ty);
+  ctx.font = subFont;
+  ctx.fillStyle = rgba(palette.rose, 0.85);
+  for (const s of sub) {
+    ty += lineH;
+    ctx.fillText(s, anchorX, ty);
+  }
+  ctx.restore();
+}
+
 export function drawOutcomeCard(
   ctx: CanvasRenderingContext2D,
   outcome: Outcome,

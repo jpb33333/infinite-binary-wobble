@@ -43,7 +43,12 @@ export class Game {
   private trail3: Trail;
   // Per-body tracks (trail + render kind) for the unravel. The body count
   // changes as stars merge, so trails follow bodies, not fixed slots.
-  private unravelTracks: { body: Body; trail: Trail; kind: 'p1' | 'p2' | 'p3' | 'merged' }[] = [];
+  private unravelTracks: {
+    body: Body;
+    trail: Trail;
+    kind: 'p1' | 'p2' | 'p3' | 'merged';
+    mergedCount: number; // how many original stars fused into this body (1 = pristine)
+  }[] = [];
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -562,9 +567,9 @@ export class Game {
     // Reuse the winning bodies' trails (p1/p2) so the binary's history flows
     // unbroken into the unravel; the intruder gets the fresh trail3.
     this.unravelTracks = [
-      { body: this.sim.a, trail: this.trails.p1, kind: 'p1' },
-      { body: this.sim.b, trail: this.trails.p2, kind: 'p2' },
-      { body: third, trail: this.trail3, kind: 'p3' },
+      { body: this.sim.a, trail: this.trails.p1, kind: 'p1', mergedCount: 1 },
+      { body: this.sim.b, trail: this.trails.p2, kind: 'p2', mergedCount: 1 },
+      { body: third, trail: this.trail3, kind: 'p3', mergedCount: 1 },
     ];
     // The WIN card is gone now; drop any in-progress card drag.
     this.winCardOffset = { x: 0, y: 0 };
@@ -593,6 +598,11 @@ export class Game {
   private onMerge(event: MergeEvent): void {
     if (!this.nbody) return;
     const present = new Set(this.nbody.bodies);
+    // Lineage: the merged star inherits the combined progenitor count of the
+    // two stars it consumed (so the tooltip can read "forged from N stars").
+    const mergedCount = this.unravelTracks
+      .filter(t => !present.has(t.body))
+      .reduce((sum, t) => sum + t.mergedCount, 0);
     this.unravelTracks = this.unravelTracks.filter(t => present.has(t.body));
     // Normal fuse → track the merged star. Supernova → nothing survives the
     // detonation (event.body is null), so no new track; nbody already rammed
@@ -602,6 +612,7 @@ export class Game {
         body: event.body,
         trail: new Trail(TRAIL_CAPACITY),
         kind: 'merged',
+        mergedCount,
       });
     }
     this.supernova = {

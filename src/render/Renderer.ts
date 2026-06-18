@@ -22,6 +22,7 @@ import {
   drawButton,
   drawTooltip,
   drawOutcomeCard,
+  drawStarTooltip,
   drawCloseButton,
   drawPaywallCard,
   drawTitleExplainerLink,
@@ -81,7 +82,7 @@ export interface RenderInput {
   // trail + a render kind). The body count changes as stars merge, so the
   // renderer draws from this list rather than fixed slots. null outside the
   // unravel (the two-body sim/trails path is used then).
-  unravel: { body: Body; trail: Trail; kind: string }[] | null;
+  unravel: { body: Body; trail: Trail; kind: string; mergedCount: number }[] | null;
 }
 
 // Minimum touch-target side in CSS pixels (Apple HIG 44pt). Buttons are
@@ -700,6 +701,42 @@ export class Renderer {
     if (input.unravel) phaseText = 'the three-body problem';
     const phaseColor = input.unravel ? palette.danger : palette.rose;
     drawPhaseLabel(ctx, phaseText, w, phaseColor);
+
+    // Inspection tooltip — hover/tap a star to read its class, mass, lineage.
+    this.drawHoveredStarTooltip(input);
+  }
+
+  // If the pointer is over a star (accounting for the camera offset), draw an
+  // inspection tooltip: classification, current mass, and merge lineage. Works
+  // for the two-body system and the three-body unravel; buttons take priority.
+  private drawHoveredStarTooltip(input: RenderInput): void {
+    if (!input.hover || this.hoveredButton(input.hover)) return;
+    const cam = input.cameraOffset ?? { x: 0, y: 0 };
+    let candidates: { mass: number; mergedCount: number; x: number; y: number }[] = [];
+    if (input.unravel) {
+      candidates = input.unravel.map(t => ({
+        mass: t.body.mass,
+        mergedCount: t.mergedCount,
+        x: t.body.pos.x + cam.x,
+        y: t.body.pos.y + cam.y,
+      }));
+    } else if (input.sim && !input.supernova) {
+      candidates = [input.sim.a, input.sim.b].map(b => ({
+        mass: b.mass,
+        mergedCount: 1,
+        x: b.pos.x + cam.x,
+        y: b.pos.y + cam.y,
+      }));
+    }
+    const HOVER_PAD = 12;
+    for (const c of candidates) {
+      const r = bodyRadius(c.mass);
+      if (Math.hypot(input.hover.x - c.x, input.hover.y - c.y) <= r + HOVER_PAD) {
+        const placement = c.y - r < 120 ? 'below' : 'above';
+        drawStarTooltip(this.ctx, c.mass, c.mergedCount, c.x, placement === 'above' ? c.y - r : c.y + r, placement);
+        return;
+      }
+    }
   }
 
   // Doppler tint — the actual mechanism by which binary stars' wobble is
