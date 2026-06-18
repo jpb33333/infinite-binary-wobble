@@ -10,7 +10,7 @@ import {
 import { drawComet } from './comet.ts';
 import { computeFit, type Fit } from './fit.ts';
 import { drawCourt } from './court.ts';
-import { drawStar, dimmed, STYLE_P1, STYLE_P2, STYLE_P3, type StarStyle } from './star.ts';
+import { drawStar, dimmed, STYLE_P1, STYLE_P2, STYLE_P3, STYLE_EARTH, type StarStyle } from './star.ts';
 import { Trail, drawTrail } from './trail.ts';
 import { Particles } from './particles.ts';
 import { drawVelocityArrow } from './arrow.ts';
@@ -23,6 +23,7 @@ import {
   drawTooltip,
   drawOutcomeCard,
   drawStarTooltip,
+  drawEarthTooltip,
   drawCloseButton,
   drawPaywallCard,
   drawTitleExplainerLink,
@@ -83,7 +84,22 @@ export interface RenderInput {
   // renderer draws from this list rather than fixed slots. null outside the
   // unravel (the two-body sim/trails path is used then).
   unravel: { body: Body; trail: Trail; kind: string; mergedCount: number }[] | null;
+  // Trisolaris: the planet dropped into the system, with its live climate +
+  // civilization readout. null until "Add Planet Earth".
+  earth: {
+    body: Body;
+    trail: Trail;
+    population: number;
+    civilizations: number;
+    era: string;
+    chaos: number;
+    stable: boolean;
+  } | null;
 }
+
+// Earth's drawn radius (fixed — it's a planet, far lighter than any star, so
+// its mass-radius would be a 2px speck).
+const EARTH_DRAW_R = 5;
 
 // Minimum touch-target side in CSS pixels (Apple HIG 44pt). Buttons are
 // drawn in design space, so at small contain-fit scales their on-screen size
@@ -644,6 +660,10 @@ export class Renderer {
       for (const t of input.unravel) {
         drawStar(ctx, t.body.pos.x, t.body.pos.y, bodyRadius(t.body.mass), this.styleForKind(t.kind), input.time);
       }
+      if (input.earth) {
+        drawTrail(ctx, input.earth.trail, palette.earth, 0.7, 0, 1.6);
+        drawStar(ctx, input.earth.body.pos.x, input.earth.body.pos.y, EARTH_DRAW_R, STYLE_EARTH, input.time);
+      }
     } else {
       if (input.sim) this.drawPredictedOrbits(input.sim);
       drawTrail(ctx, input.trails.p1, palette.player1, 0.85, 0, 2.2);
@@ -712,6 +732,24 @@ export class Renderer {
   private drawHoveredStarTooltip(input: RenderInput): void {
     if (!input.hover || this.hoveredButton(input.hover)) return;
     const cam = input.cameraOffset ?? { x: 0, y: 0 };
+
+    // Earth first — its tooltip is the Trisolaris readout, not a star class.
+    if (input.earth) {
+      const ex = input.earth.body.pos.x + cam.x;
+      const ey = input.earth.body.pos.y + cam.y;
+      if (Math.hypot(input.hover.x - ex, input.hover.y - ey) <= EARTH_DRAW_R + 14) {
+        const placement = ey - EARTH_DRAW_R < 120 ? 'below' : 'above';
+        drawEarthTooltip(
+          this.ctx,
+          input.earth,
+          ex,
+          placement === 'above' ? ey - EARTH_DRAW_R : ey + EARTH_DRAW_R,
+          placement,
+        );
+        return;
+      }
+    }
+
     let candidates: { mass: number; mergedCount: number; x: number; y: number }[] = [];
     if (input.unravel) {
       candidates = input.unravel.map(t => ({
@@ -1020,6 +1058,29 @@ export class Renderer {
         hovered: hoveredName === 'again',
       });
       this.register('again', againBtn);
+    }
+
+    // Top-left "Add Planet Earth" — drop a planet into a stable binary or the
+    // ongoing chaos (Trisolaris). Offered until one has been added.
+    if (
+      input.state === 'resolved' &&
+      (input.outcome?.kind === 'win' || input.unravel) &&
+      !input.earth
+    ) {
+      const earthBtn: CanvasButton = { label: 'Add Planet Earth', x: 16, y: top, width: 200, height: pillH };
+      drawButton(ctx, earthBtn, {
+        primary: palette.earth,
+        text: palette.voidDeep,
+        hovered: hoveredName === 'add_earth',
+      });
+      this.register('add_earth', earthBtn);
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = rgba(palette.earth, 0.85);
+      ctx.font = `italic 400 ${cpx(11)}px ${fonts.serif}`;
+      ctx.fillText('Its climate will swing wildly —', 16, top + pillH + 16);
+      ctx.fillText('scorching, then frozen, at the suns’ mercy.', 16, top + pillH + 16 + lineHeightFor(11));
+      ctx.restore();
     }
   }
 

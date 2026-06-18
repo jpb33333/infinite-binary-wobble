@@ -11,6 +11,7 @@ import { createBody } from '../physics/Body.ts';
 import type { Body } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
+import { EarthState } from './earth.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
 import { palette, lineHeightFor } from '../theme.ts';
@@ -18,6 +19,8 @@ import { Meter } from '../net/meter.ts';
 
 const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
+const EARTH_MASS = 0.02; // a planet — feels the suns, barely tugs them back
+const EARTH_ORBIT = 850; // px from the barycenter where Earth is dropped in
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
 
 export class Game {
@@ -49,6 +52,10 @@ export class Game {
     kind: 'p1' | 'p2' | 'p3' | 'merged';
     mergedCount: number; // how many original stars fused into this body (1 = pristine)
   }[] = [];
+  // Trisolaris: a planet dropped into the (chaotic) system, with its climate +
+  // civilization model. null until "Add Planet Earth"; reset every fresh round.
+  private earth: EarthState | null = null;
+  private earthTrail: Trail;
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -104,6 +111,7 @@ export class Game {
       p2: new Trail(TRAIL_CAPACITY),
     };
     this.trail3 = new Trail(TRAIL_CAPACITY);
+    this.earthTrail = new Trail(TRAIL_CAPACITY);
     this.attachInput(canvas);
   }
 
@@ -228,6 +236,17 @@ export class Game {
       !this.nbody
     ) {
       this.addThirdBody();
+      return;
+    }
+    // "Add Planet Earth": drop a planet into a stable binary OR the ongoing
+    // three-body chaos. Trisolaris.
+    if (
+      btn === 'add_earth' &&
+      this.state === 'resolved' &&
+      (this.outcome?.kind === 'win' || this.nbody) &&
+      !this.earth
+    ) {
+      this.addEarth();
       return;
     }
     // Anywhere else on the WIN card body → start dragging it. (dismiss_win and
@@ -380,6 +399,8 @@ export class Game {
     this.trail3.reset();
     this.nbody = null;
     this.unravelTracks = [];
+    this.earth = null;
+    this.earthTrail.reset();
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -413,6 +434,8 @@ export class Game {
     this.trail3.reset();
     this.nbody = null;
     this.unravelTracks = [];
+    this.earth = null;
+    this.earthTrail.reset();
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -468,6 +491,8 @@ export class Game {
     this.trail3.reset();
     this.nbody = null;
     this.unravelTracks = [];
+    this.earth = null;
+    this.earthTrail.reset();
     this.outcome = null;
     this.burstedOnResolve = false;
     this.simAccum = 0;
@@ -526,54 +551,77 @@ export class Game {
     }
   }
 
-  // The optional "Add 3rd Body" peril on a WIN. A real third star enters from
-  // a random edge of the field and the binary becomes a true three-body
-  // system. Generally massive (≥ a default star, so it makes a difference) and
-  // aimed close enough to disrupt — but with real angular jitter, so the
-  // physics decides whether the wobble survives; the outcome is never rigged.
-  // Reuses the two winning bodies (sim.a/sim.b) as the first two, so the binary
-  // continues from its exact state and the p1/p2 trails flow unbroken.
-  private addThirdBody(): void {
-    if (!this.sim) return;
-    const { width: w, height: h } = this.renderer.layout.canvas;
-    const M = this.sim.a.mass + this.sim.b.mass;
-    const comX = (this.sim.a.mass * this.sim.a.pos.x + this.sim.b.mass * this.sim.b.pos.x) / M;
-    const comY = (this.sim.a.mass * this.sim.a.pos.y + this.sim.b.mass * this.sim.b.pos.y) / M;
-
-    // Generally massive: 2–5 (≥ the 2.5 default), random within that band.
-    const mass = 2 + Math.random() * 3;
-    // Enter from a random point around the field edge. The camera centres the
-    // binary, so a point ~0.6·(max extent) out lands at the visible boundary.
-    const theta = Math.random() * Math.PI * 2;
-    const reach = Math.max(w, h) * 0.6;
-    const x = comX + Math.cos(theta) * reach;
-    const y = comY + Math.sin(theta) * reach;
-    // Aim back toward the binary with real angular jitter (±30°) — close enough
-    // to matter, not a guaranteed direct hit. Random speed too.
-    const speed = 150 + Math.random() * 140;
-    const aim = theta + Math.PI + (Math.random() - 0.5) * (Math.PI / 3);
-
-    const third = createBody(
-      mass,
-      vec2(x, y),
-      vec2(Math.cos(aim) * speed, Math.sin(aim) * speed),
-    );
-    this.nbody = new NBodySimulation(
-      [this.sim.a, this.sim.b, third],
-      PHYSICS.G,
-      PHYSICS.SOFTENING,
-    );
-    this.trail3.reset();
-    // Reuse the winning bodies' trails (p1/p2) so the binary's history flows
-    // unbroken into the unravel; the intruder gets the fresh trail3.
+  // Build the N-body system from the just-won binary, reusing the winning
+  // bodies + their p1/p2 trails so history flows unbroken. Shared by "Add 3rd
+  // Body" and "Add Planet Earth". No-op once the system already exists.
+  private ensureNBodyFromWin(): void {
+    if (this.nbody || !this.sim) return;
+    this.nbody = new NBodySimulation([this.sim.a, this.sim.b], PHYSICS.G, PHYSICS.SOFTENING);
     this.unravelTracks = [
       { body: this.sim.a, trail: this.trails.p1, kind: 'p1', mergedCount: 1 },
       { body: this.sim.b, trail: this.trails.p2, kind: 'p2', mergedCount: 1 },
-      { body: third, trail: this.trail3, kind: 'p3', mergedCount: 1 },
     ];
     // The WIN card is gone now; drop any in-progress card drag.
     this.winCardOffset = { x: 0, y: 0 };
     this.draggingCard = false;
+  }
+
+  // The optional "Add 3rd Body" peril on a WIN. A real third star enters from a
+  // random edge of the field. Generally massive (≥ a default star, so it makes
+  // a difference) and aimed close enough to disrupt — but with real angular
+  // jitter, so the physics decides whether the wobble survives; never rigged.
+  private addThirdBody(): void {
+    if (!this.sim) return;
+    this.ensureNBodyFromWin();
+    if (!this.nbody) return;
+    const M = this.sim.a.mass + this.sim.b.mass;
+    const comX = (this.sim.a.mass * this.sim.a.pos.x + this.sim.b.mass * this.sim.b.pos.x) / M;
+    const comY = (this.sim.a.mass * this.sim.a.pos.y + this.sim.b.mass * this.sim.b.pos.y) / M;
+    const { width: w, height: h } = this.renderer.layout.canvas;
+    const mass = 2 + Math.random() * 3; // generally massive: 2–5
+    const theta = Math.random() * Math.PI * 2; // a random edge of the field
+    const reach = Math.max(w, h) * 0.6;
+    const speed = 150 + Math.random() * 140;
+    // Aim back toward the binary with ±30° jitter — close enough to matter,
+    // not a guaranteed hit.
+    const aim = theta + Math.PI + (Math.random() - 0.5) * (Math.PI / 3);
+    const third = createBody(
+      mass,
+      vec2(comX + Math.cos(theta) * reach, comY + Math.sin(theta) * reach),
+      vec2(Math.cos(aim) * speed, Math.sin(aim) * speed),
+    );
+    this.trail3.reset();
+    this.nbody.addBody(third);
+    this.unravelTracks.push({ body: third, trail: this.trail3, kind: 'p3', mergedCount: 1 });
+  }
+
+  // Trisolaris: drop a planet onto a wide, roughly-circular orbit around the
+  // system barycenter — temperate at first; the suns' chaos does the rest.
+  private addEarth(): void {
+    if (!this.sim) return;
+    this.ensureNBodyFromWin();
+    if (!this.nbody) return;
+    let M = 0;
+    let cx = 0;
+    let cy = 0;
+    for (const s of this.nbody.bodies) {
+      M += s.mass;
+      cx += s.mass * s.pos.x;
+      cy += s.mass * s.pos.y;
+    }
+    if (M <= 0) return;
+    cx /= M;
+    cy /= M;
+    const ang = Math.random() * Math.PI * 2;
+    const vCirc = Math.sqrt((PHYSICS.G * M) / EARTH_ORBIT);
+    const earthBody = createBody(
+      EARTH_MASS,
+      vec2(cx + Math.cos(ang) * EARTH_ORBIT, cy + Math.sin(ang) * EARTH_ORBIT),
+      vec2(-Math.sin(ang) * vCirc, Math.cos(ang) * vCirc),
+    );
+    this.nbody.addBody(earthBody, true); // noMerge — a planet doesn't fuse
+    this.earth = new EarthState(earthBody);
+    this.earthTrail.reset();
   }
 
   // Fixed-step accumulator for the three-body unravel (mirror of
@@ -589,6 +637,11 @@ export class Game {
       this.simAccum -= PHYSICS.DT;
     }
     for (const t of this.unravelTracks) t.trail.push(t.body.pos.x, t.body.pos.y);
+    if (this.earth) {
+      const suns = this.nbody.bodies.filter(b => b !== this.earth!.body);
+      this.earth.update(dt, suns);
+      this.earthTrail.push(this.earth.body.pos.x, this.earth.body.pos.y);
+    }
   }
 
   // A collision fused two stars. Retire the consumed tracks, give the merged
@@ -759,6 +812,17 @@ export class Game {
       countdownRemaining: this.countdownRemaining,
       trails: this.trails,
       unravel: this.nbody ? this.unravelTracks : null,
+      earth: this.earth
+        ? {
+            body: this.earth.body,
+            trail: this.earthTrail,
+            population: this.earth.population,
+            civilizations: this.earth.civilizations,
+            era: this.earth.era,
+            chaos: this.earth.chaos,
+            stable: this.earth.stable,
+          }
+        : null,
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
       winCardDismissed: this.winCardDismissed,

@@ -320,6 +320,69 @@ export function drawStarTooltip(
   ctx.restore();
 }
 
+// Trisolaris status tooltip for Earth: the era (Stable vs Chaotic), the climate
+// + how turbulent it is for surface dwellers, the surviving population, and
+// which civilization this is (they reboot after every wipe, as in the novel).
+export function drawEarthTooltip(
+  ctx: CanvasRenderingContext2D,
+  info: { population: number; civilizations: number; era: string; chaos: number; stable: boolean },
+  anchorX: number,
+  anchorY: number,
+  placement: 'above' | 'below' = 'above',
+): void {
+  const title = info.stable ? 'Stable Era' : 'Chaotic Era';
+  const climate =
+    info.era === 'scorching'
+      ? 'scorching — the suns crowd the sky'
+      : info.era === 'frozen'
+        ? 'frozen — the suns have fled'
+        : 'temperate';
+  const turbulence =
+    info.chaos < 0.15 ? 'steady skies' : info.chaos < 0.4 ? 'unsettled' : 'violent swings';
+  const pop =
+    info.population <= 0.05 ? 'no survivors' : `${info.population.toFixed(1)}B surviving`;
+  const sub = [climate, turbulence, pop, `Civilization ${info.civilizations}`];
+  const titleColor = info.stable ? palette.cream : palette.danger;
+
+  ctx.save();
+  const titleFont = `600 ${cpx(13)}px ${fonts.sans}`;
+  const subFont = `400 ${cpx(11)}px ${fonts.sans}`;
+  ctx.font = titleFont;
+  let textW = ctx.measureText(title).width;
+  ctx.font = subFont;
+  for (const s of sub) textW = Math.max(textW, ctx.measureText(s).width);
+
+  const padX = 12;
+  const padY = 8;
+  const lineH = lineHeightFor(12);
+  const boxW = textW + padX * 2;
+  const boxH = padY * 2 + lineH * (1 + sub.length);
+  const bx = anchorX - boxW / 2;
+  const by = placement === 'above' ? anchorY - boxH - 10 : anchorY + 10;
+
+  ctx.beginPath();
+  roundedRectPath(ctx, bx, by, boxW, boxH, 8);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.88);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(palette.earth, 0.55);
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let ty = by + padY + lineH / 2;
+  ctx.font = titleFont;
+  ctx.fillStyle = titleColor;
+  ctx.fillText(title, anchorX, ty);
+  ctx.font = subFont;
+  ctx.fillStyle = rgba(palette.cream, 0.85);
+  for (const s of sub) {
+    ty += lineH;
+    ctx.fillText(s, anchorX, ty);
+  }
+  ctx.restore();
+}
+
 export function drawOutcomeCard(
   ctx: CanvasRenderingContext2D,
   outcome: Outcome,

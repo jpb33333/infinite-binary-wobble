@@ -84,6 +84,15 @@ export const STYLE_P3: StarStyle = {
   haloRadiusFactor: 2.8,
 };
 
+// Earth in Trisolaris mode — a small pale-blue world with a warm-lit core
+// (it's lit by the warm suns). Drawn at a fixed small radius, not by mass.
+export const STYLE_EARTH: StarStyle = {
+  primary: palette.earth,
+  core: palette.cream,
+  haloAlpha: 0.7,
+  haloRadiusFactor: 2.2,
+};
+
 // A dimmed variant used to show the OTHER player's star while one player is
 // in setup — they need to see it but it shouldn't compete for attention.
 export function dimmed(style: StarStyle): StarStyle {

@@ -16,6 +16,9 @@ export const palette = {
   // button + the intruding third star in the post-win three-body unravel. A
   // deliberate hot break from the warm palette: it MUST read as danger.
   danger: '#E5392F',
+  // The pale blue dot — Earth, a deliberate cool note among the warm suns
+  // (Trisolaris mode). Muted so it reads as a small distant world, not neon.
+  earth: '#7FB0C9',
 } as const;
 
 export const fonts = {

@@ -179,6 +179,10 @@ export class NBodySimulation {
   // Smallest pair separation seen at any substep since construction (collision
   // can graze between frames; same reasoning as Simulation.minSeparation).
   minSeparation: number;
+  // Bodies exempt from merging — a planet (Earth) feels the suns' gravity but
+  // never fuses with one. It can still be flung around or scorched; it just
+  // doesn't turn a star into a blue straggler by brushing it.
+  readonly noMerge = new Set<Body>();
 
   constructor(bodies: Body[], G: number, softening: number) {
     this.bodies = bodies;
@@ -200,6 +204,13 @@ export class NBodySimulation {
     return this.resolveCollision();
   }
 
+  // Add a body to the running system (e.g. a planet dropped in mid-unravel). It
+  // feels gravity from the next step on; `noMerge` keeps a planet from fusing.
+  addBody(body: Body, noMerge = false): void {
+    this.bodies.push(body);
+    if (noMerge) this.noMerge.add(body);
+  }
+
   // Resolve the first overlapping pair (surfaces touching). Below the supernova
   // mass they fuse — perfectly inelastic: combined mass, momentum-conserving
   // velocity, COM position. At/above it they DETONATE: both are removed and a
@@ -209,6 +220,7 @@ export class NBodySimulation {
     const b = this.bodies;
     for (let i = 0; i < b.length; i++) {
       for (let j = i + 1; j < b.length; j++) {
+        if (this.noMerge.has(b[i]) || this.noMerge.has(b[j])) continue; // a planet never fuses
         const dx = b[j].pos.x - b[i].pos.x;
         const dy = b[j].pos.y - b[i].pos.y;
         if (Math.sqrt(dx * dx + dy * dy) < bodyRadius(b[i].mass) + bodyRadius(b[j].mass)) {
