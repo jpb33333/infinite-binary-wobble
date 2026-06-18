@@ -54,7 +54,11 @@ function clampInRange(x: number, lo: number, hi: number): number {
   return x;
 }
 
-function sanitizeMass(m: number): number {
+// Exported so the additive N-body boundary (nbody.ts) can apply the SAME
+// defence-in-depth contract — one source of truth for the SAFE_INPUT bounds, so
+// the two clamp layers can never drift apart. The two-body engine's behaviour is
+// unchanged; only these helpers' visibility widened.
+export function sanitizeMass(m: number): number {
   return clampInRange(
     finite(m, SAFE_INPUT.defaultMass),
     SAFE_INPUT.minMass,
@@ -62,7 +66,7 @@ function sanitizeMass(m: number): number {
   );
 }
 
-function sanitizePosComponent(p: number): number {
+export function sanitizePosComponent(p: number): number {
   return clampInRange(
     finite(p, SAFE_INPUT.defaultPosComponent),
     -SAFE_INPUT.maxPosMagnitude,
@@ -70,7 +74,7 @@ function sanitizePosComponent(p: number): number {
   );
 }
 
-function sanitizeVelComponent(v: number): number {
+export function sanitizeVelComponent(v: number): number {
   return clampInRange(
     finite(v, SAFE_INPUT.defaultVelComponent),
     -SAFE_INPUT.maxSpeedComponent,
