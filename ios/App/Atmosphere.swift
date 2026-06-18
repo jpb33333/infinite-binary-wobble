@@ -59,6 +59,102 @@ func drawStarfield(_ ctx: inout GraphicsContext, stars: [StarSpec], time: Double
   }
 }
 
+// ── Comet ──
+// An occasional comet drifting across the deep background — a faint warm streak,
+// far away, that crosses the sky every PERIOD seconds and is gone for the rest.
+// Lives in the same screen-space, .plusLighter atmosphere layer as the
+// starfield, so it shows on the title screen AND in-game. The caller gates it on
+// reduced motion (like the twinkle phase and the ambient drift).
+//
+// Deterministic: each period's comet is seeded by its index, so entry edge,
+// height, angle and speed vary but reproduce exactly on relaunch — the void
+// stays a "place," not a slot machine. Position is a pure function of time, so
+// it needs no per-frame state. Bit-exact port of src/render/comet.ts.
+
+private let COMET_PERIOD = 24.0     // seconds between comet appearances
+private let COMET_TRANSIT = 3.2     // seconds a comet takes to cross the sky
+private let COMET_TAIL_FRAC = 0.16  // tail length as a fraction of the diagonal
+private let COMET_TAIL_MAX = 220.0  // ...capped so it stays "distant" on huge screens
+
+struct CometState {
+  let x, y: Double      // head position, screen px
+  let angle: Double     // direction of travel, radians
+  let alpha: Double     // 0 at the edges of the transit, 1 mid-sky
+}
+
+/// The comet's current state, or nil when the sky is empty (which is most of
+/// every period). Pure — same (time, width, height) always yields the same
+/// state. Seeded identically to comet.ts so the Swift sky matches the web's.
+func activeComet(time: Double, width: Double, height: Double) -> CometState? {
+  guard time >= 0 else { return nil }  // guards negatives + NaN
+  let idx = Int(floor(time / COMET_PERIOD))
+  let local = time - Double(idx) * COMET_PERIOD  // [0, PERIOD)
+  guard local < COMET_TRANSIT else { return nil }  // empty sky the rest of the period
+  let p = local / COMET_TRANSIT  // transit progress [0, 1)
+
+  // Same seed as comet.ts: (idx + 1) * 0x9e3779b1, taken mod 2^32 (JS `>>> 0`).
+  var rng = Mulberry32(seed: UInt32(truncatingIfNeeded: UInt64(idx + 1) &* 0x9e3779b1))
+  let fromLeft = rng.next() < 0.5
+  let y0 = (0.08 + rng.next() * 0.42) * height   // start in the upper sky band
+  let drop = (0.06 + rng.next() * 0.18) * height // gentle downward drift
+  let margin = 0.16 * width                       // start/end off-screen
+  let x0 = fromLeft ? -margin : width + margin
+  let x1 = fromLeft ? width + margin : -margin
+
+  return CometState(
+    x: x0 + (x1 - x0) * p,
+    y: y0 + drop * p,
+    angle: atan2(drop, x1 - x0),
+    alpha: sin(p * .pi)  // fade in at entry, out at exit
+  )
+}
+
+/// Paint the current comet (head glow + tapering tail) in screen space. No-op
+/// when the sky is empty. The caller must have set the screen-space transform
+/// and should skip this entirely under reduced motion.
+func drawComet(_ ctx: inout GraphicsContext, time: Double, width: CGFloat, height: CGFloat) {
+  guard let c = activeComet(time: time, width: Double(width), height: Double(height)),
+        c.alpha > 0.01 else { return }
+
+  let tail = min(COMET_TAIL_FRAC * Double(hypot(width, height)), COMET_TAIL_MAX)
+  let head = CGPoint(x: c.x, y: c.y)
+  let tip = CGPoint(x: c.x - cos(c.angle) * tail, y: c.y - sin(c.angle) * tail)
+
+  var g = ctx
+  g.blendMode = .plusLighter
+
+  // Tail: bright at the head, fading to nothing — cream into rose into void.
+  var line = Path()
+  line.move(to: head)
+  line.addLine(to: tip)
+  g.stroke(
+    line,
+    with: .linearGradient(
+      Gradient(stops: [
+        .init(color: Palette.cream.opacity(0.5 * c.alpha), location: 0),
+        .init(color: Palette.rose.opacity(0.16 * c.alpha), location: 0.35),
+        .init(color: Palette.rose.opacity(0), location: 1),
+      ]),
+      startPoint: head, endPoint: tip
+    ),
+    style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+  )
+
+  // Head: a small soft glow, distant and subtle (comet.ts radius hr*3 = 9).
+  let glowR: CGFloat = 9
+  g.fill(
+    Path(ellipseIn: CGRect(x: c.x - Double(glowR), y: c.y - Double(glowR),
+                           width: Double(glowR) * 2, height: Double(glowR) * 2)),
+    with: .radialGradient(
+      Gradient(stops: [
+        .init(color: Palette.cream.opacity(0.7 * c.alpha), location: 0),
+        .init(color: Palette.cream.opacity(0), location: 1),
+      ]),
+      center: head, startRadius: 0, endRadius: glowR
+    )
+  )
+}
+
 // ── Stardust ──
 // Two layers by design (mirrors the web Renderer): AMBIENT drifts in screen
 // space full-bleed; BURST debris lives at design-space world coordinates and

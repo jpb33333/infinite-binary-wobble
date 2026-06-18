@@ -36,6 +36,7 @@ struct GameRenderer {
     // 1 — screen space: void + atmosphere (full-bleed, letterbox included)
     ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Palette.voidDeep))
     drawStarfield(&ctx, stars: model.starfield, time: model.reducedMotion ? 0 : time, size: size)
+    if !model.reducedMotion { drawComet(&ctx, time: time, width: size.width, height: size.height) }
 
     // 2 — design space via the contain-fit
     var scene = ctx
