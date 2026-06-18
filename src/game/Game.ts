@@ -20,7 +20,12 @@ import { Meter } from '../net/meter.ts';
 const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
 const EARTH_MASS = 0.02; // a planet — feels the suns, barely tugs them back
-const EARTH_ORBIT = 850; // px from the barycenter where Earth is dropped in
+const EARTH_ORBIT = 850; // px from the barycenter where a planet is dropped in
+// Soft leash: past this distance from the suns' barycenter a planet gets an
+// inward nudge so a slingshot returns fast enough to watch (a gentle fake —
+// real gravity alone can fling it away for ages). Tuned by feel.
+const PLANET_LEASH = 1300;
+const LEASH_ACCEL = 500; // px/s² inward beyond the leash (≈8× the suns' pull there)
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
 
 export class Game {
@@ -43,19 +48,18 @@ export class Game {
   // p1/p2 trails keep flowing). It runs forever, like the WIN — collisions
   // merge stars (never stop it). `trail3` seeds the intruder's track.
   private nbody: NBodySimulation | null = null;
-  private trail3: Trail;
   // Per-body tracks (trail + render kind) for the unravel. The body count
   // changes as stars merge, so trails follow bodies, not fixed slots.
   private unravelTracks: {
     body: Body;
     trail: Trail;
-    kind: 'p1' | 'p2' | 'p3' | 'merged';
+    kind: 'p1' | 'p2' | 'p3' | 'star' | 'merged';
     mergedCount: number; // how many original stars fused into this body (1 = pristine)
   }[] = [];
-  // Trisolaris: a planet dropped into the (chaotic) system, with its climate +
-  // civilization model. null until "Add Planet Earth"; reset every fresh round.
-  private earth: EarthState | null = null;
-  private earthTrail: Trail;
+  // Trisolaris: planets dropped into the (chaotic) system, each with its own
+  // climate + civilization. Empty until "Add Planet"; earths[0] is the one the
+  // persistent surface panel reads. Reset every fresh round.
+  private earths: EarthState[] = [];
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -110,8 +114,6 @@ export class Game {
       p1: new Trail(TRAIL_CAPACITY),
       p2: new Trail(TRAIL_CAPACITY),
     };
-    this.trail3 = new Trail(TRAIL_CAPACITY);
-    this.earthTrail = new Trail(TRAIL_CAPACITY);
     this.attachInput(canvas);
   }
 
@@ -229,24 +231,15 @@ export class Game {
     }
     // "Add 3rd Body": the peril affordance on a WIN. Drop a real third star
     // into the stable binary and let the three-body problem take it apart.
-    if (
-      btn === 'add_third_body' &&
-      this.state === 'resolved' &&
-      this.outcome?.kind === 'win' &&
-      !this.nbody
-    ) {
-      this.addThirdBody();
+    // Open-ended sandbox: keep feeding the problem until it collapses. Both are
+    // repeatable, available on a WIN or any time the system is running.
+    const sandboxOpen = this.state === 'resolved' && (this.outcome?.kind === 'win' || this.nbody !== null);
+    if (btn === 'add_star' && sandboxOpen) {
+      this.addStar();
       return;
     }
-    // "Add Planet Earth": drop a planet into a stable binary OR the ongoing
-    // three-body chaos. Trisolaris.
-    if (
-      btn === 'add_earth' &&
-      this.state === 'resolved' &&
-      (this.outcome?.kind === 'win' || this.nbody) &&
-      !this.earth
-    ) {
-      this.addEarth();
+    if (btn === 'add_planet' && sandboxOpen) {
+      this.addPlanet();
       return;
     }
     // Anywhere else on the WIN card body → start dragging it. (dismiss_win and
@@ -396,11 +389,9 @@ export class Game {
     };
     this.trails.p1.reset();
     this.trails.p2.reset();
-    this.trail3.reset();
     this.nbody = null;
     this.unravelTracks = [];
-    this.earth = null;
-    this.earthTrail.reset();
+    this.earths = [];
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -431,11 +422,9 @@ export class Game {
     };
     this.trails.p1.reset();
     this.trails.p2.reset();
-    this.trail3.reset();
     this.nbody = null;
     this.unravelTracks = [];
-    this.earth = null;
-    this.earthTrail.reset();
+    this.earths = [];
     this.sim = null;
     this.classifier = null;
     this.outcome = null;
@@ -488,11 +477,9 @@ export class Game {
     );
     this.trails.p1.reset();
     this.trails.p2.reset();
-    this.trail3.reset();
     this.nbody = null;
     this.unravelTracks = [];
-    this.earth = null;
-    this.earthTrail.reset();
+    this.earths = [];
     this.outcome = null;
     this.burstedOnResolve = false;
     this.simAccum = 0;
@@ -566,62 +553,65 @@ export class Game {
     this.draggingCard = false;
   }
 
-  // The optional "Add 3rd Body" peril on a WIN. A real third star enters from a
-  // random edge of the field. Generally massive (≥ a default star, so it makes
-  // a difference) and aimed close enough to disrupt — but with real angular
-  // jitter, so the physics decides whether the wobble survives; never rigged.
-  private addThirdBody(): void {
-    if (!this.sim) return;
-    this.ensureNBodyFromWin();
-    if (!this.nbody) return;
-    const M = this.sim.a.mass + this.sim.b.mass;
-    const comX = (this.sim.a.mass * this.sim.a.pos.x + this.sim.b.mass * this.sim.b.pos.x) / M;
-    const comY = (this.sim.a.mass * this.sim.a.pos.y + this.sim.b.mass * this.sim.b.pos.y) / M;
-    const { width: w, height: h } = this.renderer.layout.canvas;
-    const mass = 2 + Math.random() * 3; // generally massive: 2–5
-    const theta = Math.random() * Math.PI * 2; // a random edge of the field
-    const reach = Math.max(w, h) * 0.6;
-    const speed = 150 + Math.random() * 140;
-    // Aim back toward the binary with ±30° jitter — close enough to matter,
-    // not a guaranteed hit.
-    const aim = theta + Math.PI + (Math.random() - 0.5) * (Math.PI / 3);
-    const third = createBody(
-      mass,
-      vec2(comX + Math.cos(theta) * reach, comY + Math.sin(theta) * reach),
-      vec2(Math.cos(aim) * speed, Math.sin(aim) * speed),
-    );
-    this.trail3.reset();
-    this.nbody.addBody(third);
-    this.unravelTracks.push({ body: third, trail: this.trail3, kind: 'p3', mergedCount: 1 });
-  }
-
-  // Trisolaris: drop a planet onto a wide, roughly-circular orbit around the
-  // system barycenter — temperate at first; the suns' chaos does the rest.
-  private addEarth(): void {
-    if (!this.sim) return;
-    this.ensureNBodyFromWin();
-    if (!this.nbody) return;
+  // Mass-weighted barycenter of the whole running system (suns + the tiny
+  // planets, whose mass is negligible). Spawn reference for new bodies.
+  private systemCOM(): { x: number; y: number; mass: number } {
     let M = 0;
     let cx = 0;
     let cy = 0;
-    for (const s of this.nbody.bodies) {
+    for (const s of this.nbody?.bodies ?? []) {
       M += s.mass;
       cx += s.mass * s.pos.x;
       cy += s.mass * s.pos.y;
     }
-    if (M <= 0) return;
-    cx /= M;
-    cy /= M;
+    return M > 0 ? { x: cx / M, y: cy / M, mass: M } : { x: 0, y: 0, mass: 0 };
+  }
+
+  // Add a star — repeatable. Enters from a random edge of the field, generally
+  // massive (≥ a default star), aimed inward with ±30° jitter (close enough to
+  // disrupt, never rigged). Keep feeding the problem until it collapses.
+  private addStar(): void {
+    if (!this.sim) return;
+    this.ensureNBodyFromWin();
+    if (!this.nbody) return;
+    const com = this.systemCOM();
+    const { width: w, height: h } = this.renderer.layout.canvas;
+    const mass = 2 + Math.random() * 3;
+    const theta = Math.random() * Math.PI * 2;
+    const reach = Math.max(w, h) * 0.6;
+    const speed = 150 + Math.random() * 140;
+    const aim = theta + Math.PI + (Math.random() - 0.5) * (Math.PI / 3);
+    const star = createBody(
+      mass,
+      vec2(com.x + Math.cos(theta) * reach, com.y + Math.sin(theta) * reach),
+      vec2(Math.cos(aim) * speed, Math.sin(aim) * speed),
+    );
+    this.nbody.addBody(star);
+    this.unravelTracks.push({
+      body: star,
+      trail: new Trail(TRAIL_CAPACITY),
+      kind: 'star',
+      mergedCount: 1,
+    });
+  }
+
+  // Trisolaris: drop a planet onto a wide, roughly-circular orbit around the
+  // barycenter — temperate at first; the suns' chaos does the rest. Repeatable.
+  private addPlanet(): void {
+    if (!this.sim) return;
+    this.ensureNBodyFromWin();
+    if (!this.nbody) return;
+    const com = this.systemCOM();
+    if (com.mass <= 0) return;
     const ang = Math.random() * Math.PI * 2;
-    const vCirc = Math.sqrt((PHYSICS.G * M) / EARTH_ORBIT);
-    const earthBody = createBody(
+    const vCirc = Math.sqrt((PHYSICS.G * com.mass) / EARTH_ORBIT);
+    const planet = createBody(
       EARTH_MASS,
-      vec2(cx + Math.cos(ang) * EARTH_ORBIT, cy + Math.sin(ang) * EARTH_ORBIT),
+      vec2(com.x + Math.cos(ang) * EARTH_ORBIT, com.y + Math.sin(ang) * EARTH_ORBIT),
       vec2(-Math.sin(ang) * vCirc, Math.cos(ang) * vCirc),
     );
-    this.nbody.addBody(earthBody, true); // noMerge — a planet doesn't fuse
-    this.earth = new EarthState(earthBody);
-    this.earthTrail.reset();
+    this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
+    this.earths.push(new EarthState(planet));
   }
 
   // Fixed-step accumulator for the three-body unravel (mirror of
@@ -637,11 +627,29 @@ export class Game {
       this.simAccum -= PHYSICS.DT;
     }
     for (const t of this.unravelTracks) t.trail.push(t.body.pos.x, t.body.pos.y);
-    if (this.earth) {
-      const suns = this.nbody.bodies.filter(b => b !== this.earth!.body);
-      this.earth.update(dt, suns);
-      this.earthTrail.push(this.earth.body.pos.x, this.earth.body.pos.y);
+    if (this.earths.length > 0) {
+      const planets = new Set(this.earths.map(e => e.body));
+      const suns = this.nbody.bodies.filter(b => !planets.has(b));
+      const com = this.systemCOM();
+      for (const earth of this.earths) {
+        earth.update(dt, suns);
+        this.leashPlanet(earth.body, com, dt);
+        earth.trail.push(earth.body.pos.x, earth.body.pos.y);
+      }
     }
+  }
+
+  // Soft leash: beyond PLANET_LEASH from the barycenter, add an inward nudge so
+  // a slingshot returns fast enough to stay watchable (a gentle fake on top of
+  // real gravity).
+  private leashPlanet(body: Body, com: { x: number; y: number }, dt: number): void {
+    const dx = com.x - body.pos.x;
+    const dy = com.y - body.pos.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= PLANET_LEASH || dist < 1e-6) return;
+    const inv = 1 / dist;
+    body.vel.x += dx * inv * LEASH_ACCEL * dt;
+    body.vel.y += dy * inv * LEASH_ACCEL * dt;
   }
 
   // A collision fused two stars. Retire the consumed tracks, give the merged
@@ -812,17 +820,15 @@ export class Game {
       countdownRemaining: this.countdownRemaining,
       trails: this.trails,
       unravel: this.nbody ? this.unravelTracks : null,
-      earth: this.earth
-        ? {
-            body: this.earth.body,
-            trail: this.earthTrail,
-            population: this.earth.population,
-            civilizations: this.earth.civilizations,
-            era: this.earth.era,
-            chaos: this.earth.chaos,
-            stable: this.earth.stable,
-          }
-        : null,
+      earths: this.earths.map(e => ({
+        body: e.body,
+        trail: e.trail,
+        population: e.population,
+        civilizations: e.civilizations,
+        era: e.era,
+        chaos: e.chaos,
+        stable: e.stable,
+      })),
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
       winCardDismissed: this.winCardDismissed,

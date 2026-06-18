@@ -383,6 +383,101 @@ export function drawEarthTooltip(
   ctx.restore();
 }
 
+function earthSurfaceLine(info: {
+  population: number;
+  era: string;
+  stable: boolean;
+}): string {
+  if (info.population <= 0.05) return 'Lifeless — awaiting the next dawn.';
+  if (info.era === 'scorching') return 'The seas boil; the cities burn.';
+  if (info.era === 'frozen') return 'Ice entombs the last fires.';
+  if (info.stable) return 'A golden age — humanity flourishes.';
+  return 'An uneasy calm; the sky cannot be trusted.';
+}
+
+// Persistent surface readout for a planet, bottom-left — always on (a hover
+// tooltip on a tiny moving dot is invisible). Era, what it's like down there,
+// who's left, and which civilization this is.
+export function drawEarthStatus(
+  ctx: CanvasRenderingContext2D,
+  info: { population: number; civilizations: number; era: string; chaos: number; stable: boolean },
+  _w: number,
+  h: number,
+): void {
+  const eraText = info.stable
+    ? 'Stable Era'
+    : info.era === 'scorching'
+      ? 'Chaotic Era · Scorching'
+      : info.era === 'frozen'
+        ? 'Chaotic Era · Frozen'
+        : 'Chaotic Era';
+  const eraColor = info.stable
+    ? palette.cream
+    : info.era === 'frozen'
+      ? palette.earth
+      : palette.danger;
+  const surface = earthSurfaceLine(info);
+  const stat =
+    info.population <= 0.05
+      ? `No survivors · Civilization ${info.civilizations}`
+      : `${info.population.toFixed(1)}B surviving · Civilization ${info.civilizations}`;
+
+  ctx.save();
+  const labelFont = `600 ${cpx(11)}px ${fonts.sans}`;
+  const eraFont = `400 ${cpx(20)}px ${fonts.serif}`;
+  const surfFont = `italic 400 ${cpx(14)}px ${fonts.serif}`;
+  const statFont = `500 ${cpx(11)}px ${fonts.sans}`;
+  const lhLabel = lineHeightFor(11);
+  const lhEra = lineHeightFor(20);
+  const lhSurf = lineHeightFor(14);
+  const lhStat = lineHeightFor(11);
+
+  ctx.font = labelFont;
+  let textW = ctx.measureText('EARTH').width;
+  ctx.font = eraFont;
+  textW = Math.max(textW, ctx.measureText(eraText).width);
+  ctx.font = surfFont;
+  textW = Math.max(textW, ctx.measureText(surface).width);
+  ctx.font = statFont;
+  textW = Math.max(textW, ctx.measureText(stat).width);
+
+  const padX = 16;
+  const padY = 12;
+  const boxW = textW + padX * 2;
+  const boxH = padY * 2 + lhLabel + lhEra + lhSurf + lhStat;
+  const boxX = 24;
+  const boxY = h - 28 - boxH;
+
+  ctx.beginPath();
+  roundedRectPath(ctx, boxX, boxY, boxW, boxH, 12);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.72);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(palette.earth, 0.4);
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  const tx = boxX + padX;
+  let ty = boxY + padY;
+  ctx.font = labelFont;
+  ctx.fillStyle = rgba(palette.earth, 0.9);
+  ctx.fillText('EARTH', tx, ty);
+  ty += lhLabel;
+  ctx.font = eraFont;
+  ctx.fillStyle = eraColor;
+  ctx.fillText(eraText, tx, ty);
+  ty += lhEra;
+  ctx.font = surfFont;
+  ctx.fillStyle = rgba(palette.rose, 0.9);
+  ctx.fillText(surface, tx, ty);
+  ty += lhSurf;
+  ctx.font = statFont;
+  ctx.fillStyle = rgba(palette.cream, 0.7);
+  ctx.fillText(stat, tx, ty);
+  ctx.restore();
+}
+
 export function drawOutcomeCard(
   ctx: CanvasRenderingContext2D,
   outcome: Outcome,

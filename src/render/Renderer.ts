@@ -10,7 +10,16 @@ import {
 import { drawComet } from './comet.ts';
 import { computeFit, type Fit } from './fit.ts';
 import { drawCourt } from './court.ts';
-import { drawStar, dimmed, STYLE_P1, STYLE_P2, STYLE_P3, STYLE_EARTH, type StarStyle } from './star.ts';
+import {
+  drawStar,
+  dimmed,
+  STYLE_P1,
+  STYLE_P2,
+  STYLE_P3,
+  STYLE_STAR,
+  STYLE_EARTH,
+  type StarStyle,
+} from './star.ts';
 import { Trail, drawTrail } from './trail.ts';
 import { Particles } from './particles.ts';
 import { drawVelocityArrow } from './arrow.ts';
@@ -24,6 +33,7 @@ import {
   drawOutcomeCard,
   drawStarTooltip,
   drawEarthTooltip,
+  drawEarthStatus,
   drawCloseButton,
   drawPaywallCard,
   drawTitleExplainerLink,
@@ -84,9 +94,10 @@ export interface RenderInput {
   // renderer draws from this list rather than fixed slots. null outside the
   // unravel (the two-body sim/trails path is used then).
   unravel: { body: Body; trail: Trail; kind: string; mergedCount: number }[] | null;
-  // Trisolaris: the planet dropped into the system, with its live climate +
-  // civilization readout. null until "Add Planet Earth".
-  earth: {
+  // Trisolaris: planets dropped into the system, each with its live climate +
+  // civilization readout. Empty until "Add Planet"; earths[0] drives the
+  // persistent surface panel, all are drawn + hoverable.
+  earths: {
     body: Body;
     trail: Trail;
     population: number;
@@ -94,7 +105,7 @@ export interface RenderInput {
     era: string;
     chaos: number;
     stable: boolean;
-  } | null;
+  }[];
 }
 
 // Earth's drawn radius (fixed — it's a planet, far lighter than any star, so
@@ -660,9 +671,9 @@ export class Renderer {
       for (const t of input.unravel) {
         drawStar(ctx, t.body.pos.x, t.body.pos.y, bodyRadius(t.body.mass), this.styleForKind(t.kind), input.time);
       }
-      if (input.earth) {
-        drawTrail(ctx, input.earth.trail, palette.earth, 0.7, 0, 1.6);
-        drawStar(ctx, input.earth.body.pos.x, input.earth.body.pos.y, EARTH_DRAW_R, STYLE_EARTH, input.time);
+      for (const e of input.earths) {
+        drawTrail(ctx, e.trail, palette.earth, 0.7, 0, 1.6);
+        drawStar(ctx, e.body.pos.x, e.body.pos.y, EARTH_DRAW_R, this.earthStyle(e.era), input.time);
       }
     } else {
       if (input.sim) this.drawPredictedOrbits(input.sim);
@@ -724,6 +735,9 @@ export class Renderer {
 
     // Inspection tooltip — hover/tap a star to read its class, mass, lineage.
     this.drawHoveredStarTooltip(input);
+    // Persistent surface readout for the first planet — always on, so Earth's
+    // fate is never hidden behind a hover on a tiny moving dot.
+    if (input.earths.length > 0) drawEarthStatus(ctx, input.earths[0], w, h);
   }
 
   // If the pointer is over a star (accounting for the camera offset), draw an
@@ -733,15 +747,15 @@ export class Renderer {
     if (!input.hover || this.hoveredButton(input.hover)) return;
     const cam = input.cameraOffset ?? { x: 0, y: 0 };
 
-    // Earth first — its tooltip is the Trisolaris readout, not a star class.
-    if (input.earth) {
-      const ex = input.earth.body.pos.x + cam.x;
-      const ey = input.earth.body.pos.y + cam.y;
+    // Planets first — their tooltip is the Trisolaris readout, not a star class.
+    for (const e of input.earths) {
+      const ex = e.body.pos.x + cam.x;
+      const ey = e.body.pos.y + cam.y;
       if (Math.hypot(input.hover.x - ex, input.hover.y - ey) <= EARTH_DRAW_R + 14) {
         const placement = ey - EARTH_DRAW_R < 120 ? 'below' : 'above';
         drawEarthTooltip(
           this.ctx,
-          input.earth,
+          e,
           ex,
           placement === 'above' ? ey - EARTH_DRAW_R : ey + EARTH_DRAW_R,
           placement,
@@ -812,6 +826,8 @@ export class Renderer {
         return STYLE_P2;
       case 'p3':
         return STYLE_P3;
+      case 'star':
+        return STYLE_STAR;
       default:
         return {
           primary: blendHex(palette.player1, palette.player2, 0.5),
@@ -820,6 +836,18 @@ export class Renderer {
           haloRadiusFactor: 3.0,
         };
     }
+  }
+
+  // Earth, tinted by its climate so its state reads at a glance: red-hot when
+  // scorching, dim/cold when frozen, pale blue when temperate.
+  private earthStyle(era: string): StarStyle {
+    if (era === 'scorching') {
+      return { ...STYLE_EARTH, primary: blendHex(palette.earth, palette.danger, 0.6) };
+    }
+    if (era === 'frozen') {
+      return { ...STYLE_EARTH, primary: blendHex(palette.earth, palette.voidDeep, 0.4), haloAlpha: 0.5 };
+    }
+    return STYLE_EARTH;
   }
 
   private trailColorForKind(kind: string): string {
@@ -1060,26 +1088,26 @@ export class Renderer {
       this.register('again', againBtn);
     }
 
-    // Top-left "Add Planet Earth" — drop a planet into a stable binary or the
-    // ongoing chaos (Trisolaris). Offered until one has been added.
-    if (
-      input.state === 'resolved' &&
-      (input.outcome?.kind === 'win' || input.unravel) &&
-      !input.earth
-    ) {
-      const earthBtn: CanvasButton = { label: 'Add Planet Earth', x: 16, y: top, width: 200, height: pillH };
-      drawButton(ctx, earthBtn, {
+    // Top-left sandbox controls — repeatable: keep feeding the problem until it
+    // collapses. A star is a disruptor (danger red); a planet is a victim
+    // (earth blue) whose civilization rides the chaos.
+    if (input.state === 'resolved' && (input.outcome?.kind === 'win' || input.unravel)) {
+      const sbW = 150;
+      const starBtn: CanvasButton = { label: 'Add Star', x: 16, y: top, width: sbW, height: pillH };
+      drawButton(ctx, starBtn, { primary: palette.danger, hovered: hoveredName === 'add_star' });
+      this.register('add_star', starBtn);
+      const planetBtn: CanvasButton = { label: 'Add Planet', x: 16, y: top + pillH + 10, width: sbW, height: pillH };
+      drawButton(ctx, planetBtn, {
         primary: palette.earth,
         text: palette.voidDeep,
-        hovered: hoveredName === 'add_earth',
+        hovered: hoveredName === 'add_planet',
       });
-      this.register('add_earth', earthBtn);
+      this.register('add_planet', planetBtn);
       ctx.save();
       ctx.textAlign = 'left';
-      ctx.fillStyle = rgba(palette.earth, 0.85);
+      ctx.fillStyle = rgba(palette.cream, 0.5);
       ctx.font = `italic 400 ${cpx(11)}px ${fonts.serif}`;
-      ctx.fillText('Its climate will swing wildly —', 16, top + pillH + 16);
-      ctx.fillText('scorching, then frozen, at the suns’ mercy.', 16, top + pillH + 16 + lineHeightFor(11));
+      ctx.fillText('Keep adding until it collapses.', 16, top + (pillH + 10) * 2 + 14);
       ctx.restore();
     }
   }
@@ -1154,24 +1182,8 @@ export class Renderer {
     // what they're really doing every time the AGAIN button appears.
     this.drawCarseFooter(card.carseY, card.x + card.width / 2);
 
-    // The peril affordance: a bright danger-red "Add 3rd Body" button floating
-    // above the WIN card, with a two-line warning. Tempts the player to break
-    // the perfect thing and watch the three-body problem take it apart.
-    if (input.outcome.kind === 'win') {
-      const mid = card.x + card.width / 2;
-      const dW = 210;
-      const dBtn: CanvasButton = { label: 'Add 3rd Body', x: mid - dW / 2, y: card.y - 66, width: dW, height: 44 };
-      this.ctx.save();
-      this.ctx.textAlign = 'center';
-      this.ctx.textBaseline = 'alphabetic';
-      this.ctx.fillStyle = rgba(palette.danger, 0.9);
-      this.ctx.font = `italic 400 ${cpx(12)}px ${fonts.serif}`;
-      this.ctx.fillText('Three-body systems are unstable.', mid, dBtn.y - 16 - lineHeightFor(12));
-      this.ctx.fillText('A third star will likely tear the wobble apart.', mid, dBtn.y - 16);
-      this.ctx.restore();
-      drawButton(this.ctx, dBtn, { primary: palette.danger, hovered: this.hoveredButton(input.hover) === 'add_third_body' });
-      this.register('add_third_body', dBtn);
-    }
+    // (The "disturb it" controls — Add Star / Add Planet — live in the
+    // top-left corner cluster now, repeatable; see drawCornerControls.)
 
     // The whole WIN card is a drag handle. Captured here, registered at the
     // END of render() (after the corner controls) so first-match hit-testing

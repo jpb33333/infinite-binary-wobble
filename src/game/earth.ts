@@ -1,4 +1,5 @@
 import type { Body } from '../physics/Body.ts';
+import { Trail } from '../render/trail.ts';
 
 // Trisolaris climate model — a planet at the mercy of the suns (Liu Cixin's
 // "The Three-Body Problem"). Insolation (heat from every star, ∝ mass/dist²)
@@ -22,6 +23,7 @@ export type Era = 'frozen' | 'temperate' | 'scorching';
 
 export class EarthState {
   readonly body: Body;
+  readonly trail: Trail;
   population = 1; // billions
   civilizations = 1; // count, Trisolaris-style: rises again after each wipe
   warmth = 1; // 1 ≈ comfortable; <FROZEN_BELOW frozen, >SCORCH_ABOVE scorching
@@ -32,6 +34,7 @@ export class EarthState {
 
   constructor(body: Body) {
     this.body = body;
+    this.trail = new Trail(700);
   }
 
   update(dt: number, suns: Body[]): void {
