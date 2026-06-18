@@ -132,4 +132,29 @@ describe('N-body PEFRL conserves the invariants (3 bodies)', () => {
     const drift = Math.abs((nb.energy() - E0) / E0);
     expect(drift).toBeLessThan(1e-2);
   });
+
+  test('a merge over the supernova mass detonates and blasts the survivors', () => {
+    // Two heavy stars (5 + 5 = 10 ≥ limit) collide head-on; a light third sits
+    // off to the side and should be flung outward by the blast, not fused.
+    const nb = new NBodySimulation(
+      [
+        createBody(5, vec2(-120, 0), vec2(70, 0)),
+        createBody(5, vec2(120, 0), vec2(-70, 0)),
+        createBody(1, vec2(0, 280), vec2(0, 0)),
+      ],
+      PHYSICS.G,
+      PHYSICS.SOFTENING,
+    );
+    let event = null;
+    for (let i = 0; i < 3000 && !event; i++) {
+      const e = nb.step(PHYSICS.DT);
+      if (e) event = e;
+    }
+    expect(event).not.toBeNull();
+    expect(event!.supernova).toBe(true);
+    expect(event!.body).toBeNull();
+    // The two heavy stars are gone; the light third remains, flung by the blast.
+    expect(nb.bodies.length).toBe(1);
+    expect(Math.hypot(nb.bodies[0].vel.x, nb.bodies[0].vel.y)).toBeGreaterThan(50);
+  });
 });

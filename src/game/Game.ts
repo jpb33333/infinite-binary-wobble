@@ -594,7 +594,10 @@ export class Game {
     if (!this.nbody) return;
     const present = new Set(this.nbody.bodies);
     this.unravelTracks = this.unravelTracks.filter(t => present.has(t.body));
-    if (!this.unravelTracks.some(t => t.body === event.body)) {
+    // Normal fuse → track the merged star. Supernova → nothing survives the
+    // detonation (event.body is null), so no new track; nbody already rammed
+    // the blast through the survivors.
+    if (event.body && !this.unravelTracks.some(t => t.body === event.body)) {
       this.unravelTracks.push({
         body: event.body,
         trail: new Trail(TRAIL_CAPACITY),
@@ -608,7 +611,13 @@ export class Game {
       mergedMass: event.mass,
       transient: true,
     };
-    this.renderer.burst(event.x, event.y, 180, palette.cream, 340);
+    this.renderer.burst(
+      event.x,
+      event.y,
+      event.supernova ? 320 : 180,
+      palette.cream,
+      event.supernova ? 440 : 340,
+    );
   }
 
   private activeSpec(): BodySpec | null {

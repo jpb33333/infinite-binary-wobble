@@ -2,16 +2,26 @@ import type { Body } from './Body.ts';
 import { createBody, bodyRadius } from './Body.ts';
 import { vec2 } from './Vec2.ts';
 
-// A merge event: two stars touched and fused into one. Carries the merger
-// point + combined mass (for the flash) and the new body (so the caller can
-// retrack it). Momentum is conserved across the merge; kinetic energy is not
-// (perfectly inelastic — that lost energy IS the collision).
+// A collision event. Below the supernova mass the two stars fuse into one
+// (`supernova: false`, `body` = the fused star, momentum conserved). At or
+// above it the merge detonates instead (`supernova: true`, `body` = null —
+// nothing survives the blast) and a shockwave is rammed outward through every
+// other body (a supernova is NOT momentum-conserving; it dumps energy outward).
 export interface MergeEvent {
   x: number;
   y: number;
   mass: number;
-  body: Body;
+  supernova: boolean;
+  body: Body | null;
 }
+
+// A merge whose combined mass reaches this detonates (Type-Ia-style) rather
+// than fusing — game units, tuned so only big stars colliding blow up. The
+// blast adds an outward velocity impulse to each survivor, falling off with
+// distance (game-feel-tuned, not SI).
+const SUPERNOVA_MASS = 9;
+const BLAST_STRENGTH = 2.0e6;
+const BLAST_VMAX = 500;
 
 // N-body Plummer-softened gravity + PEFRL, for the post-win "third star"
 // unravel (the three-body problem tearing a stable binary apart).
@@ -190,10 +200,11 @@ export class NBodySimulation {
     return this.resolveCollision();
   }
 
-  // Merge the first overlapping pair (surfaces touching) into a single body —
-  // perfectly inelastic: combined mass, momentum-conserving velocity, COM
-  // position. One pair per call; a rare simultaneous second overlap resolves on
-  // the next step. Returns the merger, or null when nothing touched.
+  // Resolve the first overlapping pair (surfaces touching). Below the supernova
+  // mass they fuse — perfectly inelastic: combined mass, momentum-conserving
+  // velocity, COM position. At/above it they DETONATE: both are removed and a
+  // shockwave impulse is rammed through every survivor. One pair per call; a
+  // rare simultaneous second overlap resolves on the next step.
   private resolveCollision(): MergeEvent | null {
     const b = this.bodies;
     for (let i = 0; i < b.length; i++) {
@@ -204,16 +215,38 @@ export class NBodySimulation {
           const mass = b[i].mass + b[j].mass;
           const x = (b[i].mass * b[i].pos.x + b[j].mass * b[j].pos.x) / mass;
           const y = (b[i].mass * b[i].pos.y + b[j].mass * b[j].pos.y) / mass;
+          if (mass >= SUPERNOVA_MASS) {
+            b.splice(j, 1); // remove the higher index first
+            b.splice(i, 1);
+            this.applyBlast(x, y, mass);
+            return { x, y, mass, supernova: true, body: null };
+          }
           const vx = (b[i].mass * b[i].vel.x + b[j].mass * b[j].vel.x) / mass;
           const vy = (b[i].mass * b[i].vel.y + b[j].mass * b[j].vel.y) / mass;
           const merged = createBody(mass, vec2(x, y), vec2(vx, vy));
           b.splice(j, 1);
           b[i] = merged;
-          return { x, y, mass, body: merged };
+          return { x, y, mass, supernova: false, body: merged };
         }
       }
     }
     return null;
+  }
+
+  // A supernova shockwave: an outward velocity impulse to every surviving body,
+  // ∝ source mass / distance² (capped), like a blast shell ramming through the
+  // system. Called after the detonated pair has been removed.
+  private applyBlast(cx: number, cy: number, sourceMass: number): void {
+    for (const body of this.bodies) {
+      const dx = body.pos.x - cx;
+      const dy = body.pos.y - cy;
+      const distSq = dx * dx + dy * dy;
+      const dist = Math.sqrt(distSq);
+      if (dist < 1e-6) continue;
+      const dv = Math.min(BLAST_VMAX, (BLAST_STRENGTH * sourceMass) / Math.max(distSq, 1));
+      body.vel.x += (dx / dist) * dv;
+      body.vel.y += (dy / dist) * dv;
+    }
   }
 
   energy(): number {
