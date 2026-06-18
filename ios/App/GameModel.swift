@@ -7,7 +7,7 @@ import WobblePhysics
 // the Canvas paints from this state every frame.
 
 enum GameState {
-  case title, setupP1, setupP2, countdown, simulate, resolved
+  case title, setupP1, setupP2, countdown, simulate, resolved, paywall
 }
 
 /// Every tappable thing the canvas draws. Draw + hit-test share one rect
@@ -56,6 +56,9 @@ final class GameModel: ObservableObject {
   private(set) var supernova: (pos: CGPoint, t0: Double, mergedMass: Double)?
   let stats = SessionStats()
   private(set) var statsSummary = StatsSummary()
+  // Persistent 200-play meter → the paywall gate (PlayMeter.swift). Injectable
+  // so tests can drive the gate with an isolated UserDefaults store.
+  let meter: PlayMeter
 
   // Atmosphere
   private(set) var starfield: [StarSpec] = []
@@ -82,7 +85,8 @@ final class GameModel: ObservableObject {
   var buttons: [ButtonID: CGRect] = [:]
   private(set) var fit = Fit(view: CGSize(width: 1, height: 1), design: LANDSCAPE_LAYOUT.canvas)
 
-  init() {
+  init(meter: PlayMeter = PlayMeter()) {
+    self.meter = meter
     specs = (defaultSpec(.p1, LANDSCAPE_LAYOUT), defaultSpec(.p2, LANDSCAPE_LAYOUT))
   }
 
@@ -205,9 +209,21 @@ final class GameModel: ObservableObject {
   }
 
   func toSetup1() {
+    // Out of free plays and unpurchased → the paywall stands between the player
+    // and a new round (mirrors the web Game.toSetup1 meter gate).
+    if meter.shouldGate() {
+      toPaywall()
+      return
+    }
     specs = (defaultSpec(.p1, layout), defaultSpec(.p2, layout))
     resetRound()
     state = .setupP1
+  }
+
+  private func toPaywall() {
+    resetRound()
+    activeDrag = nil
+    state = .paywall
   }
 
   private func toSetup2() {
@@ -224,6 +240,7 @@ final class GameModel: ObservableObject {
   }
 
   private func toSimulate() {
+    meter.consumePlay() // one play counted per round, at simulation start
     let p1 = specs.p1, p2 = specs.p2
     sim = Simulation.create(
       m1: p1.mass, pos1: Vec2(p1.pos.x, p1.pos.y), vel1: Vec2(p1.vel.dx, p1.vel.dy),

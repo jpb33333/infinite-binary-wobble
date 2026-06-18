@@ -49,6 +49,7 @@ struct GameRenderer {
     case .countdown: renderCountdown(&scene, w: w, h: h, time: time)
     case .simulate: renderSimulate(&scene, w: w, h: h, time: time)
     case .resolved: renderResolved(&scene, w: w, h: h, time: time)
+    case .paywall: renderPaywall(&scene, w: w, h: h)
     }
 
     if model.state != .title { drawCornerControls(&scene, w: w) }
@@ -280,6 +281,25 @@ struct GameRenderer {
     }
 
     drawCarseFooter(&ctx, topY: geo.carseY, centerX: geo.rect.midX)
+  }
+
+  /// The 200-play wall. Phase 2 surface = this message + the corner EXIT
+  /// (registered by drawCornerControls). The purchase card with Buy / Restore
+  /// arrives with StoreKit (phase 3).
+  private func renderPaywall(_ ctx: inout GraphicsContext, w: CGFloat, h: CGFloat) {
+    drawPhaseLabel(&ctx, text: "the free orbit ends", w: w, color: Palette.terracotta)
+    ctx.draw(
+      ctx.resolve(
+        Text("You've used your \(PlayMeter.freePlayLimit) free plays.")
+          .font(Fonts.serif(28)).foregroundColor(Palette.cream)),
+      at: CGPoint(x: w / 2, y: h / 2 - 16), anchor: .center
+    )
+    ctx.draw(
+      ctx.resolve(
+        Text("Tap EXIT to return to the title.")
+          .font(Fonts.sans(14)).foregroundColor(Palette.cream.opacity(0.6))),
+      at: CGPoint(x: w / 2, y: h / 2 + 24), anchor: .center
+    )
   }
 
   private func playStatsLine() -> String? {
