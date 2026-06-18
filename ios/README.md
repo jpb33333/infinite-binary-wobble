@@ -62,7 +62,7 @@ and `ABOUT-SCREEN.md` (final copy for the not-yet-built About screen).
 
 ## App Store checklist (from the plan, §8)
 
-1. App ID + bundle id (`com.gamerboygirl.infinitebinarywobble`), automatic
+1. App ID + bundle id (`com.bowditch.infinitebinarywobble`), automatic
    signing with your team.
 2. Icon set (reuse `../public/icon-512.png` artwork at 1024²), launch screen
    is generated (void background).

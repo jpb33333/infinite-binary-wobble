@@ -145,4 +145,4 @@ low risk, dev-dependency bumps deserve a local build-test before merging.
 - #24 — native iOS app + portrait mode + PWA install + softened-energy fix (0.4.0)
 - #25 — hygiene: manifest-src CSP fix, fixture-parity guardrails (merged, live)
 - #26 — metering integrity: session reuse, webhook retry safety, PR CI gate (merged)
-- #27 — iOS asset harvest + the 200-free-plays & Gamerboygirl Gaming decisions (merged)
+- #27 — iOS asset harvest + the 200-free-plays & Bowditch Gaming decisions (merged)
