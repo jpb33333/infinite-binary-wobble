@@ -54,6 +54,7 @@ export function applyGravityN(bodies: Body[], G: number, softening: number): voi
   for (const body of bodies) {
     body.accel.x = 0;
     body.accel.y = 0;
+    body.az = 0;
   }
   for (let i = 0; i < bodies.length; i++) {
     const bi = bodies[i];
@@ -61,13 +62,16 @@ export function applyGravityN(bodies: Body[], G: number, softening: number): voi
       const bj = bodies[j];
       const dx = bj.pos.x - bi.pos.x;
       const dy = bj.pos.y - bi.pos.y;
-      const denom = Math.pow(dx * dx + dy * dy + soft2, 1.5);
+      const dz = bj.z - bi.z;
+      const denom = Math.pow(dx * dx + dy * dy + dz * dz + soft2, 1.5);
       const gi = (G * bj.mass) / denom; // |accel| on i, directed toward j
       const gj = (G * bi.mass) / denom; // |accel| on j, directed toward i
       bi.accel.x += gi * dx;
       bi.accel.y += gi * dy;
+      bi.az += gi * dz;
       bj.accel.x -= gj * dx;
       bj.accel.y -= gj * dy;
+      bj.az -= gj * dz;
     }
   }
 }
@@ -76,6 +80,7 @@ function driftN(bodies: Body[], dtScaled: number): void {
   for (const b of bodies) {
     b.pos.x += b.vel.x * dtScaled;
     b.pos.y += b.vel.y * dtScaled;
+    b.z += b.vz * dtScaled;
   }
 }
 
@@ -83,6 +88,7 @@ function kickN(bodies: Body[], dtScaled: number): void {
   for (const b of bodies) {
     b.vel.x += b.accel.x * dtScaled;
     b.vel.y += b.accel.y * dtScaled;
+    b.vz += b.az * dtScaled;
   }
 }
 
@@ -120,14 +126,15 @@ export function totalEnergy(bodies: Body[], G: number, softening: number): numbe
   const soft2 = softening * softening;
   let ke = 0;
   for (const b of bodies) {
-    ke += 0.5 * b.mass * (b.vel.x * b.vel.x + b.vel.y * b.vel.y);
+    ke += 0.5 * b.mass * (b.vel.x * b.vel.x + b.vel.y * b.vel.y + b.vz * b.vz);
   }
   let pe = 0;
   for (let i = 0; i < bodies.length; i++) {
     for (let j = i + 1; j < bodies.length; j++) {
       const dx = bodies[j].pos.x - bodies[i].pos.x;
       const dy = bodies[j].pos.y - bodies[i].pos.y;
-      pe += -(G * bodies[i].mass * bodies[j].mass) / Math.sqrt(dx * dx + dy * dy + soft2);
+      const dz = bodies[j].z - bodies[i].z;
+      pe += -(G * bodies[i].mass * bodies[j].mass) / Math.sqrt(dx * dx + dy * dy + dz * dz + soft2);
     }
   }
   return ke + pe;
@@ -135,15 +142,17 @@ export function totalEnergy(bodies: Body[], G: number, softening: number): numbe
 
 // Total linear momentum Σmᵢvᵢ — conserved to machine precision by PEFRL
 // (internal forces cancel by Newton's third law, so every kick is momentum-
-// neutral). The test keys off this.
-export function totalMomentum(bodies: Body[]): { x: number; y: number } {
+// neutral). The test keys off this; z is included so 3D runs are covered.
+export function totalMomentum(bodies: Body[]): { x: number; y: number; z: number } {
   let x = 0;
   let y = 0;
+  let z = 0;
   for (const b of bodies) {
     x += b.mass * b.vel.x;
     y += b.mass * b.vel.y;
+    z += b.mass * b.vz;
   }
-  return { x, y };
+  return { x, y, z };
 }
 
 export function centerOfMass(bodies: Body[]): { x: number; y: number } {
@@ -165,7 +174,8 @@ export function minPairSeparation(bodies: Body[]): number {
     for (let j = i + 1; j < bodies.length; j++) {
       const dx = bodies[j].pos.x - bodies[i].pos.x;
       const dy = bodies[j].pos.y - bodies[i].pos.y;
-      const d = Math.sqrt(dx * dx + dy * dy);
+      const dz = bodies[j].z - bodies[i].z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (d < min) min = d;
     }
   }
@@ -228,20 +238,25 @@ export class NBodySimulation {
         if (this.noMerge.has(b[i]) || this.noMerge.has(b[j])) continue; // a planet never fuses
         const dx = b[j].pos.x - b[i].pos.x;
         const dy = b[j].pos.y - b[i].pos.y;
+        const dz = b[j].z - b[i].z;
         const contact = MERGE_OVERLAP * (bodyRadius(b[i].mass) + bodyRadius(b[j].mass));
-        if (Math.sqrt(dx * dx + dy * dy) < contact) {
+        if (Math.sqrt(dx * dx + dy * dy + dz * dz) < contact) {
           const mass = b[i].mass + b[j].mass;
           const x = (b[i].mass * b[i].pos.x + b[j].mass * b[j].pos.x) / mass;
           const y = (b[i].mass * b[i].pos.y + b[j].mass * b[j].pos.y) / mass;
+          const z = (b[i].mass * b[i].z + b[j].mass * b[j].z) / mass;
           if (mass >= SUPERNOVA_MASS) {
             b.splice(j, 1); // remove the higher index first
             b.splice(i, 1);
-            this.applyBlast(x, y, mass);
+            this.applyBlast(x, y, z, mass);
             return { x, y, mass, supernova: true, body: null };
           }
           const vx = (b[i].mass * b[i].vel.x + b[j].mass * b[j].vel.x) / mass;
           const vy = (b[i].mass * b[i].vel.y + b[j].mass * b[j].vel.y) / mass;
+          const vz = (b[i].mass * b[i].vz + b[j].mass * b[j].vz) / mass;
           const merged = createBody(mass, vec2(x, y), vec2(vx, vy));
+          merged.z = z;
+          merged.vz = vz;
           b.splice(j, 1);
           b[i] = merged;
           return { x, y, mass, supernova: false, body: merged };
@@ -254,16 +269,18 @@ export class NBodySimulation {
   // A supernova shockwave: an outward velocity impulse to every surviving body,
   // ∝ source mass / distance² (capped), like a blast shell ramming through the
   // system. Called after the detonated pair has been removed.
-  private applyBlast(cx: number, cy: number, sourceMass: number): void {
+  private applyBlast(cx: number, cy: number, cz: number, sourceMass: number): void {
     for (const body of this.bodies) {
       const dx = body.pos.x - cx;
       const dy = body.pos.y - cy;
-      const distSq = dx * dx + dy * dy;
+      const dz = body.z - cz;
+      const distSq = dx * dx + dy * dy + dz * dz;
       const dist = Math.sqrt(distSq);
       if (dist < 1e-6) continue;
       const dv = Math.min(BLAST_VMAX, (BLAST_STRENGTH * sourceMass) / Math.max(distSq, 1));
       body.vel.x += (dx / dist) * dv;
       body.vel.y += (dy / dist) * dv;
+      body.vz += (dz / dist) * dv;
     }
   }
 
@@ -271,7 +288,7 @@ export class NBodySimulation {
     return totalEnergy(this.bodies, this.G, this.softening);
   }
 
-  momentum(): { x: number; y: number } {
+  momentum(): { x: number; y: number; z: number } {
     return totalMomentum(this.bodies);
   }
 

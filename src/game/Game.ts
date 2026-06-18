@@ -586,6 +586,7 @@ export class Game {
       vec2(com.x + Math.cos(theta) * reach, com.y + Math.sin(theta) * reach),
       vec2(Math.cos(aim) * speed, Math.sin(aim) * speed),
     );
+    star.vz = (Math.random() - 0.5) * speed; // arrive out of the plane → real 3D
     this.nbody.addBody(star);
     this.unravelTracks.push({
       body: star,
@@ -610,6 +611,7 @@ export class Game {
       vec2(com.x + Math.cos(ang) * EARTH_ORBIT, com.y + Math.sin(ang) * EARTH_ORBIT),
       vec2(-Math.sin(ang) * vCirc, Math.cos(ang) * vCirc),
     );
+    planet.vz = (Math.random() - 0.5) * vCirc * 0.6; // a slightly inclined orbit
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
     this.earths.push(new EarthState(planet));
   }

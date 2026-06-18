@@ -157,4 +157,25 @@ describe('N-body PEFRL conserves the invariants (3 bodies)', () => {
     expect(nb.bodies.length).toBe(1);
     expect(Math.hypot(nb.bodies[0].vel.x, nb.bodies[0].vel.y)).toBeGreaterThan(50);
   });
+
+  test('3D motion conserves momentum (including z) and leaves the plane', () => {
+    const bodies = [
+      createBody(2, vec2(-150, 0), vec2(0, 70)),
+      createBody(3, vec2(150, 0), vec2(0, -50)),
+      createBody(1.5, vec2(0, 300), vec2(-40, 0)),
+    ];
+    bodies[0].vz = 30; // out-of-plane velocity
+    bodies[1].vz = -20;
+    bodies[2].vz = 15;
+    const nb = new NBodySimulation(bodies, PHYSICS.G, PHYSICS.SOFTENING);
+    const p0 = nb.momentum();
+    for (let i = 0; i < 3000; i++) nb.step(PHYSICS.DT);
+    const p = nb.momentum();
+    // Momentum conserved on all three axes (a merge, if any, conserves it too).
+    expect(Math.abs(p.x - p0.x)).toBeLessThan(1e-6);
+    expect(Math.abs(p.y - p0.y)).toBeLessThan(1e-6);
+    expect(Math.abs(p.z - p0.z)).toBeLessThan(1e-6);
+    // Something actually moved out of the z = 0 plane — this is real 3D.
+    expect(Math.max(...nb.bodies.map(b => Math.abs(b.z)))).toBeGreaterThan(1);
+  });
 });

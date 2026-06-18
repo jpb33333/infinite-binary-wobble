@@ -42,7 +42,8 @@ export class EarthState {
     for (const s of suns) {
       const dx = this.body.pos.x - s.pos.x;
       const dy = this.body.pos.y - s.pos.y;
-      insolation += s.mass / Math.max(dx * dx + dy * dy, 1);
+      const dz = this.body.z - s.z;
+      insolation += s.mass / Math.max(dx * dx + dy * dy + dz * dz, 1);
     }
     const warmth = insolation / WARMTH_REF;
 

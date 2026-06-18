@@ -112,6 +112,14 @@ export interface RenderInput {
 // its mass-radius would be a 2px speck).
 const EARTH_DRAW_R = 5;
 
+// Pseudo-3D depth: the viewer sits VIEW_DIST in front of the z = 0 plane. A body
+// nearer the viewer (z > 0) draws bigger + brighter; farther (z < 0) smaller +
+// dimmer. Clamped so a body that swings deep doesn't balloon or vanish.
+const VIEW_DIST = 1500;
+function depthScale(z: number): number {
+  return Math.min(1.8, Math.max(0.45, VIEW_DIST / (VIEW_DIST - z)));
+}
+
 // Minimum touch-target side in CSS pixels (Apple HIG 44pt). Buttons are
 // drawn in design space, so at small contain-fit scales their on-screen size
 // shrinks below a fingertip; hit-testing inflates each rect (centered) up to
@@ -661,19 +669,40 @@ export class Renderer {
     }
 
     if (input.unravel) {
-      // Three-body unravel: draw each tracked body + its trail from the live
-      // list (the count changes as stars merge). Two-body overlays — predicted
-      // ellipses, the barycenter dot, Doppler tint — don't apply here.
+      // Three-body unravel, rendered top-down with pseudo-3D depth: trails are
+      // the flat projection of each path; the bodies are z-sorted (far first)
+      // and scaled in size + brightness by depth, so they visibly pass in front
+      // of and behind one another. Two-body overlays (predicted ellipses,
+      // barycenter, Doppler tint) don't apply here.
       for (const t of input.unravel) {
         drawTrail(ctx, t.trail, this.trailColorForKind(t.kind), 0.85, 0, 2.2);
       }
-      if (input.supernova) this.drawSupernova(input.supernova, input.time);
-      for (const t of input.unravel) {
-        drawStar(ctx, t.body.pos.x, t.body.pos.y, bodyRadius(t.body.mass), this.styleForKind(t.kind), input.time);
-      }
       for (const e of input.earths) {
         drawTrail(ctx, e.trail, palette.earth, 0.7, 0, 1.6);
-        drawStar(ctx, e.body.pos.x, e.body.pos.y, EARTH_DRAW_R, this.earthStyle(e.era), input.time);
+      }
+      if (input.supernova) this.drawSupernova(input.supernova, input.time);
+
+      const drawables = [
+        ...input.unravel.map(t => ({
+          z: t.body.z,
+          x: t.body.pos.x,
+          y: t.body.pos.y,
+          r: bodyRadius(t.body.mass),
+          style: this.styleForKind(t.kind),
+        })),
+        ...input.earths.map(e => ({
+          z: e.body.z,
+          x: e.body.pos.x,
+          y: e.body.pos.y,
+          r: EARTH_DRAW_R,
+          style: this.earthStyle(e.era),
+        })),
+      ];
+      drawables.sort((a, b) => a.z - b.z); // far (low z) first → near drawn on top
+      for (const d of drawables) {
+        const ds = depthScale(d.z);
+        const style = { ...d.style, haloAlpha: d.style.haloAlpha * Math.min(1.3, Math.max(0.5, ds)) };
+        drawStar(ctx, d.x, d.y, d.r * ds, style, input.time);
       }
     } else {
       if (input.sim) this.drawPredictedOrbits(input.sim);
