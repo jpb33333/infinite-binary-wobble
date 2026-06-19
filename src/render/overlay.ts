@@ -721,10 +721,11 @@ export function drawTitleExplainerLink(
 const EXPLAINER_TITLE = 'binary stars';
 const EXPLAINER_BODY: readonly string[] = [
   'Most stars are not alone.',
-  'Perhaps half the stars you can see are two — bound to each other, circling a point between them that belongs to neither and to both. Astronomers call them binary stars.',
+  'Perhaps half the stars you can see are two — bound to each other, circling a shared center of gravity, a point that belongs to neither and to both. Astronomers call them binary stars.',
   'Often only one is bright enough to see. It wobbles, tugged by a companion no one can find — to an astronomer, a binary star is a wobble of light.',
   'Neither star leads. Neither follows. Each bends the other’s path — and when the balance is right, the dance holds for billions of years.',
   'When it isn’t, they fall together, or fly apart.',
+  'Two bodies, Newton’s laws — set down over three centuries ago — can predict almost forever. Add a third, and the certainty breaks: the three-body problem has no general solution to this day.',
   'You are about to be such a pair. But remember — other bodies that enter your system can influence it, and even destabilize it permanently.',
 ];
 
