@@ -85,6 +85,7 @@ export interface RenderInput {
   cameraZoom: number;
   // How the sandbox failed, or null while it runs. Drives the game-over card.
   sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null;
+  placing: { kind: 'star' | 'planet'; pos: { x: number; y: number } | null; mass: number } | null;
   // Per-session scoreboard rendered on the title screen and (briefly) above
   // the AGAIN button on each resolve. The Game owns the cookie; the Renderer
   // just paints the summary.
@@ -745,6 +746,28 @@ export class Renderer {
         ctx.stroke();
         ctx.restore();
       }
+
+      // Ghost preview of a body being Set-placed (world space, inside the camera
+      // transform); min-size floored like the live bodies so it reads zoomed out.
+      if (input.placing?.pos) {
+        const gp = input.placing.pos;
+        const baseR = input.placing.kind === 'star' ? bodyRadius(input.placing.mass) : EARTH_DRAW_R;
+        const gr = Math.max(baseR, MIN_UNRAVEL_SCREEN_R / cz);
+        const col = input.placing.kind === 'star' ? palette.danger : palette.earth;
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(gp.x, gp.y, gr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.85;
+        ctx.lineWidth = 1.5 / cz;
+        ctx.strokeStyle = col;
+        ctx.beginPath();
+        ctx.arc(gp.x, gp.y, gr + 7 / cz, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
     } else {
       if (input.sim) this.drawPredictedOrbits(input.sim);
       drawTrail(ctx, input.trails.p1, palette.player1, 0.85, 0, 2.2);
@@ -1170,24 +1193,96 @@ export class Renderer {
       (input.outcome?.kind === 'win' || input.unravel) &&
       !input.sandboxOutcome
     ) {
-      const sbW = 150;
-      const starBtn: CanvasButton = { label: 'Add Star', x: 16, y: top, width: sbW, height: pillH };
-      drawButton(ctx, starBtn, { primary: palette.danger, hovered: hoveredName === 'add_star' });
-      this.register('add_star', starBtn);
-      const planetBtn: CanvasButton = { label: 'Add Planet', x: 16, y: top + pillH + 10, width: sbW, height: pillH };
-      drawButton(ctx, planetBtn, {
-        primary: palette.earth,
-        text: palette.voidDeep,
-        hovered: hoveredName === 'add_planet',
-      });
-      this.register('add_planet', planetBtn);
-      ctx.save();
-      ctx.textAlign = 'left';
-      ctx.fillStyle = rgba(palette.cream, 0.5);
-      ctx.font = `italic 400 ${cpx(11)}px ${fonts.serif}`;
-      ctx.fillText('Keep adding until it collapses.', 16, top + (pillH + 10) * 2 + 14);
-      ctx.restore();
+      if (input.placing) {
+        this.drawPlacementControls(input);
+      } else {
+        const bw = 150;
+        const x2 = 16 + bw + 8;
+        const row2 = top + pillH + 10;
+        const starSet: CanvasButton = { label: 'Set Star', x: 16, y: top, width: bw, height: pillH };
+        const starRnd: CanvasButton = { label: 'Random Star', x: x2, y: top, width: bw, height: pillH };
+        drawButton(ctx, starSet, { primary: palette.danger, hovered: hoveredName === 'set_star' });
+        drawButton(ctx, starRnd, { primary: palette.danger, hovered: hoveredName === 'random_star' });
+        this.register('set_star', starSet);
+        this.register('random_star', starRnd);
+        const planetSet: CanvasButton = { label: 'Set Planet', x: 16, y: row2, width: bw, height: pillH };
+        const planetRnd: CanvasButton = { label: 'Random Planet', x: x2, y: row2, width: bw, height: pillH };
+        drawButton(ctx, planetSet, {
+          primary: palette.earth,
+          text: palette.voidDeep,
+          hovered: hoveredName === 'set_planet',
+        });
+        drawButton(ctx, planetRnd, {
+          primary: palette.earth,
+          text: palette.voidDeep,
+          hovered: hoveredName === 'random_planet',
+        });
+        this.register('set_planet', planetSet);
+        this.register('random_planet', planetRnd);
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.fillStyle = rgba(palette.cream, 0.5);
+        ctx.font = `italic 400 ${cpx(11)}px ${fonts.serif}`;
+        ctx.fillText('Set drops it where you tap. Keep adding until it collapses.', 16, row2 + pillH + 16);
+        ctx.restore();
+      }
     }
+  }
+
+  // The "Set" placement HUD (top-left), shown while a body is being dropped: a
+  // hint, +/- mass for a star, and Launch (once a spot is tapped) / Cancel. The
+  // ghost preview itself is drawn in renderSimulate (world space).
+  private drawPlacementControls(input: RenderInput): void {
+    const pl = input.placing;
+    if (!pl) return;
+    const { ctx } = this;
+    const top = 14;
+    const hoveredName = this.hoveredButton(input.hover);
+    const kind = pl.kind;
+
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = rgba(palette.cream, 0.7);
+    ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
+    ctx.fillText(
+      pl.pos ? `Tap to move it · LAUNCH to drop the ${kind}` : `Tap the field to place the ${kind}`,
+      16,
+      top + 8,
+    );
+    ctx.restore();
+
+    let y = top + 26;
+    if (kind === 'star') {
+      const pill = 40;
+      const minus: CanvasButton = { label: '−', x: 16, y, width: pill, height: pill };
+      const plus: CanvasButton = { label: '+', x: 16 + pill + 84, y, width: pill, height: pill };
+      drawButton(ctx, minus, { primary: palette.danger, hovered: hoveredName === 'place_mass_minus' });
+      drawButton(ctx, plus, { primary: palette.danger, hovered: hoveredName === 'place_mass_plus' });
+      this.register('place_mass_minus', minus);
+      this.register('place_mass_plus', plus);
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = palette.cream;
+      ctx.font = `400 ${cpx(15)}px ${fonts.serif}`;
+      ctx.fillText(`mass ${pl.mass.toFixed(1)}`, 16 + pill + 42, y + pill / 2);
+      ctx.restore();
+      y += pill + 12;
+    }
+
+    const bw = 110;
+    const bh = 44;
+    if (pl.pos) {
+      const launch: CanvasButton = { label: 'Launch', x: 16, y, width: bw, height: bh };
+      drawButton(ctx, launch, {
+        primary: kind === 'star' ? palette.danger : palette.earth,
+        hovered: hoveredName === 'place_launch',
+      });
+      this.register('place_launch', launch);
+    }
+    const cancel: CanvasButton = { label: 'Cancel', x: pl.pos ? 16 + bw + 8 : 16, y, width: bw, height: bh };
+    drawButton(ctx, cancel, { primary: palette.terracotta, hovered: hoveredName === 'place_cancel' });
+    this.register('place_cancel', cancel);
   }
 
   private renderResolved(input: RenderInput): void {
