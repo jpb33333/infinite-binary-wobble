@@ -86,6 +86,8 @@ export interface RenderInput {
   // How the sandbox failed, or null while it runs. Drives the game-over card.
   sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null;
   placing: { kind: 'star' | 'planet'; pos: { x: number; y: number } | null; mass: number } | null;
+  starCount: number;
+  planetCount: number;
   // Per-session scoreboard rendered on the title screen and (briefly) above
   // the AGAIN button on each resolve. The Game owns the cookie; the Renderer
   // just paints the summary.
@@ -123,6 +125,9 @@ const EARTH_DRAW_R = 5;
 // sub-pixel dot when the camera is zoomed all the way out (4×) to follow a
 // slingshot. Applied in screen px, converted to world units by the live zoom.
 const MIN_UNRAVEL_SCREEN_R = 3;
+// Sandbox population cap for the HUD readout — mirrors MAX_STARS / MAX_PLANETS
+// in Game.ts (kept here only for the "X/10" display).
+const SANDBOX_CAP = 10;
 
 // Pseudo-3D depth: the viewer sits VIEW_DIST in front of the z = 0 plane. A body
 // nearer the viewer (z > 0) draws bigger + brighter; farther (z < 0) smaller +
@@ -1223,7 +1228,11 @@ export class Renderer {
         ctx.textAlign = 'left';
         ctx.fillStyle = rgba(palette.cream, 0.5);
         ctx.font = `italic 400 ${cpx(11)}px ${fonts.serif}`;
-        ctx.fillText('Set drops it where you tap. Keep adding until it collapses.', 16, row2 + pillH + 16);
+        ctx.fillText(
+          `Set drops it where you tap.  Stars ${input.starCount}/${SANDBOX_CAP} · Planets ${input.planetCount}/${SANDBOX_CAP}.`,
+          16,
+          row2 + pillH + 16,
+        );
         ctx.restore();
       }
     }
