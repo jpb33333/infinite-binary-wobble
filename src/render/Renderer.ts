@@ -111,6 +111,7 @@ export interface RenderInput {
     era: string;
     chaos: number;
     stable: boolean;
+    driftWarn: number;
   }[];
 }
 
@@ -724,6 +725,25 @@ export class Renderer {
         const style = { ...d.style, haloAlpha: d.style.haloAlpha * Math.min(1.3, Math.max(0.5, ds)) };
         const r = Math.max(d.r * ds, MIN_UNRAVEL_SCREEN_R / cz);
         drawStar(ctx, d.x, d.y, r, style, input.time);
+      }
+
+      // Ejection warning: a planet drifting toward the edge gets a pulsing red
+      // ring so "Lost to the dark" is telegraphed, never abrupt. Intensity rises
+      // as it nears the boundary; sized ~screen-constant (÷cz) so it reads even
+      // when the camera is pulled all the way out.
+      const WARN_SHOW = 0.72;
+      for (const e of input.earths) {
+        if (e.driftWarn <= WARN_SHOW) continue;
+        const urgency = (e.driftWarn - WARN_SHOW) / (1 - WARN_SHOW);
+        const pulse = 0.5 + 0.5 * Math.sin(input.time * 6);
+        ctx.save();
+        ctx.globalAlpha = 0.3 + 0.6 * urgency * (0.55 + 0.45 * pulse);
+        ctx.strokeStyle = palette.danger;
+        ctx.lineWidth = (2 + 1.5 * urgency) / cz;
+        ctx.beginPath();
+        ctx.arc(e.body.pos.x, e.body.pos.y, (15 + 8 * pulse) / cz, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
       }
     } else {
       if (input.sim) this.drawPredictedOrbits(input.sim);
