@@ -29,6 +29,11 @@ export class EarthState {
   warmth = 1; // 1 ≈ comfortable; <FROZEN_BELOW frozen, >SCORCH_ABOVE scorching
   chaos = 0; // 0..1 smoothed climate volatility
   era: Era = 'temperate';
+  // Ejection warning, set by the Game each frame: how far the planet has drifted
+  // toward the eject boundary (0 = home … 1 = at/past it) and how long it has
+  // been past. Drives the on-planet "adrift" warning + the grace before it's lost.
+  driftFraction = 0;
+  secondsAdrift = 0;
   private warmthEMA = 1;
   private extinct = false;
 

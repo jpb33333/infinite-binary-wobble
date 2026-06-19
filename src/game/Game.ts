@@ -30,6 +30,7 @@ const EARTH_ORBIT = 850; // px from the barycenter where a planet is dropped in
 // fall together (≤1 left), or humanity goes extinct if every planet stays dead
 // this long (civilizations get a grace window to reboot first).
 const EXTINCTION_GRACE = 6; // seconds
+const EJECT_GRACE = 2.5; // seconds a planet must stay past the boundary before it's lost
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
 
 export class Game {
@@ -680,9 +681,20 @@ export class Game {
       const { width: w, height: h } = this.renderer.layout.canvas;
       const ejectR = planetEjectRadius(Math.min(w, h));
       for (const e of this.earths) {
-        if (Math.hypot(e.body.pos.x - com.x, e.body.pos.y - com.y) > ejectR) {
-          this.sandboxOutcome = 'ejection';
-          return;
+        const dist = Math.hypot(e.body.pos.x - com.x, e.body.pos.y - com.y);
+        // The renderer reads driftFraction to warn ON the planet as it nears the
+        // edge (≈¾ of the way out) — so the loss is telegraphed, not abrupt.
+        e.driftFraction = Math.min(1, dist / ejectR);
+        if (dist > ejectR) {
+          // Past the edge, but grant a grace beat: a chaotic orbit can still
+          // swing it home, and the loss shouldn't snap the instant it crosses.
+          e.secondsAdrift += dt;
+          if (e.secondsAdrift > EJECT_GRACE) {
+            this.sandboxOutcome = 'ejection';
+            return;
+          }
+        } else {
+          e.secondsAdrift = 0; // pulled home — reprieve
         }
       }
     }
@@ -876,6 +888,7 @@ export class Game {
         era: e.era,
         chaos: e.chaos,
         stable: e.stable,
+        driftWarn: e.driftFraction,
       })),
       posGrabbing: this.posControl.isGrabbing,
       arrowGrabbing: this.arrowControl.isGrabbing,
