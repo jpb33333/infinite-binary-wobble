@@ -12,6 +12,7 @@ import type { Body } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
 import { EarthState } from './earth.ts';
+import { placedStarVelocity, placedPlanetVelocity } from './placement.ts';
 import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
@@ -22,6 +23,12 @@ const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
 const EARTH_MASS = 0.02; // a planet — feels the suns, barely tugs them back
 const EARTH_ORBIT = 850; // px from the barycenter where a planet is dropped in
+// "Set"-placed sandbox bodies (quick-set: tap a spot, pick a star's mass; the
+// velocity is supplied automatically — see placement.ts).
+const SET_STAR_DEFAULT_MASS = 3;
+const SET_STAR_MASS_MIN = 1;
+const SET_STAR_MASS_MAX = 5;
+const SET_STAR_INBOUND_SPEED = 220; // px/s, aimed straight at the barycenter
 // Dynamic camera zoom + the planet-ejection boundary live in ./camera.ts (pure,
 // shared, unit-tested). There is no leash any more: real gravity is allowed to
 // slingshot a planet out, and a planet flung past planetEjectRadius — the edge
@@ -71,6 +78,10 @@ export class Game {
   // How the sandbox finally fails (null while it's still running): the system
   // collapses to a black hole, or every civilization dies out.
   private sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null = null;
+  // Sandbox "Set" placement: when set, the unravel pauses and the player taps a
+  // drop point (pos in WORLD coords) + picks a star's mass; Launch drops it.
+  private placing: { kind: 'star' | 'planet'; pos: { x: number; y: number } | null; mass: number } | null =
+    null;
   private extinctionTimer = 0;
 
   private hover: { x: number; y: number } | null = null;
@@ -249,13 +260,42 @@ export class Game {
       this.state === 'resolved' &&
       (this.outcome?.kind === 'win' || this.nbody !== null) &&
       !this.sandboxOutcome;
-    if (btn === 'add_star' && sandboxOpen) {
-      this.addStar();
-      return;
+    if (sandboxOpen && !this.placing) {
+      if (btn === 'random_star') {
+        this.addStar();
+        return;
+      }
+      if (btn === 'random_planet') {
+        this.addPlanet();
+        return;
+      }
+      if (btn === 'set_star') {
+        this.beginPlacing('star');
+        return;
+      }
+      if (btn === 'set_planet') {
+        this.beginPlacing('planet');
+        return;
+      }
     }
-    if (btn === 'add_planet' && sandboxOpen) {
-      this.addPlanet();
-      return;
+    // Placement-mode controls (active while a body is being Set-placed).
+    if (this.placing) {
+      if (btn === 'place_launch' && this.placing.pos) {
+        this.launchPlaced();
+        return;
+      }
+      if (btn === 'place_cancel') {
+        this.placing = null;
+        return;
+      }
+      if ((btn === 'place_mass_minus' || btn === 'place_mass_plus') && this.placing.kind === 'star') {
+        const step = btn === 'place_mass_plus' ? 0.5 : -0.5;
+        this.placing.mass = Math.min(
+          SET_STAR_MASS_MAX,
+          Math.max(SET_STAR_MASS_MIN, this.placing.mass + step),
+        );
+        return;
+      }
     }
     // Anywhere else on the WIN card body → start dragging it. (dismiss_win and
     // again are registered first, so hoveredButton resolves them before
@@ -308,6 +348,14 @@ export class Game {
     // The original wiring (body=position, outside=velocity) felt wrong
     // because everyone who's ever played a slingshot game expects to pull
     // velocity *out of* the star. Caught by /qa on 2026-06-01.
+
+    // Sandbox "Set" placement: a tap on the field (no button hit) sets/moves the
+    // drop point, in world coords (the unravel is paused while placing).
+    if (this.placing && this.state === 'resolved') {
+      this.placing.pos = this.designToWorld(p);
+      return;
+    }
+
     if (this.state === 'setup_p1' || this.state === 'setup_p2') {
       const spec = this.activeSpec();
       if (!spec) return;
@@ -409,6 +457,7 @@ export class Game {
     this.earths = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
+    this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
     this.classifier = null;
@@ -445,6 +494,7 @@ export class Game {
     this.earths = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
+    this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
     this.classifier = null;
@@ -503,6 +553,7 @@ export class Game {
     this.earths = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
+    this.placing = null;
     this.extinctionTimer = 0;
     this.outcome = null;
     this.burstedOnResolve = false;
@@ -638,6 +689,58 @@ export class Game {
     planet.vz = (Math.random() - 0.5) * vCirc * 0.6; // a slightly inclined orbit
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
     this.earths.push(new EarthState(planet));
+  }
+
+  // ── "Set" placement (quick-set: tap a drop point, +/- a star's mass) ──
+
+  private beginPlacing(kind: 'star' | 'planet'): void {
+    if (!this.sim) return;
+    this.ensureNBodyFromWin();
+    if (!this.nbody) return;
+    this.placing = { kind, pos: null, mass: kind === 'star' ? SET_STAR_DEFAULT_MASS : EARTH_MASS };
+  }
+
+  private launchPlaced(): void {
+    const pl = this.placing;
+    this.placing = null;
+    if (!pl || !pl.pos || !this.nbody) return;
+    if (pl.kind === 'star') this.addStarAt(pl.pos, pl.mass);
+    else this.addPlanetAt(pl.pos);
+  }
+
+  private addStarAt(pos: { x: number; y: number }, mass: number): void {
+    if (!this.nbody) return;
+    const v = placedStarVelocity(pos, this.systemCOM(), SET_STAR_INBOUND_SPEED);
+    const star = createBody(mass, vec2(pos.x, pos.y), vec2(v.x, v.y));
+    this.nbody.addBody(star);
+    this.unravelTracks.push({
+      body: star,
+      trail: new Trail(TRAIL_CAPACITY),
+      kind: 'star',
+      mergedCount: 1,
+    });
+  }
+
+  private addPlanetAt(pos: { x: number; y: number }): void {
+    if (!this.nbody) return;
+    const com = this.systemCOM();
+    if (com.mass <= 0) return;
+    const v = placedPlanetVelocity(pos, com, com.mass, PHYSICS.G);
+    const planet = createBody(EARTH_MASS, vec2(pos.x, pos.y), vec2(v.x, v.y));
+    this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
+    this.earths.push(new EarthState(planet));
+  }
+
+  // Invert the renderer's camera transform (design-canvas point → world point):
+  // a forward draw is centre + cz·(P + offset − centre), so the inverse is
+  // P = centre + (D − centre)/cz − offset. The unravel is paused while placing,
+  // so the camera is static and this is exact.
+  private designToWorld(d: { x: number; y: number }): { x: number; y: number } {
+    const { width: w, height: h } = this.renderer.layout.canvas;
+    const cz = this.cameraZoom;
+    const off = this.computeCameraOffset();
+    if (!off || cz <= 0) return d;
+    return { x: w / 2 + (d.x - w / 2) / cz - off.x, y: h / 2 + (d.y - h / 2) / cz - off.y };
   }
 
   // Fixed-step accumulator for the three-body unravel (mirror of
@@ -845,7 +948,7 @@ export class Game {
         // its trails + merges. It never stops on a collision; merged stars just
         // carry on, watchable as long as the WIN it grew out of.
         if (this.nbody) {
-          if (!this.sandboxOutcome) this.advanceNBody(dt);
+          if (!this.sandboxOutcome && !this.placing) this.advanceNBody(dt);
           break;
         }
         // For WINs, the wobble keeps going — it really is infinite. Keep the
@@ -909,6 +1012,7 @@ export class Game {
       cameraOffset: this.computeCameraOffset(),
       cameraZoom: this.computeCameraZoom(dt),
       sandboxOutcome: this.sandboxOutcome,
+      placing: this.placing,
     });
   }
 
