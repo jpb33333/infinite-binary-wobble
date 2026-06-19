@@ -133,9 +133,11 @@ describe('N-body PEFRL conserves the invariants (3 bodies)', () => {
     expect(drift).toBeLessThan(1e-2);
   });
 
-  test('a merge over the supernova mass detonates and blasts the survivors', () => {
+  test('a supernova leaves a heavy remnant and blasts the survivors (mass + momentum conserved)', () => {
     // Two heavy stars (5 + 5 = 10 ≥ limit) collide head-on; a light third sits
-    // off to the side and should be flung outward by the blast, not fused.
+    // off to the side and is flung by the blast. The detonation now CONSERVES
+    // mass (a remnant remains, nothing vanishes) and momentum (the remnant
+    // recoils against the blast).
     const nb = new NBodySimulation(
       [
         createBody(5, vec2(-120, 0), vec2(70, 0)),
@@ -145,17 +147,27 @@ describe('N-body PEFRL conserves the invariants (3 bodies)', () => {
       PHYSICS.G,
       PHYSICS.SOFTENING,
     );
+    const p0 = nb.momentum();
+    const m0 = nb.bodies.reduce((s, b) => s + b.mass, 0);
     let event = null;
     for (let i = 0; i < 3000 && !event; i++) {
       const e = nb.step(PHYSICS.DT);
       if (e) event = e;
     }
-    expect(event).not.toBeNull();
     expect(event!.supernova).toBe(true);
-    expect(event!.body).toBeNull();
-    // The two heavy stars are gone; the light third remains, flung by the blast.
-    expect(nb.bodies.length).toBe(1);
-    expect(Math.hypot(nb.bodies[0].vel.x, nb.bodies[0].vel.y)).toBeGreaterThan(50);
+    expect(event!.body).not.toBeNull(); // a remnant survives now
+    expect(nb.bodies.length).toBe(2); // remnant + the flung third
+    // Mass conserved: nothing vanished, the remnant carries the combined mass.
+    expect(nb.bodies.reduce((s, b) => s + b.mass, 0)).toBeCloseTo(m0, 9);
+    expect(event!.body!.mass).toBeCloseTo(10, 9);
+    // Momentum conserved across the blast (the remnant recoils to balance it).
+    const p = nb.momentum();
+    expect(Math.abs(p.x - p0.x)).toBeLessThan(1e-6);
+    expect(Math.abs(p.y - p0.y)).toBeLessThan(1e-6);
+    expect(Math.abs(p.z - p0.z)).toBeLessThan(1e-6);
+    // The light third was genuinely flung by the shockwave.
+    const third = nb.bodies.find(b => b.mass < 5)!;
+    expect(Math.hypot(third.vel.x, third.vel.y)).toBeGreaterThan(50);
   });
 
   test('3D motion conserves momentum (including z) and leaves the plane', () => {
@@ -179,25 +191,29 @@ describe('N-body PEFRL conserves the invariants (3 bodies)', () => {
     expect(Math.max(...nb.bodies.map(b => Math.abs(b.z)))).toBeGreaterThan(1);
   });
 
-  test('an over-mass 2-body collision detonates to zero survivors without crashing', () => {
-    // The terminal "everything fell together" case (the Game reads this as a
-    // collapse → black-hole game over). The physics must handle 0 bodies cleanly.
+  test('an over-mass 2-body collision leaves one remnant (mass + momentum conserved)', () => {
+    // The terminal "everything fell together" case. The detonation no longer
+    // empties the system (which would vanish mass) — it leaves a single heavy
+    // remnant. (The Game reads star-count ≤ 1 as a collapse → black-hole over.)
     const nb = new NBodySimulation(
       [createBody(5, vec2(-100, 0), vec2(60, 0)), createBody(5, vec2(100, 0), vec2(-60, 0))],
       PHYSICS.G,
       PHYSICS.SOFTENING,
     );
+    const p0 = nb.momentum();
     let event = null;
-    for (let i = 0; i < 3000 && nb.bodies.length > 0; i++) {
+    for (let i = 0; i < 3000 && !event; i++) {
       const e = nb.step(PHYSICS.DT);
       if (e) event = e;
     }
     expect(event && event.supernova).toBe(true);
-    expect(nb.bodies.length).toBe(0);
-    // Degenerate state is graceful, not a throw / NaN.
-    expect(nb.centerOfMass()).toEqual({ x: 0, y: 0 });
-    expect(nb.energy()).toBe(0);
-    expect(nb.momentum()).toEqual({ x: 0, y: 0, z: 0 });
+    expect(nb.bodies.length).toBe(1); // one remnant, not zero
+    expect(nb.bodies[0].mass).toBeCloseTo(10, 9); // mass conserved
+    // Momentum conserved (two equal-and-opposite stars → a ~stationary remnant).
+    const p = nb.momentum();
+    expect(Math.abs(p.x - p0.x)).toBeLessThan(1e-6);
+    expect(Math.abs(p.y - p0.y)).toBeLessThan(1e-6);
+    expect(Number.isFinite(nb.bodies[0].vel.x)).toBe(true);
   });
 
   test('the supernova blast impulse is capped at BLAST_VMAX and falls off with distance', () => {

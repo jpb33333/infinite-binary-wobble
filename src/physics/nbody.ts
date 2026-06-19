@@ -268,10 +268,21 @@ export class NBodySimulation {
           const y = (b[i].mass * b[i].pos.y + b[j].mass * b[j].pos.y) / mass;
           const z = (b[i].mass * b[i].z + b[j].mass * b[j].z) / mass;
           if (mass >= SUPERNOVA_MASS) {
-            b.splice(j, 1); // remove the higher index first
-            b.splice(i, 1);
-            this.applyBlast(x, y, z, mass);
-            return { x, y, mass, supernova: true, body: null };
+            // A supernova: the pair collapses into a heavy REMNANT (mass +
+            // momentum conserved, exactly like the merge below), then a shockwave
+            // rams through the survivors — balanced by an equal-and-opposite
+            // recoil on the remnant, so the blast conserves momentum too. Energy
+            // rises, which is honest: a supernova releases energy.
+            const svx = (b[i].mass * b[i].vel.x + b[j].mass * b[j].vel.x) / mass;
+            const svy = (b[i].mass * b[i].vel.y + b[j].mass * b[j].vel.y) / mass;
+            const svz = (b[i].mass * b[i].vz + b[j].mass * b[j].vz) / mass;
+            const remnant = createBody(mass, vec2(x, y), vec2(svx, svy));
+            remnant.z = z;
+            remnant.vz = svz;
+            b.splice(j, 1);
+            b[i] = remnant;
+            this.applyBlast(x, y, z, mass, remnant);
+            return { x, y, mass, supernova: true, body: remnant };
           }
           const vx = (b[i].mass * b[i].vel.x + b[j].mass * b[j].vel.x) / mass;
           const vy = (b[i].mass * b[i].vel.y + b[j].mass * b[j].vel.y) / mass;
@@ -288,11 +299,16 @@ export class NBodySimulation {
     return null;
   }
 
-  // A supernova shockwave: an outward velocity impulse to every surviving body,
-  // ∝ source mass / distance² (capped), like a blast shell ramming through the
-  // system. Called after the detonated pair has been removed.
-  private applyBlast(cx: number, cy: number, cz: number, sourceMass: number): void {
+  // A supernova shockwave: an outward velocity impulse to every surviving body
+  // (∝ source mass / distance², capped), like a blast shell ramming through the
+  // system — except the remnant, which then recoils by the equal-and-opposite
+  // total impulse, so the blast adds NO net momentum (Newton's third law).
+  private applyBlast(cx: number, cy: number, cz: number, sourceMass: number, remnant: Body): void {
+    let px = 0;
+    let py = 0;
+    let pz = 0;
     for (const body of this.bodies) {
+      if (body === remnant) continue; // the source doesn't blast itself
       const dx = body.pos.x - cx;
       const dy = body.pos.y - cy;
       const dz = body.z - cz;
@@ -300,10 +316,20 @@ export class NBodySimulation {
       const dist = Math.sqrt(distSq);
       if (dist < 1e-6) continue;
       const dv = Math.min(BLAST_VMAX, (BLAST_STRENGTH * sourceMass) / Math.max(distSq, 1));
-      body.vel.x += (dx / dist) * dv;
-      body.vel.y += (dy / dist) * dv;
-      body.vz += (dz / dist) * dv;
+      const ux = dx / dist;
+      const uy = dy / dist;
+      const uz = dz / dist;
+      body.vel.x += ux * dv;
+      body.vel.y += uy * dv;
+      body.vz += uz * dv;
+      px += body.mass * ux * dv;
+      py += body.mass * uy * dv;
+      pz += body.mass * uz * dv;
     }
+    // Recoil the remnant by the opposite total impulse → momentum conserved.
+    remnant.vel.x -= px / remnant.mass;
+    remnant.vel.y -= py / remnant.mass;
+    remnant.vz -= pz / remnant.mass;
   }
 
   energy(): number {
