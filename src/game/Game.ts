@@ -828,9 +828,10 @@ export class Game {
       .filter(t => !present.has(t.body))
       .reduce((sum, t) => sum + t.mergedCount, 0);
     this.unravelTracks = this.unravelTracks.filter(t => present.has(t.body));
-    // Normal fuse → track the merged star. Supernova → nothing survives the
-    // detonation (event.body is null), so no new track; nbody already rammed
-    // the blast through the survivors.
+    // Both a normal fuse and a (now conservative) supernova leave a remnant
+    // (event.body) — track it. The supernova additionally rammed a
+    // momentum-conserving blast through the survivors; the bigger burst below
+    // marks the detonation.
     if (event.body && !this.unravelTracks.some(t => t.body === event.body)) {
       this.unravelTracks.push({
         body: event.body,
