@@ -29,6 +29,10 @@ const SET_STAR_DEFAULT_MASS = 3;
 const SET_STAR_MASS_MIN = 1;
 const SET_STAR_MASS_MAX = 5;
 const SET_STAR_INBOUND_SPEED = 220; // px/s, aimed straight at the barycenter
+// Hard caps on the sandbox population — the gravity sum is all-pairs O(n²), so
+// bound it so a busy system can't overheat the device.
+const MAX_STARS = 10;
+const MAX_PLANETS = 10;
 // Dynamic camera zoom + the planet-ejection boundary live in ./camera.ts (pure,
 // shared, unit-tested). There is no leash any more: real gravity is allowed to
 // slingshot a planet out, and a planet flung past planetEjectRadius — the edge
@@ -645,8 +649,20 @@ export class Game {
   // Add a star — repeatable. Enters from a random edge of the field, generally
   // massive (≥ a default star), aimed inward with ±30° jitter (close enough to
   // disrupt, never rigged). Keep feeding the problem until it collapses.
+  // Sandbox population, capped (gravity is all-pairs O(n²)). Stars = all bodies
+  // minus the planets; planets = the earths.
+  private starCount(): number {
+    return this.nbody ? this.nbody.bodies.length - this.earths.length : 0;
+  }
+  private atStarCap(): boolean {
+    return this.starCount() >= MAX_STARS;
+  }
+  private atPlanetCap(): boolean {
+    return this.earths.length >= MAX_PLANETS;
+  }
+
   private addStar(): void {
-    if (!this.sim) return;
+    if (!this.sim || this.atStarCap()) return;
     this.ensureNBodyFromWin();
     if (!this.nbody) return;
     const com = this.systemCOM();
@@ -674,7 +690,7 @@ export class Game {
   // Trisolaris: drop a planet onto a wide, roughly-circular orbit around the
   // barycenter — temperate at first; the suns' chaos does the rest. Repeatable.
   private addPlanet(): void {
-    if (!this.sim) return;
+    if (!this.sim || this.atPlanetCap()) return;
     this.ensureNBodyFromWin();
     if (!this.nbody) return;
     const com = this.systemCOM();
@@ -695,6 +711,7 @@ export class Game {
 
   private beginPlacing(kind: 'star' | 'planet'): void {
     if (!this.sim) return;
+    if (kind === 'star' ? this.atStarCap() : this.atPlanetCap()) return;
     this.ensureNBodyFromWin();
     if (!this.nbody) return;
     this.placing = { kind, pos: null, mass: kind === 'star' ? SET_STAR_DEFAULT_MASS : EARTH_MASS };
@@ -709,7 +726,7 @@ export class Game {
   }
 
   private addStarAt(pos: { x: number; y: number }, mass: number): void {
-    if (!this.nbody) return;
+    if (!this.nbody || this.atStarCap()) return;
     const v = placedStarVelocity(pos, this.systemCOM(), SET_STAR_INBOUND_SPEED);
     const star = createBody(mass, vec2(pos.x, pos.y), vec2(v.x, v.y));
     this.nbody.addBody(star);
@@ -722,7 +739,7 @@ export class Game {
   }
 
   private addPlanetAt(pos: { x: number; y: number }): void {
-    if (!this.nbody) return;
+    if (!this.nbody || this.atPlanetCap()) return;
     const com = this.systemCOM();
     if (com.mass <= 0) return;
     const v = placedPlanetVelocity(pos, com, com.mass, PHYSICS.G);
@@ -1014,6 +1031,8 @@ export class Game {
       cameraZoom: this.computeCameraZoom(dt),
       sandboxOutcome: this.sandboxOutcome,
       placing: this.placing,
+      starCount: this.starCount(),
+      planetCount: this.earths.length,
     });
   }
 
