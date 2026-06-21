@@ -65,7 +65,7 @@ this weekend or next week.
 
 | Field | Pinned value | Resolves |
 |---|---|---|
-| Bundle ID (IMMUTABLE, case-sensitive) | `com.jpbowditch.InfiniteBinaryWobble` | C4/H1 (4 variants across reports) |
+| Bundle ID (IMMUTABLE, case-sensitive) | ~~`com.jpbowditch.InfiniteBinaryWobble`~~ → **SHIPPING: `com.bowditch.infinitebinarywobble`** (this standalone-V1 value was superseded; see the provenance banner + CHANGELOG) | C4/H1 (4 variants across reports) |
 | SKU (immutable) | `IBW-IOS-001` | 11 §0 |
 | App name | `Infinite Binary Wobble` (23 chars — fits) | 08 §1 (no collisions found) |
 | Price | **Free** | supersedes all paid-tier discussion |
@@ -94,7 +94,7 @@ this weekend or next week.
 - [H] Mac App Store → install **Xcode 26.x** (start FIRST; hours of download).
 - [H] developer.apple.com → membership **Active**, note Team ID.
 - [H] appleid.apple.com → 2FA ON, recovery contact set, **don't change the password this week**.
-- [H] Identifiers → register `com.jpbowditch.InfiniteBinaryWobble` — exact case, **all capabilities OFF**.
+- [H] Identifiers → register `com.bowditch.infinitebinarywobble` — exact case, **all capabilities OFF**. (NOT the old `com.jpbowditch.*` printed in this superseded plan — see banner; the id is permanent once the app record exists.)
 - [H] ASC → New App → reserve name, SKU `IBW-IOS-001` ("missing information" warning = normal).
 - [H] iPhone: confirm model + **iOS ≥ 17** (update tonight if older).
 - [H] When Xcode finishes: sign in (jpbowditch@gmail.com), **confirm the PAID team — never "Personal Team"**; plug iPhone → Trust → Developer Mode ON → restart.
@@ -130,7 +130,7 @@ this weekend or next week.
 
 ## JP's sticky note
 
-1. Tonight: Xcode installing + the 5 account steps (~75 min). Bundle ID **exactly** `com.jpbowditch.InfiniteBinaryWobble`.
+1. Tonight: Xcode installing + the 5 account steps (~75 min). Bundle ID **exactly** `com.bowditch.infinitebinarywobble` (the shipping id — the `com.jpbowditch.InfiniteBinaryWobble` once written here was superseded; see banner).
 2. Your **legal name will show publicly** as the seller, permanently (Individual account). That's the "claim it as mine."
 3. Tuesday at submit: select **"Manually release this version."** Submit by noon PT.
 4. Friday morning: **you tap "Release this version"** — approval alone doesn't publish.
