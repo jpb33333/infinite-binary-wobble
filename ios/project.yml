@@ -39,6 +39,12 @@ targets:
         # and version bumps in this file silently stop applying.
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # Export compliance (pinned in docs/ios/V1-LOCK.md, never implemented).
+        # The app ships no non-exempt encryption — no network, no custom crypto;
+        # only Apple's own StoreKit/OS-level encryption, which is exempt. Declaring
+        # this here skips the per-upload "missing compliance" prompt in App Store
+        # Connect and is the honest answer for this binary.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIStatusBarHidden: true
         UISupportedInterfaceOrientations:
