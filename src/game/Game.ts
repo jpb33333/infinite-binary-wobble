@@ -1,5 +1,5 @@
 import type { BodySpec, GameStateKind, CourtLayout } from './states.ts';
-import { defaultSpec } from './states.ts';
+import { defaultSpec, LIMITS } from './states.ts';
 import { Renderer } from '../render/Renderer.ts';
 import { PositionControl } from '../ui/PositionControl.ts';
 import { MassControl } from '../ui/MassControl.ts';
@@ -7,12 +7,12 @@ import { ArrowControl } from '../ui/ArrowControl.ts';
 import { inRect } from '../ui/input.ts';
 import { Simulation, PHYSICS } from '../physics/Simulation.ts';
 import { NBodySimulation, type MergeEvent } from '../physics/nbody.ts';
-import { createBody } from '../physics/Body.ts';
+import { createBody, bodyRadius } from '../physics/Body.ts';
 import type { Body } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
 import { EarthState } from './earth.ts';
-import { placedStarVelocity, placedPlanetVelocity } from './placement.ts';
+import { placedStarVelocity, placedPlanetVelocity, clampedVelocity } from './placement.ts';
 import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
@@ -28,7 +28,8 @@ const EARTH_ORBIT = 850; // px from the barycenter where a planet is dropped in
 const SET_STAR_DEFAULT_MASS = 3;
 const SET_STAR_MASS_MIN = 1;
 const SET_STAR_MASS_MAX = 5;
-const SET_STAR_INBOUND_SPEED = 220; // px/s, aimed straight at the barycenter
+const SET_STAR_INBOUND_SPEED = 220; // px/s, aimed straight at the barycenter (the default aim)
+const SET_STAR_GRAB_PAD = 16; // screen px of forgiveness around the ghost when grabbing to aim
 // Hard caps on the sandbox population — the gravity sum is all-pairs O(n²), so
 // bound it so a busy system can't overheat the device.
 const MAX_STARS = 10;
@@ -84,8 +85,19 @@ export class Game {
   private sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null = null;
   // Sandbox "Set" placement: when set, the unravel pauses and the player taps a
   // drop point (pos in WORLD coords) + picks a star's mass; Launch drops it.
-  private placing: { kind: 'star' | 'planet'; pos: { x: number; y: number } | null; mass: number } | null =
-    null;
+  private placing: {
+    kind: 'star' | 'planet';
+    pos: { x: number; y: number } | null;
+    mass: number;
+    // Set-star launch velocity (WORLD px/s). Seeded with the inbound default;
+    // `velCustom` flips true once the player drags the ghost to aim, so moving
+    // the spot afterward keeps their aim instead of re-defaulting. Null for a
+    // planet (it keeps its auto circular orbit).
+    vel: { x: number; y: number } | null;
+    velCustom: boolean;
+  } | null = null;
+  // True while dragging a velocity vector out of the Set-star ghost.
+  private placingVelGrab = false;
   private extinctionTimer = 0;
 
   private hover: { x: number; y: number } | null = null;
@@ -353,10 +365,24 @@ export class Game {
     // because everyone who's ever played a slingshot game expects to pull
     // velocity *out of* the star. Caught by /qa on 2026-06-01.
 
-    // Sandbox "Set" placement: a tap on the field (no button hit) sets/moves the
-    // drop point, in world coords (the unravel is paused while placing).
+    // Sandbox "Set" placement. Two gestures while placing (mirrors setup): grab
+    // the ghost star to aim its velocity, or tap empty field to set/move the
+    // drop point (world coords; the unravel is paused while placing).
     if (this.placing && this.state === 'resolved') {
-      this.placing.pos = this.designToWorld(p);
+      const pl = this.placing;
+      if (pl.pos && pl.kind === 'star') {
+        const w = this.designToWorld(p);
+        const grabR = bodyRadius(pl.mass) + SET_STAR_GRAB_PAD / Math.max(this.cameraZoom, 1e-6);
+        if (Math.hypot(w.x - pl.pos.x, w.y - pl.pos.y) <= grabR) {
+          this.placingVelGrab = true; // aim is set on drag (onPointerMove), not a bare tap
+          return;
+        }
+      }
+      pl.pos = this.designToWorld(p);
+      // Seed / re-seed the inbound default aim until the player takes over.
+      if (pl.kind === 'star' && !pl.velCustom) {
+        pl.vel = placedStarVelocity(pl.pos, this.systemCOM(), SET_STAR_INBOUND_SPEED);
+      }
       return;
     }
 
@@ -380,11 +406,24 @@ export class Game {
   }
 
   private onPointerMove(e: PointerEvent): void {
-    if (this.posControl.isGrabbing || this.arrowControl.isGrabbing || this.draggingCard) {
+    if (
+      this.posControl.isGrabbing ||
+      this.arrowControl.isGrabbing ||
+      this.draggingCard ||
+      this.placingVelGrab
+    ) {
       e.preventDefault();
     }
     const p = this.renderer.screenToLogical(e);
     this.hover = p;
+
+    // Aiming a Set star: drag the ghost to set its launch velocity (capped),
+    // marking it custom so re-tapping the spot won't snap back to the auto-aim.
+    if (this.placingVelGrab && this.placing?.pos) {
+      this.placing.vel = clampedVelocity(this.placing.pos, this.designToWorld(p), LIMITS.maxVelocityPerBody);
+      this.placing.velCustom = true;
+      return;
+    }
 
     if (this.draggingCard) {
       this.winCardOffset = this.clampCardOffset({
@@ -409,6 +448,7 @@ export class Game {
     this.posControl.release();
     this.arrowControl.release();
     this.draggingCard = false;
+    this.placingVelGrab = false;
   }
 
   // Keep the dragged WIN card fully on-canvas (8 px margin) so it can't be
@@ -714,20 +754,31 @@ export class Game {
     if (kind === 'star' ? this.atStarCap() : this.atPlanetCap()) return;
     this.ensureNBodyFromWin();
     if (!this.nbody) return;
-    this.placing = { kind, pos: null, mass: kind === 'star' ? SET_STAR_DEFAULT_MASS : EARTH_MASS };
+    this.placing = {
+      kind,
+      pos: null,
+      mass: kind === 'star' ? SET_STAR_DEFAULT_MASS : EARTH_MASS,
+      vel: null,
+      velCustom: false,
+    };
+    this.placingVelGrab = false;
   }
 
   private launchPlaced(): void {
     const pl = this.placing;
     this.placing = null;
     if (!pl || !pl.pos || !this.nbody) return;
-    if (pl.kind === 'star') this.addStarAt(pl.pos, pl.mass);
+    if (pl.kind === 'star') this.addStarAt(pl.pos, pl.mass, pl.vel);
     else this.addPlanetAt(pl.pos);
   }
 
-  private addStarAt(pos: { x: number; y: number }, mass: number): void {
+  private addStarAt(
+    pos: { x: number; y: number },
+    mass: number,
+    vel?: { x: number; y: number } | null,
+  ): void {
     if (!this.nbody || this.atStarCap()) return;
-    const v = placedStarVelocity(pos, this.systemCOM(), SET_STAR_INBOUND_SPEED);
+    const v = vel ?? placedStarVelocity(pos, this.systemCOM(), SET_STAR_INBOUND_SPEED);
     const star = createBody(mass, vec2(pos.x, pos.y), vec2(v.x, v.y));
     this.nbody.addBody(star);
     this.unravelTracks.push({

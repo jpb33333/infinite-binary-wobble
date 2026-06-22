@@ -28,3 +28,16 @@ export function placedStarVelocity(pos: P, com: P, speed: number) {
   if (d < 1e-6) return vec2(0, 0);
   return vec2((dx / d) * speed, (dy / d) * speed);
 }
+
+// Velocity from a slingshot-style drag: aim along (to − from), magnitude capped
+// at `cap`, in whatever space the points are given (the sandbox passes WORLD
+// coords). Zero for a zero-length drag. The pure twin of ArrowControl's drag
+// math, so the player-aimed "Set" star is unit-tested without the canvas.
+export function clampedVelocity(from: P, to: P, cap: number) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const mag = Math.hypot(dx, dy);
+  if (mag < 1e-6) return vec2(0, 0);
+  const speed = Math.min(mag, cap);
+  return vec2((dx / mag) * speed, (dy / mag) * speed);
+}
