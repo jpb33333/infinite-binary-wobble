@@ -85,7 +85,12 @@ export interface RenderInput {
   cameraZoom: number;
   // How the sandbox failed, or null while it runs. Drives the game-over card.
   sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null;
-  placing: { kind: 'star' | 'planet'; pos: { x: number; y: number } | null; mass: number } | null;
+  placing: {
+    kind: 'star' | 'planet';
+    pos: { x: number; y: number } | null;
+    mass: number;
+    vel: { x: number; y: number } | null;
+  } | null;
   starCount: number;
   planetCount: number;
   // Per-session scoreboard rendered on the title screen and (briefly) above
@@ -772,6 +777,11 @@ export class Renderer {
         ctx.arc(gp.x, gp.y, gr + 7 / cz, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
+        // The player-settable launch velocity, drawn like the setup slingshot
+        // (arrow length in world px = px/s) in the same camera transform.
+        if (input.placing.kind === 'star' && input.placing.vel) {
+          drawVelocityArrow(ctx, gp, input.placing.vel, palette.danger, false);
+        }
       }
     } else {
       if (input.sim) this.drawPredictedOrbits(input.sim);
@@ -1254,7 +1264,11 @@ export class Renderer {
     ctx.fillStyle = rgba(palette.cream, 0.7);
     ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
     ctx.fillText(
-      pl.pos ? `Tap to move it · LAUNCH to drop the ${kind}` : `Tap the field to place the ${kind}`,
+      pl.pos
+        ? kind === 'star'
+          ? `Tap to move · drag the star to aim · LAUNCH`
+          : `Tap to move it · LAUNCH to drop the ${kind}`
+        : `Tap the field to place the ${kind}`,
       16,
       top + 8,
     );
@@ -1277,6 +1291,17 @@ export class Renderer {
       ctx.fillText(`mass ${pl.mass.toFixed(1)}`, 16 + pill + 42, y + pill / 2);
       ctx.restore();
       y += pill + 12;
+    }
+
+    // Live velocity readout for a Set star, so its aim reads like the setup HUD.
+    if (kind === 'star' && pl.pos && pl.vel) {
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = rgba(palette.cream, 0.7);
+      ctx.font = `400 ${cpx(12)}px ${fonts.sans}`;
+      ctx.fillText(`velocity ${Math.round(Math.hypot(pl.vel.x, pl.vel.y))} px/s`, 16, y + 4);
+      ctx.restore();
+      y += 22;
     }
 
     const bw = 110;
