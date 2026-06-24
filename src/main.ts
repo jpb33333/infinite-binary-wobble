@@ -38,7 +38,10 @@ dedication.className = 'dedication';
 const copyright = document.createElement('p');
 copyright.className = 'dedication__copyright';
 copyright.textContent = '© Bowditch Gaming 2026';
-dedication.append(copyright);
+const natalia = document.createElement('p');
+natalia.className = 'dedication__natalia';
+natalia.textContent = 'For Natalia';
+dedication.append(copyright, natalia);
 document.body.append(dedication);
 
 const game = new Game(canvas);

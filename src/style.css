@@ -148,10 +148,22 @@ body[data-screen]:not([data-screen='title']) .dedication {
   margin: 0.35rem 0 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   font-weight: 400;
-  /* Subordinate to the script above: smaller, dimmer, quietly tracked. */
+  /* The copyright line: small, dim, quietly tracked. */
   font-size: 0.7rem;
   letter-spacing: 0.04em;
   color: rgba(255, 200, 155, 0.4); /* palette.cream @ 0.4 */
+}
+
+/* A quiet dedication below the copyright — Cardo italic, small and warm,
+   the title-screen subtitle voice scaled down to a whisper. */
+.dedication__natalia {
+  margin: 0.3rem 0 0;
+  font-family: 'Cardo', serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  color: rgba(244, 165, 141, 0.55); /* palette.rose @ 0.55 */
 }
 
 /* On short viewports the bottom letterbox band can vanish; keep the signature
