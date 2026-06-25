@@ -20,6 +20,19 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   as well, ported bit-for-bit so the Swift sky shows the same comet at the same
   moments.
 
+### Changed
+- **The post-win sandbox speaks in its own voice now.** The drifting planet's
+  readout was retired from terms borrowed from a well-known science-fiction
+  trilogy and given plain-astronomy language instead: the planet reads as **THE
+  WORLD**, its climate swings between a **Steady Era** and a **Turbulent Era**
+  (was "Stable / Chaotic Era"), and each time life recovers after a wipe it is
+  counted as a new **Dawn** (was a "Civilization" tally). The internal model was
+  renamed to match (`world.ts` / `WorldState`). No mechanics changed — the
+  climate, population, and recovery model behave exactly as before; only the
+  names the player sees and the code reads are different. This keeps the game
+  resting on real, public-domain science (the three-body problem, binary stars)
+  rather than on another author's coined world.
+
 ### Fixed
 - **Text is legible on phones** — on the web game and the iOS app alike. Both
   render in a fixed design space that lands at about half-size on a phone held

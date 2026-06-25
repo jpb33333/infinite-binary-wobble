@@ -84,10 +84,10 @@ export const STYLE_STAR: StarStyle = {
   haloRadiusFactor: 2.6,
 };
 
-// Earth in Trisolaris mode — a small pale-blue world with a warm-lit core
-// (it's lit by the warm suns). Drawn at a fixed small radius, not by mass.
-export const STYLE_EARTH: StarStyle = {
-  primary: palette.earth,
+// A world adrift in a multi-star system — a small pale-blue planet with a
+// warm-lit core (it's lit by the warm suns). Drawn at a fixed small radius, not by mass.
+export const STYLE_WORLD: StarStyle = {
+  primary: palette.world,
   core: palette.cream,
   haloAlpha: 0.7,
   haloRadiusFactor: 2.2,
