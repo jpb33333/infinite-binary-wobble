@@ -12,6 +12,7 @@ import type { Body } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
 import { WorldState } from './world.ts';
+import { DarkForest, VISIBILITY, type HiddenSystem } from './visibility.ts';
 import { placedStarVelocity, placedPlanetVelocity, clampedVelocity } from './placement.ts';
 import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
@@ -24,6 +25,10 @@ const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
 const WORLD_MASS = 0.02; // a planet — feels the suns, barely tugs them back
 const WORLD_ORBIT = 850; // px from the barycenter where a planet is dropped in
+// Act III: a world this populous "announces itself" to the dark and wakes the
+// forest; this many silent civilizations then ring the edge of the field.
+const BROADCAST_POP = 6;
+const HIDDEN_SYSTEMS = 8;
 // "Set"-placed sandbox bodies (quick-set: tap a spot, pick a star's mass; the
 // velocity is supplied automatically — see placement.ts).
 const SET_STAR_DEFAULT_MASS = 3;
@@ -83,7 +88,8 @@ export class Game {
   private cameraZoom = 1;
   // How the sandbox finally fails (null while it's still running): the system
   // collapses to a black hole, or all life dies out.
-  private sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null = null;
+  private sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | 'detected' | 'survived' | null =
+    null;
   // Sandbox "Set" placement: when set, the unravel pauses and the player taps a
   // drop point (pos in WORLD coords) + picks a star's mass; Launch drops it.
   private placing: {
@@ -100,6 +106,13 @@ export class Game {
   // True while dragging a velocity vector out of the Set-star ghost.
   private placingVelGrab = false;
   private extinctionTimer = 0;
+  // Act III — "The Fermi Paradox". null until a thriving world wakes the forest;
+  // then it runs the visibility/detection hunt against the hidden systems.
+  private darkForest: DarkForest | null = null;
+  // A chapter title card currently open (modal; pauses the sandbox). null = none.
+  private chapterCard: { act: 1 | 2 | 3 } | null = null;
+  // Which acts' title cards have already been shown — each opens once per session.
+  private shownChapters = new Set<number>();
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -240,6 +253,13 @@ export class Game {
     e.preventDefault();
     const p = this.renderer.screenToLogical(e);
     this.hover = p;
+
+    // A chapter title card is modal: any tap (or its ✕) dismisses it, and nothing
+    // else happens on that press.
+    if (this.chapterCard) {
+      this.chapterCard = null;
+      return;
+    }
 
     // Button clicks first
     const btn = this.renderer.hoveredButton(p);
@@ -502,6 +522,8 @@ export class Game {
     this.worlds = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
+    this.darkForest = null;
+    this.chapterCard = null;
     this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
@@ -539,6 +561,8 @@ export class Game {
     this.worlds = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
+    this.darkForest = null;
+    this.chapterCard = null;
     this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
@@ -553,6 +577,7 @@ export class Game {
     this.explainerOpen = false;
     this.posControl.release();
     this.arrowControl.release();
+    this.queueChapter(1);
     this.state = 'setup_p1';
   }
 
@@ -598,6 +623,8 @@ export class Game {
     this.worlds = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
+    this.darkForest = null;
+    this.chapterCard = null;
     this.placing = null;
     this.extinctionTimer = 0;
     this.outcome = null;
@@ -673,6 +700,8 @@ export class Game {
     // The WIN card is gone now; drop any in-progress card drag.
     this.winCardOffset = { x: 0, y: 0 };
     this.draggingCard = false;
+    // Act II begins the first time the player perturbs the winning binary.
+    this.queueChapter(2);
   }
 
   // Mass-weighted barycenter of the whole running system (suns + the tiny
@@ -839,6 +868,7 @@ export class Game {
         world.trail.push(world.body.pos.x, world.body.pos.y);
       }
     }
+    this.updateDarkForest(dt);
     this.checkSandboxOutcome(dt);
   }
 
@@ -890,6 +920,75 @@ export class Game {
   }
 
 
+  // Act III — once a world is loud enough to "announce itself", the dark forest
+  // wakes: hidden systems ring the dark and a visibility/detection hunt begins.
+  // Broadcast rises with stellar luminosity, civilization activity, and supernova
+  // flares; cross the threshold for too long and a hunter locks on, then strikes.
+  private updateDarkForest(dt: number): void {
+    if (!this.nbody) return;
+    if (!this.darkForest) {
+      // Wake the forest the first time a world broadcasts (a populous civilization).
+      if (!this.worlds.some(w => w.population >= BROADCAST_POP)) return;
+      this.darkForest = new DarkForest(this.seedHiddenSystems());
+      this.queueChapter(3);
+    }
+    const planets = new Set(this.worlds.map(w => w.body));
+    const luminosity = this.nbody.bodies
+      .filter(b => !planets.has(b))
+      .reduce((sum, b) => sum + b.mass, 0);
+    const life = this.worlds.reduce((sum, w) => sum + w.population * w.dawns, 0);
+    const com = this.systemCOM();
+    const ev = this.darkForest.update(dt, { luminosity, life, center: { x: com.x, y: com.y } });
+    if (ev === 'strike') this.darkForestStrike();
+    else if (ev === 'survived') this.sandboxOutcome = 'survived';
+  }
+
+  // The hunt found you: a strike detonates your brightest star — the loud one
+  // that gave you away — and ends the run. Reuses the supernova flash visual.
+  private darkForestStrike(): void {
+    const planets = new Set(this.worlds.map(w => w.body));
+    const stars = this.nbody ? this.nbody.bodies.filter(b => !planets.has(b)) : [];
+    const target = stars.reduce<Body | null>(
+      (best, b) => (!best || b.mass > best.mass ? b : best),
+      null,
+    );
+    if (target) {
+      this.supernova = {
+        x: target.pos.x,
+        y: target.pos.y,
+        t0: this.elapsed,
+        mergedMass: target.mass,
+        transient: true,
+      };
+      this.renderer.burst(target.pos.x, target.pos.y, 360, palette.danger, 460);
+    }
+    this.sandboxOutcome = 'detected';
+  }
+
+  // Seed the hidden systems at fixed points around the frame's dark edge, so they
+  // always frame the play area (the renderer draws them canvas-fixed). A little
+  // angle jitter keeps the ring from reading as a mechanical pattern.
+  private seedHiddenSystems(): HiddenSystem[] {
+    const { width: w, height: h } = this.renderer.layout.canvas;
+    const cx = w / 2;
+    const cy = h / 2;
+    const rx = w / 2 - 40;
+    const ry = h / 2 - 40;
+    const out: HiddenSystem[] = [];
+    for (let i = 0; i < HIDDEN_SYSTEMS; i++) {
+      const a = (i / HIDDEN_SYSTEMS) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+      out.push({ x: cx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry, stir: 0, hunter: false });
+    }
+    return out;
+  }
+
+  // Open an act's title card the first time that act is reached this session.
+  private queueChapter(act: 1 | 2 | 3): void {
+    if (this.shownChapters.has(act)) return;
+    this.shownChapters.add(act);
+    this.chapterCard = { act };
+  }
+
   // A collision fused two stars. Retire the consumed tracks, give the merged
   // star a fresh track, and fire a transient flash at the merger point. The
   // merged body then carries on — we want to watch whether the survivor is
@@ -929,6 +1028,8 @@ export class Game {
       palette.cream,
       event.supernova ? 440 : 340,
     );
+    // A detonation is a bright flash the dark forest can see (Act III).
+    this.darkForest?.flash();
   }
 
   private activeSpec(): BodySpec | null {
@@ -1024,7 +1125,7 @@ export class Game {
         // its trails + merges. It never stops on a collision; merged stars just
         // carry on, watchable as long as the WIN it grew out of.
         if (this.nbody) {
-          if (!this.sandboxOutcome && !this.placing) this.advanceNBody(dt);
+          if (!this.sandboxOutcome && !this.placing && !this.chapterCard) this.advanceNBody(dt);
           break;
         }
         // For WINs, the wobble keeps going — it really is infinite. Keep the
@@ -1091,6 +1192,15 @@ export class Game {
       placing: this.placing,
       starCount: this.starCount(),
       planetCount: this.worlds.length,
+      darkForest: this.darkForest
+        ? {
+            visibility: this.darkForest.visibility,
+            threshold: VISIBILITY.detectThreshold,
+            locked: this.darkForest.locked,
+            systems: this.darkForest.systems,
+          }
+        : null,
+      chapterCard: this.chapterCard,
     });
   }
 

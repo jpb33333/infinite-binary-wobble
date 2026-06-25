@@ -1,4 +1,4 @@
-import { palette, fonts, rgba, cpx, lineHeightFor } from '../theme.ts';
+import { palette, fonts, rgba, blendHex, cpx, lineHeightFor } from '../theme.ts';
 import type { Outcome } from '../game/outcomes.ts';
 import type { StatsSummary } from '../game/stats.ts';
 
@@ -480,9 +480,11 @@ export function drawWorldStatus(
 
 // Game-over card for the sandbox: the system collapsed into a black hole, or
 // all life died out. Centered + dimmed; returns the AGAIN anchor.
+export type SandboxOutcome = 'collapse' | 'extinction' | 'ejection' | 'detected' | 'survived';
+
 export function drawSandboxOver(
   ctx: CanvasRenderingContext2D,
-  outcome: 'collapse' | 'extinction' | 'ejection',
+  outcome: SandboxOutcome,
   w: number,
   h: number,
 ): { titleColor: string; buttonY: number; x: number; y: number; width: number; height: number } {
@@ -491,19 +493,31 @@ export function drawSandboxOver(
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
 
-  const titleColor = palette.danger;
-  const title =
-    outcome === 'collapse'
-      ? 'The universe collapsed.'
-      : outcome === 'extinction'
-        ? 'Humanity is extinct.'
-        : 'Lost to the dark.';
-  const body =
-    outcome === 'collapse'
-      ? 'The stars all fell together — a black hole, and everything with it.'
-      : outcome === 'extinction'
-        ? 'All life is ash. No one is left to watch the sky.'
-        : 'A close pass flung your world out of the system — into the endless cold.';
+  // Survival is the one bright ending — cream, not danger.
+  const titleColor = outcome === 'survived' ? palette.cream : palette.danger;
+  const copy: Record<SandboxOutcome, { title: string; body: string }> = {
+    collapse: {
+      title: 'The universe collapsed.',
+      body: 'The stars all fell together — a black hole, and everything with it.',
+    },
+    extinction: {
+      title: 'Humanity is extinct.',
+      body: 'All life is ash. No one is left to watch the sky.',
+    },
+    ejection: {
+      title: 'Lost to the dark.',
+      body: 'A close pass flung your world out of the system — into the endless cold.',
+    },
+    detected: {
+      title: 'Found.',
+      body: 'Something in the dark answered. A strike crossed the years and ended you.',
+    },
+    survived: {
+      title: 'You endured the dark.',
+      body: 'You stayed silent, and the hunters never found you. The paradox holds: the quiet endure.',
+    },
+  };
+  const { title, body } = copy[outcome];
 
   const cardW = 660;
   const cardH = 236;
@@ -944,4 +958,156 @@ export function drawPaywallCard(
   ctx.restore();
 
   return { buttonY: cy + cardH - 70 };
+}
+
+// The three acts' title cards. Copy lives here (the view layer); the Game passes
+// only which act is opening. Act I — the binary you're about to become; Act II —
+// the chaos a third body brings; Act III — the silent, watching dark.
+export const CHAPTERS: Record<1 | 2 | 3, { numeral: string; title: string; subtitle: string }> = {
+  1: {
+    numeral: 'Act I',
+    title: 'The Binary',
+    subtitle: 'Two bodies, one shared center. The simplest dance Newton could solve.',
+  },
+  2: {
+    numeral: 'Act II',
+    title: 'The Three-Body Problem',
+    subtitle: 'Add a third, and certainty breaks. No equation can tell you what comes next.',
+  },
+  3: {
+    numeral: 'Act III',
+    title: 'The Fermi Paradox',
+    subtitle: 'The sky should be crowded with voices. It is silent. Ask yourself why.',
+  },
+};
+
+// A chapter title card that opens each act. Modeled on the explainer card —
+// centred serif panel, dim modal backdrop, ✕ to dismiss (the caller also treats
+// a tap anywhere as dismiss). Returns the ✕ geometry for the caller's hit rect.
+export function drawChapterCard(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  card: { numeral: string; title: string; subtitle: string },
+  closeHovered: boolean,
+): { closeX: number; closeY: number; closeR: number } {
+  ctx.save();
+  ctx.fillStyle = rgba(palette.voidDeep, 0.72);
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+
+  const cardW = 640;
+  const padX = 56;
+  const textW = cardW - padX * 2;
+  const subSize = 18;
+  const subLineH = lineHeightFor(subSize);
+
+  ctx.save();
+  ctx.font = `italic 400 ${cpx(subSize)}px ${fonts.serif}`;
+  const subLines = wrapText(ctx, card.subtitle, textW);
+  ctx.restore();
+
+  const numeralTop = 52;
+  const titleGap = 50;
+  const subGap = 30;
+  const bottomPad = 44;
+  const cardH = numeralTop + titleGap + subGap + subLines.length * subLineH + bottomPad;
+  const cx = (w - cardW) / 2;
+  const cy = (h - cardH) / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  roundedRectPath(ctx, cx, cy, cardW, cardH, 18);
+  ctx.fillStyle = rgba(palette.voidDeep, 0.92);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(palette.cream, 0.45);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // Act numeral — small, letter-spaced, in the sans voice (a label, not a title).
+  ctx.fillStyle = rgba(palette.rose, 0.85);
+  ctx.font = `600 ${cpx(13)}px ${fonts.sans}`;
+  drawSpacedText(ctx, card.numeral.toUpperCase(), w / 2, cy + numeralTop, 3);
+  // Title — the serif headline. (drawSpacedText leaves textAlign 'left'; restore
+  // centre or the title and subtitle render left-anchored at w/2 and spill right.)
+  ctx.textAlign = 'center';
+  ctx.fillStyle = palette.cream;
+  ctx.font = `400 34px ${fonts.serif}`;
+  ctx.fillText(card.title, w / 2, cy + numeralTop + titleGap);
+  // Subtitle — italic serif prose, wrapped.
+  ctx.fillStyle = palette.rose;
+  ctx.font = `italic 400 ${cpx(subSize)}px ${fonts.serif}`;
+  let y = cy + numeralTop + titleGap + subGap + subLineH / 2;
+  for (const line of subLines) {
+    ctx.fillText(line, w / 2, y);
+    y += subLineH;
+  }
+  ctx.restore();
+
+  const closeR = cpx(13);
+  const closeX = cx + cardW - closeR - 13;
+  const closeY = cy + closeR + 13;
+  drawCloseButton(ctx, closeX, closeY, closeR, palette.cream, closeHovered);
+
+  return { closeX, closeY, closeR };
+}
+
+// Act III visibility meter — how loudly the system is broadcasting into the dark.
+// A bar from quiet (left) to seen (right), with a tick at the detection
+// threshold: calm cream at rest, flushing toward danger as it climbs. When a
+// hunter has locked on it pulses red under a "go dark" warning. Top-centre,
+// canvas-fixed (design space), sitting just below the phase label.
+export function drawVisibilityMeter(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  meter: { visibility: number; threshold: number; locked: boolean },
+  time: number,
+): void {
+  const barW = 300;
+  const barH = 10;
+  const x = (w - barW) / 2;
+  const y = 96;
+  const v = Math.max(0, Math.min(1, meter.visibility));
+  const heat = Math.min(1, v / Math.max(0.001, meter.threshold));
+  const fillColor = blendHex(palette.cream, palette.danger, heat);
+  const pulse = 0.6 + 0.4 * Math.sin(time * 8);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+
+  // Label, or a flashing warning when a hunter is locked on.
+  const label = meter.locked ? 'DETECTED — GO DARK' : 'VISIBILITY';
+  ctx.fillStyle = meter.locked ? rgba(palette.danger, pulse) : rgba(palette.cream, 0.6);
+  ctx.font = `600 ${cpx(11)}px ${fonts.sans}`;
+  ctx.fillText(label, w / 2, y - 9);
+
+  // Track
+  ctx.beginPath();
+  roundedRectPath(ctx, x, y, barW, barH, barH / 2);
+  ctx.fillStyle = rgba(palette.cream, 0.12);
+  ctx.fill();
+
+  // Fill
+  if (v > 0) {
+    ctx.beginPath();
+    roundedRectPath(ctx, x, y, Math.max(barH, barW * v), barH, barH / 2);
+    ctx.fillStyle = meter.locked ? rgba(palette.danger, pulse) : rgba(fillColor, 0.9);
+    ctx.fill();
+  }
+
+  // Threshold tick — cross it and the forest starts to notice.
+  const tx = x + barW * Math.max(0, Math.min(1, meter.threshold));
+  ctx.strokeStyle = rgba(palette.cream, 0.7);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(tx, y - 3);
+  ctx.lineTo(tx, y + barH + 3);
+  ctx.stroke();
+
+  ctx.restore();
 }

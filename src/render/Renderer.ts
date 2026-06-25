@@ -38,7 +38,11 @@ import {
   drawPaywallCard,
   drawTitleExplainerLink,
   drawExplainerCard,
+  drawChapterCard,
+  drawVisibilityMeter,
+  CHAPTERS,
   type CanvasButton,
+  type SandboxOutcome,
 } from './overlay.ts';
 import { bodyRadius } from '../physics/Body.ts';
 import { showsCornerAgain } from './cornerControls.ts';
@@ -84,7 +88,7 @@ export interface RenderInput {
   // unravel eases out below 1 to keep the whole spreading system in frame).
   cameraZoom: number;
   // How the sandbox failed, or null while it runs. Drives the game-over card.
-  sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null;
+  sandboxOutcome: SandboxOutcome | null;
   placing: {
     kind: 'star' | 'planet';
     pos: { x: number; y: number } | null;
@@ -121,6 +125,18 @@ export interface RenderInput {
     stable: boolean;
     driftWarn: number;
   }[];
+  // Act III — the hidden hunters in the dark + the player's broadcast meter.
+  // null until a thriving world wakes the forest. `systems` are at fixed
+  // design-space positions around the frame; `stir` (0..1) brightens them and
+  // the locked hunter pulses danger.
+  darkForest: {
+    visibility: number;
+    threshold: number;
+    locked: boolean;
+    systems: { x: number; y: number; stir: number; hunter: boolean }[];
+  } | null;
+  // A chapter title card open (modal) over the current screen. null when none.
+  chapterCard: { act: 1 | 2 | 3 } | null;
 }
 
 // A world's drawn radius (fixed — it's a planet, far lighter than any star, so
@@ -363,6 +379,22 @@ export class Renderer {
 
     // Collision debris is positioned in design space — render it with the scene.
     this.burstLayer.draw(ctx);
+
+    // Modal chapter card sits above the whole scene (it pauses play while open).
+    // Registers only its ✕ hit rect; the Game also dismisses on a tap anywhere.
+    if (input.chapterCard) {
+      const { width: cw, height: ch } = this.layout.canvas;
+      const closeHovered = this.hoveredButton(input.hover) === 'chapter_close';
+      const close = drawChapterCard(ctx, cw, ch, CHAPTERS[input.chapterCard.act], closeHovered);
+      const hit = close.closeR + 9;
+      this.register('chapter_close', {
+        label: '',
+        x: close.closeX - hit,
+        y: close.closeY - hit,
+        width: hit * 2,
+        height: hit * 2,
+      });
+    }
 
     // Ambient motes paint last, on top, full-bleed (back to screen space) so
     // they keep the original "drifting in front" feel across the whole window.
@@ -801,6 +833,23 @@ export class Renderer {
 
     ctx.restore();
 
+    // Act III — the hidden systems watching from the dark, and the broadcast
+    // meter. Drawn fixed (not camera-wrapped): the hunters ring the frame edge,
+    // dim until your visibility stirs them; the locked one pulses danger.
+    if (input.darkForest) {
+      for (const s of input.darkForest.systems) this.drawHiddenSystem(s, input.time);
+      drawVisibilityMeter(
+        ctx,
+        w,
+        {
+          visibility: input.darkForest.visibility,
+          threshold: input.darkForest.threshold,
+          locked: input.darkForest.locked,
+        },
+        input.time,
+      );
+    }
+
     if (input.sim && input.classifier && !input.unravel) {
       const o = input.sim.orbit();
       const boundText = o.bound ? 'BOUND' : 'UNBOUND';
@@ -949,6 +998,32 @@ export class Renderer {
 
   // The world, tinted by its climate so its state reads at a glance: red-hot when
   // scorching, dim/cold when frozen, pale blue when temperate.
+  // A civilization hidden in the dark (Act III): a small cold point, dim until
+  // the player's broadcast stirs it (stir → brighter), the locked hunter pulsing
+  // danger-red. Drawn additively so it glows against the void like a far star.
+  private drawHiddenSystem(
+    s: { x: number; y: number; stir: number; hunter: boolean },
+    time: number,
+  ): void {
+    const ctx = this.ctx;
+    const pulse = 0.6 + 0.4 * Math.sin(time * 8);
+    const alpha = s.hunter ? pulse : 0.16 + 0.5 * s.stir;
+    const color = s.hunter ? palette.danger : blendHex(palette.hunter, palette.danger, s.stir * 0.5);
+    const r = 3 + 3 * s.stir + (s.hunter ? 2 : 0);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 3);
+    g.addColorStop(0, rgba(color, alpha));
+    g.addColorStop(1, rgba(color, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(s.x - r * 3, s.y - r * 3, r * 6, r * 6);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = rgba(color, Math.min(1, alpha + 0.2));
+    ctx.fill();
+    ctx.restore();
+  }
+
   private worldStyle(era: string): StarStyle {
     if (era === 'scorching') {
       return { ...STYLE_WORLD, primary: blendHex(palette.world, palette.danger, 0.6) };

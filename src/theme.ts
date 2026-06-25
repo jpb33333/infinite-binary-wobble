@@ -19,6 +19,10 @@ export const palette = {
   // The pale blue dot — a world, a deliberate cool note among the warm suns.
   // Muted so it reads as a small distant world, not neon.
   world: '#7FB0C9',
+  // The hidden systems of Act III — a cold, distant violet-grey, the one place
+  // the palette goes properly cool. Drawn dim (low alpha) while a hunter is
+  // dormant; it flushes to `danger` when one locks on.
+  hunter: '#7C6F94',
 } as const;
 
 export const fonts = {
