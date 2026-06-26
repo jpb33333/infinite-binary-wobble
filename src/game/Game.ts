@@ -18,6 +18,7 @@ import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts'
 import { Trail } from '../render/trail.ts';
 import { palette, lineHeightFor } from '../theme.ts';
 import { Meter } from '../net/meter.ts';
+import { track } from '../net/analytics.ts';
 
 const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
@@ -609,6 +610,7 @@ export class Game {
     // Count this play (a simulation actually started). Optimistic + async;
     // no-op when metering is disabled or the player is already unlocked.
     this.meter.consumePlay();
+    track('play_start');
     this.state = 'simulate';
   }
 
@@ -629,6 +631,7 @@ export class Game {
         ts: Date.now(),
       });
       this.statsSummary = summarize(updated);
+      track('outcome', { result: o.kind, duration: Math.round(this.sim.time) });
     }
     if (!this.burstedOnResolve && this.sim) {
       this.burstedOnResolve = true;
@@ -725,6 +728,7 @@ export class Game {
       kind: 'star',
       mergedCount: 1,
     });
+    track('sandbox_add', { kind: 'star', mode: 'random' });
   }
 
   // Drop a world onto a wide, roughly-circular orbit around the
@@ -745,6 +749,7 @@ export class Game {
     planet.vz = (Math.random() - 0.5) * vCirc * 0.6; // a slightly inclined orbit
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
     this.worlds.push(new WorldState(planet));
+    track('sandbox_add', { kind: 'planet', mode: 'random' });
   }
 
   // ── "Set" placement (quick-set: tap a drop point, +/- a star's mass) ──
@@ -787,6 +792,7 @@ export class Game {
       kind: 'star',
       mergedCount: 1,
     });
+    track('sandbox_add', { kind: 'star', mode: 'set' });
   }
 
   private addPlanetAt(pos: { x: number; y: number }): void {
@@ -797,6 +803,7 @@ export class Game {
     const planet = createBody(WORLD_MASS, vec2(pos.x, pos.y), vec2(v.x, v.y));
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
     this.worlds.push(new WorldState(planet));
+    track('sandbox_add', { kind: 'planet', mode: 'set' });
   }
 
   // Invert the renderer's camera transform (design-canvas point → world point):

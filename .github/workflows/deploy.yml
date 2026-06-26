@@ -55,6 +55,12 @@ jobs:
 
       - name: Build
         run: npm run build
+        # Public, build-time analytics config. A GA4 Measurement ID is not a
+        # secret (it ships in the page), so it lives in a repo *variable*, not a
+        # secret. Unset → the analytics layer stays inert and the CSP is
+        # byte-identical to index.html (see widenCsp in vite.config.ts).
+        env:
+          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID }}
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
