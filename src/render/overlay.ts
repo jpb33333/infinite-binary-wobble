@@ -320,17 +320,17 @@ export function drawStarTooltip(
   ctx.restore();
 }
 
-// Trisolaris status tooltip for Earth: the era (Stable vs Chaotic), the climate
-// + how turbulent it is for surface dwellers, the surviving population, and
-// which civilization this is (they reboot after every wipe, as in the novel).
-export function drawEarthTooltip(
+// Status tooltip for a world: the era (Steady vs Turbulent), the climate + how
+// turbulent it is for surface dwellers, the surviving population, and how many
+// times life has risen here (it begins again after every wipe).
+export function drawWorldTooltip(
   ctx: CanvasRenderingContext2D,
-  info: { population: number; civilizations: number; era: string; chaos: number; stable: boolean },
+  info: { population: number; dawns: number; era: string; chaos: number; stable: boolean },
   anchorX: number,
   anchorY: number,
   placement: 'above' | 'below' = 'above',
 ): void {
-  const title = info.stable ? 'Stable Era' : 'Chaotic Era';
+  const title = info.stable ? 'Steady Era' : 'Turbulent Era';
   const climate =
     info.era === 'scorching'
       ? 'scorching — the suns crowd the sky'
@@ -341,7 +341,7 @@ export function drawEarthTooltip(
     info.chaos < 0.15 ? 'steady skies' : info.chaos < 0.4 ? 'unsettled' : 'violent swings';
   const pop =
     info.population <= 0.05 ? 'no survivors' : `${info.population.toFixed(1)}B surviving`;
-  const sub = [climate, turbulence, pop, `Civilization ${info.civilizations}`];
+  const sub = [climate, turbulence, pop, `${ordinal(info.dawns)} Dawn`];
   const titleColor = info.stable ? palette.cream : palette.danger;
 
   ctx.save();
@@ -365,7 +365,7 @@ export function drawEarthTooltip(
   ctx.fillStyle = rgba(palette.voidDeep, 0.88);
   ctx.fill();
   ctx.lineWidth = 1;
-  ctx.strokeStyle = rgba(palette.earth, 0.55);
+  ctx.strokeStyle = rgba(palette.world, 0.55);
   ctx.stroke();
 
   ctx.textAlign = 'center';
@@ -383,7 +383,7 @@ export function drawEarthTooltip(
   ctx.restore();
 }
 
-function earthSurfaceLine(info: {
+function worldSurfaceLine(info: {
   population: number;
   era: string;
   stable: boolean;
@@ -395,32 +395,32 @@ function earthSurfaceLine(info: {
   return 'An uneasy calm; the sky cannot be trusted.';
 }
 
-// Persistent surface readout for a planet, bottom-left — always on (a hover
+// Persistent surface readout for a world, bottom-left — always on (a hover
 // tooltip on a tiny moving dot is invisible). Era, what it's like down there,
-// who's left, and which civilization this is.
-export function drawEarthStatus(
+// who's left, and how many times life has risen here.
+export function drawWorldStatus(
   ctx: CanvasRenderingContext2D,
-  info: { population: number; civilizations: number; era: string; chaos: number; stable: boolean },
+  info: { population: number; dawns: number; era: string; chaos: number; stable: boolean },
   _w: number,
   h: number,
 ): void {
   const eraText = info.stable
-    ? 'Stable Era'
+    ? 'Steady Era'
     : info.era === 'scorching'
-      ? 'Chaotic Era · Scorching'
+      ? 'Turbulent Era · Scorching'
       : info.era === 'frozen'
-        ? 'Chaotic Era · Frozen'
-        : 'Chaotic Era';
+        ? 'Turbulent Era · Frozen'
+        : 'Turbulent Era';
   const eraColor = info.stable
     ? palette.cream
     : info.era === 'frozen'
-      ? palette.earth
+      ? palette.world
       : palette.danger;
-  const surface = earthSurfaceLine(info);
+  const surface = worldSurfaceLine(info);
   const stat =
     info.population <= 0.05
-      ? `No survivors · Civilization ${info.civilizations}`
-      : `${info.population.toFixed(1)}B surviving · Civilization ${info.civilizations}`;
+      ? `No survivors · ${ordinal(info.dawns)} Dawn`
+      : `${info.population.toFixed(1)}B surviving · ${ordinal(info.dawns)} Dawn`;
 
   ctx.save();
   const labelFont = `600 ${cpx(11)}px ${fonts.sans}`;
@@ -433,7 +433,7 @@ export function drawEarthStatus(
   const lhStat = lineHeightFor(11);
 
   ctx.font = labelFont;
-  let textW = ctx.measureText('EARTH').width;
+  let textW = ctx.measureText('THE WORLD').width;
   ctx.font = eraFont;
   textW = Math.max(textW, ctx.measureText(eraText).width);
   ctx.font = surfFont;
@@ -453,7 +453,7 @@ export function drawEarthStatus(
   ctx.fillStyle = rgba(palette.voidDeep, 0.72);
   ctx.fill();
   ctx.lineWidth = 1;
-  ctx.strokeStyle = rgba(palette.earth, 0.4);
+  ctx.strokeStyle = rgba(palette.world, 0.4);
   ctx.stroke();
 
   ctx.textAlign = 'left';
@@ -461,8 +461,8 @@ export function drawEarthStatus(
   const tx = boxX + padX;
   let ty = boxY + padY;
   ctx.font = labelFont;
-  ctx.fillStyle = rgba(palette.earth, 0.9);
-  ctx.fillText('EARTH', tx, ty);
+  ctx.fillStyle = rgba(palette.world, 0.9);
+  ctx.fillText('THE WORLD', tx, ty);
   ty += lhLabel;
   ctx.font = eraFont;
   ctx.fillStyle = eraColor;
@@ -479,7 +479,7 @@ export function drawEarthStatus(
 }
 
 // Game-over card for the sandbox: the system collapsed into a black hole, or
-// every civilization died out. Centered + dimmed; returns the AGAIN anchor.
+// all life died out. Centered + dimmed; returns the AGAIN anchor.
 export function drawSandboxOver(
   ctx: CanvasRenderingContext2D,
   outcome: 'collapse' | 'extinction' | 'ejection',
@@ -502,7 +502,7 @@ export function drawSandboxOver(
     outcome === 'collapse'
       ? 'The stars all fell together — a black hole, and everything with it.'
       : outcome === 'extinction'
-        ? 'Every civilization is ash. No one is left to watch the sky.'
+        ? 'All life is ash. No one is left to watch the sky.'
         : 'A close pass flung your world out of the system — into the endless cold.';
 
   const cardW = 660;
@@ -831,6 +831,23 @@ function wrapText(
   }
   if (line) lines.push(line);
   return lines;
+}
+
+// Ordinal suffix for a small count: 1st, 2nd, 3rd, 4th … (handles the teens).
+// Used by the world readouts to label each successive "dawn" of life.
+function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
 }
 
 function roundedRectPath(

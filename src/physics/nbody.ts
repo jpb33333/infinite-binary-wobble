@@ -214,7 +214,7 @@ export class NBodySimulation {
   // Smallest pair separation seen at any substep since construction (collision
   // can graze between frames; same reasoning as Simulation.minSeparation).
   minSeparation: number;
-  // Bodies exempt from merging — a planet (Earth) feels the suns' gravity but
+  // Bodies exempt from merging — a planet (a world) feels the suns' gravity but
   // never fuses with one. It can still be flung around or scorched; it just
   // doesn't turn a star into a blue straggler by brushing it.
   readonly noMerge = new Set<Body>();

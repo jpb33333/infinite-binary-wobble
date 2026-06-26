@@ -255,7 +255,7 @@ describe('N-body PEFRL conserves the invariants (3 bodies)', () => {
   });
 
   test('a noMerge planet survives a head-on pass through a star (never fuses)', () => {
-    // The Trisolaris planet contract: a planet feels gravity but never merges.
+    // The world/planet contract: a planet feels gravity but never merges.
     // A tiny planet and a star aimed dead at each other overlap and pass through
     // — the body count stays 2, no merge event fires, and momentum is conserved
     // across the deep (Plummer-softened) close encounter.

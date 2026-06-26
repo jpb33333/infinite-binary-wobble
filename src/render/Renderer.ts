@@ -16,7 +16,7 @@ import {
   STYLE_P1,
   STYLE_P2,
   STYLE_STAR,
-  STYLE_EARTH,
+  STYLE_WORLD,
   type StarStyle,
 } from './star.ts';
 import { Trail, drawTrail } from './trail.ts';
@@ -32,8 +32,8 @@ import {
   drawOutcomeCard,
   drawSandboxOver,
   drawStarTooltip,
-  drawEarthTooltip,
-  drawEarthStatus,
+  drawWorldTooltip,
+  drawWorldStatus,
   drawCloseButton,
   drawPaywallCard,
   drawTitleExplainerLink,
@@ -108,14 +108,14 @@ export interface RenderInput {
   // renderer draws from this list rather than fixed slots. null outside the
   // unravel (the two-body sim/trails path is used then).
   unravel: { body: Body; trail: Trail; kind: string; mergedCount: number }[] | null;
-  // Trisolaris: planets dropped into the system, each with its live climate +
-  // civilization readout. Empty until "Add Planet"; earths[0] drives the
+  // Worlds dropped into the system, each with its live climate + life readout.
+  // Empty until "Add Planet"; worlds[0] drives the
   // persistent surface panel, all are drawn + hoverable.
-  earths: {
+  worlds: {
     body: Body;
     trail: Trail;
     population: number;
-    civilizations: number;
+    dawns: number;
     era: string;
     chaos: number;
     stable: boolean;
@@ -123,9 +123,9 @@ export interface RenderInput {
   }[];
 }
 
-// Earth's drawn radius (fixed — it's a planet, far lighter than any star, so
+// A world's drawn radius (fixed — it's a planet, far lighter than any star, so
 // its mass-radius would be a 2px speck).
-const EARTH_DRAW_R = 5;
+const WORLD_DRAW_R = 5;
 // Floor on a body's on-screen radius in the unravel, so nothing shrinks to a
 // sub-pixel dot when the camera is zoomed all the way out (4×) to follow a
 // slingshot. Applied in screen px, converted to world units by the live zoom.
@@ -704,8 +704,8 @@ export class Renderer {
       for (const t of input.unravel) {
         drawTrail(ctx, t.trail, this.trailColorForKind(t.kind), 0.85, 0, 2.2);
       }
-      for (const e of input.earths) {
-        drawTrail(ctx, e.trail, palette.earth, 0.7, 0, 1.6);
+      for (const e of input.worlds) {
+        drawTrail(ctx, e.trail, palette.world, 0.7, 0, 1.6);
       }
       if (input.supernova) this.drawSupernova(input.supernova, input.time);
 
@@ -717,17 +717,17 @@ export class Renderer {
           r: bodyRadius(t.body.mass),
           style: this.styleForKind(t.kind),
         })),
-        ...input.earths.map(e => ({
+        ...input.worlds.map(e => ({
           z: e.body.z,
           x: e.body.pos.x,
           y: e.body.pos.y,
-          r: EARTH_DRAW_R,
-          style: this.earthStyle(e.era),
+          r: WORLD_DRAW_R,
+          style: this.worldStyle(e.era),
         })),
       ];
       drawables.sort((a, b) => a.z - b.z); // far (low z) first → near drawn on top
       // Keep every body at least MIN_UNRAVEL_SCREEN_R px on screen even when the
-      // camera pulls all the way back, so a slingshot Earth stays visible (not a
+      // camera pulls all the way back, so a slingshot world stays visible (not a
       // sub-pixel dot) right out to the ejection boundary. The draw is inside the
       // cz-scaled transform, so divide the screen floor by cz to get world units.
       const cz = input.cameraZoom;
@@ -743,7 +743,7 @@ export class Renderer {
       // as it nears the boundary; sized ~screen-constant (÷cz) so it reads even
       // when the camera is pulled all the way out.
       const WARN_SHOW = 0.72;
-      for (const e of input.earths) {
+      for (const e of input.worlds) {
         if (e.driftWarn <= WARN_SHOW) continue;
         const urgency = (e.driftWarn - WARN_SHOW) / (1 - WARN_SHOW);
         const pulse = 0.5 + 0.5 * Math.sin(input.time * 6);
@@ -761,9 +761,9 @@ export class Renderer {
       // transform); min-size floored like the live bodies so it reads zoomed out.
       if (input.placing?.pos) {
         const gp = input.placing.pos;
-        const baseR = input.placing.kind === 'star' ? bodyRadius(input.placing.mass) : EARTH_DRAW_R;
+        const baseR = input.placing.kind === 'star' ? bodyRadius(input.placing.mass) : WORLD_DRAW_R;
         const gr = Math.max(baseR, MIN_UNRAVEL_SCREEN_R / cz);
-        const col = input.placing.kind === 'star' ? palette.danger : palette.earth;
+        const col = input.placing.kind === 'star' ? palette.danger : palette.world;
         ctx.save();
         ctx.globalAlpha = 0.5;
         ctx.fillStyle = col;
@@ -843,9 +843,9 @@ export class Renderer {
 
     // Inspection tooltip — hover/tap a star to read its class, mass, lineage.
     this.drawHoveredStarTooltip(input);
-    // Persistent surface readout for the first planet — always on, so Earth's
+    // Persistent surface readout for the first planet — always on, so the world's
     // fate is never hidden behind a hover on a tiny moving dot.
-    if (input.earths.length > 0) drawEarthStatus(ctx, input.earths[0], w, h);
+    if (input.worlds.length > 0) drawWorldStatus(ctx, input.worlds[0], w, h);
   }
 
   // If the pointer is over a star (accounting for the camera offset), draw an
@@ -863,14 +863,14 @@ export class Renderer {
     const projY = (wy: number): number => cy + (wy + cam.y - cy) * z;
     const HOVER_PAD = 12;
 
-    // Planets first — their tooltip is the Trisolaris readout, not a star class.
-    for (const e of input.earths) {
+    // Planets first — their tooltip is the world readout, not a star class.
+    for (const e of input.worlds) {
       const ex = projX(e.body.pos.x);
       const ey = projY(e.body.pos.y);
-      const r = EARTH_DRAW_R * depthScale(e.body.z) * z;
+      const r = WORLD_DRAW_R * depthScale(e.body.z) * z;
       if (Math.hypot(input.hover.x - ex, input.hover.y - ey) <= r + HOVER_PAD) {
         const placement = ey - r < 120 ? 'below' : 'above';
-        drawEarthTooltip(this.ctx, e, ex, placement === 'above' ? ey - r : ey + r, placement);
+        drawWorldTooltip(this.ctx, e, ex, placement === 'above' ? ey - r : ey + r, placement);
         return;
       }
     }
@@ -903,7 +903,7 @@ export class Renderer {
   }
 
   // Doppler tint — the actual mechanism by which binary stars' wobble is
-  // detected from Earth. We pick a fixed observer below the canvas; each
+  // detected from our vantage. We pick a fixed observer below the canvas; each
   // body's radial velocity toward that observer warms its color toward
   // cream (approaching, "blue-shifted" in our warm palette) or wine
   // (receding, red-shifted). The orbit's geometry guarantees this tint
@@ -947,16 +947,16 @@ export class Renderer {
     }
   }
 
-  // Earth, tinted by its climate so its state reads at a glance: red-hot when
+  // The world, tinted by its climate so its state reads at a glance: red-hot when
   // scorching, dim/cold when frozen, pale blue when temperate.
-  private earthStyle(era: string): StarStyle {
+  private worldStyle(era: string): StarStyle {
     if (era === 'scorching') {
-      return { ...STYLE_EARTH, primary: blendHex(palette.earth, palette.danger, 0.6) };
+      return { ...STYLE_WORLD, primary: blendHex(palette.world, palette.danger, 0.6) };
     }
     if (era === 'frozen') {
-      return { ...STYLE_EARTH, primary: blendHex(palette.earth, palette.voidDeep, 0.4), haloAlpha: 0.5 };
+      return { ...STYLE_WORLD, primary: blendHex(palette.world, palette.voidDeep, 0.4), haloAlpha: 0.5 };
     }
-    return STYLE_EARTH;
+    return STYLE_WORLD;
   }
 
   private trailColorForKind(kind: string): string {
@@ -1202,7 +1202,7 @@ export class Renderer {
 
     // Top-left sandbox controls — repeatable: keep feeding the problem until it
     // collapses. A star is a disruptor (danger red); a planet is a victim
-    // (earth blue) whose civilization rides the chaos.
+    // (world blue) whose life rides the chaos.
     if (
       input.state === 'resolved' &&
       (input.outcome?.kind === 'win' || input.unravel) &&
@@ -1223,12 +1223,12 @@ export class Renderer {
         const planetSet: CanvasButton = { label: 'Set Planet', x: 16, y: row2, width: bw, height: pillH };
         const planetRnd: CanvasButton = { label: 'Random Planet', x: x2, y: row2, width: bw, height: pillH };
         drawButton(ctx, planetSet, {
-          primary: palette.earth,
+          primary: palette.world,
           text: palette.voidDeep,
           hovered: hoveredName === 'set_planet',
         });
         drawButton(ctx, planetRnd, {
-          primary: palette.earth,
+          primary: palette.world,
           text: palette.voidDeep,
           hovered: hoveredName === 'random_planet',
         });
@@ -1309,7 +1309,7 @@ export class Renderer {
     if (pl.pos) {
       const launch: CanvasButton = { label: 'Launch', x: 16, y, width: bw, height: bh };
       drawButton(ctx, launch, {
-        primary: kind === 'star' ? palette.danger : palette.earth,
+        primary: kind === 'star' ? palette.danger : palette.world,
         hovered: hoveredName === 'place_launch',
       });
       this.register('place_launch', launch);
