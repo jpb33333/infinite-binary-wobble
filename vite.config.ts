@@ -18,37 +18,54 @@ function stripCspMetaInDev(): Plugin {
   };
 }
 
-// When metering is enabled (VITE_API_BASE_URL set at build time) the static
-// CSP would silently block every metering fetch and the Turnstile widget —
-// the client fails open, so the paywall would just never work. Widen the
-// policy at build time instead of asking the deployer to hand-edit
-// index.html:
-//   connect-src  'self' + the API origin + the Turnstile host
-//   script-src / frame-src  + challenges.cloudflare.com (the widget)
-// With VITE_API_BASE_URL unset (the default deploy) the emitted CSP is
-// byte-identical to the one checked into index.html.
-function meteringCsp(apiBaseUrl: string): Plugin {
+// When metering (VITE_API_BASE_URL) or analytics (VITE_GA_MEASUREMENT_ID) is
+// enabled at build time, the static CSP (script-src 'self', no connect-src)
+// would silently block the thing it just turned on — every metering fetch + the
+// Turnstile widget, or the GA script + its data beacons. The clients all fail
+// open, so the feature would just never work. Widen the policy at build time in
+// ONE pass (two plugins both rewriting the script-src anchor would collide) —
+// instead of asking the deployer to hand-edit index.html:
+//   metering  → script-src + Turnstile; connect-src 'self' + API + Turnstile; frame-src Turnstile
+//   analytics → script-src + googletagmanager; connect-src + *.google-analytics.com + *.googletagmanager.com
+// With neither var set (the default deploy) the emitted CSP is byte-identical to
+// the one checked into index.html.
+function widenCsp(apiBaseUrl: string, gaId: string): Plugin {
   return {
-    name: 'metering-csp',
+    name: 'widen-csp',
     apply: 'build',
     transformIndexHtml(html) {
-      if (!apiBaseUrl) return html;
-      const apiOrigin = new URL(apiBaseUrl).origin;
-      const turnstile = 'https://challenges.cloudflare.com';
-      // Fail the build, not the paywall: if a CSP edit in index.html breaks
-      // either anchor substring, a silent no-op here would ship a policy that
-      // blocks every metering fetch — and the fail-open client would simply
-      // never show the paywall. A thrown error surfaces it at build time.
-      const widenScript = html.replace("script-src 'self';", `script-src 'self' ${turnstile};`);
-      if (widenScript === html) {
-        throw new Error("meteringCsp: script-src anchor not found in index.html CSP");
+      const scriptAdd: string[] = [];
+      const connectAdd: string[] = [];
+      const frameAdd: string[] = [];
+      if (apiBaseUrl) {
+        const apiOrigin = new URL(apiBaseUrl).origin;
+        const turnstile = 'https://challenges.cloudflare.com';
+        scriptAdd.push(turnstile);
+        connectAdd.push("'self'", apiOrigin, turnstile);
+        frameAdd.push(turnstile);
       }
-      const widened = widenScript.replace(
-        "font-src 'self';",
-        `font-src 'self'; connect-src 'self' ${apiOrigin} ${turnstile}; frame-src ${turnstile};`,
+      if (gaId) {
+        scriptAdd.push('https://www.googletagmanager.com');
+        if (!connectAdd.includes("'self'")) connectAdd.push("'self'");
+        connectAdd.push('https://*.google-analytics.com', 'https://*.googletagmanager.com');
+      }
+      if (scriptAdd.length === 0) return html; // nothing configured → byte-identical
+      // Fail the build, not the feature: if a CSP edit in index.html breaks
+      // either anchor substring, a silent no-op here would ship a policy that
+      // blocks the metering fetch / GA beacon — and the fail-open clients would
+      // simply go dark. A thrown error surfaces it at build time.
+      const widenScript = html.replace(
+        "script-src 'self';",
+        `script-src 'self' ${scriptAdd.join(' ')};`,
       );
+      if (widenScript === html) {
+        throw new Error("widenCsp: script-src anchor not found in index.html CSP");
+      }
+      const extras = [`connect-src ${connectAdd.join(' ')};`];
+      if (frameAdd.length) extras.push(`frame-src ${frameAdd.join(' ')};`);
+      const widened = widenScript.replace("font-src 'self';", `font-src 'self'; ${extras.join(' ')}`);
       if (widened === widenScript) {
-        throw new Error("meteringCsp: font-src anchor not found in index.html CSP");
+        throw new Error("widenCsp: font-src anchor not found in index.html CSP");
       }
       return widened;
     },
@@ -61,7 +78,10 @@ export default defineConfig(({ mode }) => {
   return {
     // Relative base so the built bundle works under any GitHub Pages subpath.
     base: './',
-    plugins: [stripCspMetaInDev(), meteringCsp(env.VITE_API_BASE_URL ?? '')],
+    plugins: [
+      stripCspMetaInDev(),
+      widenCsp(env.VITE_API_BASE_URL ?? '', env.VITE_GA_MEASUREMENT_ID ?? ''),
+    ],
     build: {
       target: 'es2022',
       // Off in prod — source maps were publishing the full TypeScript source to

@@ -1,5 +1,6 @@
 import './style.css';
 import { Game } from './game/Game.ts';
+import { initAnalytics } from './net/analytics.ts';
 
 // Frame-busting. `frame-ancestors` in the CSP meta tag is ignored by the
 // browser (header-only directive), so we defend in JS: if we've been
@@ -23,6 +24,11 @@ if (window.top !== window.self) {
     throw new Error('Refused to run inside a cross-origin iframe');
   }
 }
+
+// Boot analytics before anything else can throw, so the GA error handler is
+// already listening during canvas lookup + Game construction. Inert (loads
+// nothing, sets no cookies) unless VITE_GA_MEASUREMENT_ID was set at build time.
+initAnalytics();
 
 const canvas = document.querySelector<HTMLCanvasElement>('#stage');
 if (!canvas) throw new Error('Stage canvas not found in index.html');

@@ -1,12 +1,12 @@
 import type { Body } from '../physics/Body.ts';
 import { Trail } from '../render/trail.ts';
 
-// Trisolaris climate model — a planet at the mercy of the suns (Liu Cixin's
-// "The Three-Body Problem"). Insolation (heat from every star, ∝ mass/dist²)
-// drives a "warmth"; warmth sets the era — a Stable Era when temperate, a
-// Chaotic Era when scorching or frozen — and drives the population, which grows
-// in stable temperate eras and crashes in the extremes. When a civilization is
-// wiped out it reboots in the next stable era, as in the novel.
+// Climate-and-population model for a world adrift in a multi-star system. Insolation
+// (heat from every star, ∝ mass/dist²) drives a "warmth"; warmth sets the era — a
+// Steady Era when temperate, a Turbulent Era when scorching or frozen — and drives the
+// population, which grows in steady temperate eras and crashes in the extremes. When the
+// population is wiped out it rises again once the climate steadies — each recovery a new
+// "dawn".
 //
 // Constants are game-feel-tuned (mixed pixel/mass units), not SI.
 
@@ -14,18 +14,18 @@ const WARMTH_REF = 1e-5; // insolation that reads as "comfortable" → warmth �
 const FROZEN_BELOW = 0.45;
 const SCORCH_ABOVE = 2.5;
 const POP_MAX = 10; // billions
-const GROWTH = 0.45; // logistic growth rate in a stable era
-const DECAY = 1.1; // population crash rate in a chaotic extreme
+const GROWTH = 0.45; // logistic growth rate in a steady era
+const DECAY = 1.1; // population crash rate in a turbulent extreme
 const EXTINCT_AT = 0.02;
 const REBOOT_AT = 0.5;
 
 export type Era = 'frozen' | 'temperate' | 'scorching';
 
-export class EarthState {
+export class WorldState {
   readonly body: Body;
   readonly trail: Trail;
   population = 1; // billions
-  civilizations = 1; // count, Trisolaris-style: rises again after each wipe
+  dawns = 1; // how many times life has risen here — a new dawn after each recovery
   warmth = 1; // 1 ≈ comfortable; <FROZEN_BELOW frozen, >SCORCH_ABOVE scorching
   chaos = 0; // 0..1 smoothed climate volatility
   era: Era = 'temperate';
@@ -64,7 +64,7 @@ export class EarthState {
     if (this.era === 'temperate') {
       this.population += GROWTH * dt * (1 - this.population / POP_MAX);
       if (this.extinct && this.population >= REBOOT_AT) {
-        this.civilizations++;
+        this.dawns++;
         this.extinct = false;
       }
     } else {
@@ -78,8 +78,8 @@ export class EarthState {
     this.population = Math.max(0, Math.min(POP_MAX, this.population));
   }
 
-  // A Stable Era: temperate AND not lurching around. Everything else — the
-  // extremes, or a temperate spell that's swinging hard — is a Chaotic Era.
+  // A Steady Era: temperate AND not lurching around. Everything else — the
+  // extremes, or a temperate spell that's swinging hard — is a Turbulent Era.
   get stable(): boolean {
     return this.era === 'temperate' && this.chaos < 0.25;
   }

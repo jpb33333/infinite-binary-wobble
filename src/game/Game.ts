@@ -11,18 +11,19 @@ import { createBody, bodyRadius } from '../physics/Body.ts';
 import type { Body } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
-import { EarthState } from './earth.ts';
+import { WorldState } from './world.ts';
 import { placedStarVelocity, placedPlanetVelocity, clampedVelocity } from './placement.ts';
 import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
 import { palette, lineHeightFor } from '../theme.ts';
 import { Meter } from '../net/meter.ts';
+import { track } from '../net/analytics.ts';
 
 const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
-const EARTH_MASS = 0.02; // a planet — feels the suns, barely tugs them back
-const EARTH_ORBIT = 850; // px from the barycenter where a planet is dropped in
+const WORLD_MASS = 0.02; // a planet — feels the suns, barely tugs them back
+const WORLD_ORBIT = 850; // px from the barycenter where a planet is dropped in
 // "Set"-placed sandbox bodies (quick-set: tap a spot, pick a star's mass; the
 // velocity is supplied automatically — see placement.ts).
 const SET_STAR_DEFAULT_MASS = 3;
@@ -40,7 +41,7 @@ const MAX_PLANETS = 10;
 // of the most-zoomed-out view — is lost to the dark (an ejection game-over).
 // The sandbox can be LOST: it collapses into a black hole when the stars all
 // fall together (≤1 left), or humanity goes extinct if every planet stays dead
-// this long (civilizations get a grace window to reboot first).
+// this long (life gets a grace window to begin again first).
 const EXTINCTION_GRACE = 6; // seconds
 const EJECT_GRACE = 2.5; // seconds a planet must stay past the boundary before it's lost
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
@@ -74,14 +75,14 @@ export class Game {
     kind: 'p1' | 'p2' | 'star' | 'merged';
     mergedCount: number; // how many original stars fused into this body (1 = pristine)
   }[] = [];
-  // Trisolaris: planets dropped into the (chaotic) system, each with its own
-  // climate + civilization. Empty until "Add Planet"; earths[0] is the one the
-  // persistent surface panel reads. Reset every fresh round.
-  private earths: EarthState[] = [];
+  // Worlds dropped into the (chaotic) system, each with its own climate + life.
+  // Empty until "Add Planet"; worlds[0] is the one the persistent surface panel
+  // reads. Reset every fresh round.
+  private worlds: WorldState[] = [];
   // Eased camera zoom for the unravel (1 = the two-body game's fixed view).
   private cameraZoom = 1;
   // How the sandbox finally fails (null while it's still running): the system
-  // collapses to a black hole, or every civilization dies out.
+  // collapses to a black hole, or all life dies out.
   private sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null = null;
   // Sandbox "Set" placement: when set, the unravel pauses and the player taps a
   // drop point (pos in WORLD coords) + picks a star's mass; Launch drops it.
@@ -498,7 +499,7 @@ export class Game {
     this.trails.p2.reset();
     this.nbody = null;
     this.unravelTracks = [];
-    this.earths = [];
+    this.worlds = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
     this.placing = null;
@@ -535,7 +536,7 @@ export class Game {
     this.trails.p2.reset();
     this.nbody = null;
     this.unravelTracks = [];
-    this.earths = [];
+    this.worlds = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
     this.placing = null;
@@ -594,7 +595,7 @@ export class Game {
     this.trails.p2.reset();
     this.nbody = null;
     this.unravelTracks = [];
-    this.earths = [];
+    this.worlds = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
     this.placing = null;
@@ -609,6 +610,7 @@ export class Game {
     // Count this play (a simulation actually started). Optimistic + async;
     // no-op when metering is disabled or the player is already unlocked.
     this.meter.consumePlay();
+    track('play_start');
     this.state = 'simulate';
   }
 
@@ -629,6 +631,7 @@ export class Game {
         ts: Date.now(),
       });
       this.statsSummary = summarize(updated);
+      track('outcome', { result: o.kind, duration: Math.round(this.sim.time) });
     }
     if (!this.burstedOnResolve && this.sim) {
       this.burstedOnResolve = true;
@@ -659,7 +662,7 @@ export class Game {
 
   // Build the N-body system from the just-won binary, reusing the winning
   // bodies + their p1/p2 trails so history flows unbroken. Shared by "Add 3rd
-  // Body" and "Add Planet Earth". No-op once the system already exists.
+  // Body" and "Add Planet". No-op once the system already exists.
   private ensureNBodyFromWin(): void {
     if (this.nbody || !this.sim) return;
     this.nbody = new NBodySimulation([this.sim.a, this.sim.b], PHYSICS.G, PHYSICS.SOFTENING);
@@ -690,15 +693,15 @@ export class Game {
   // massive (≥ a default star), aimed inward with ±30° jitter (close enough to
   // disrupt, never rigged). Keep feeding the problem until it collapses.
   // Sandbox population, capped (gravity is all-pairs O(n²)). Stars = all bodies
-  // minus the planets; planets = the earths.
+  // minus the planets; planets = the worlds.
   private starCount(): number {
-    return this.nbody ? this.nbody.bodies.length - this.earths.length : 0;
+    return this.nbody ? this.nbody.bodies.length - this.worlds.length : 0;
   }
   private atStarCap(): boolean {
     return this.starCount() >= MAX_STARS;
   }
   private atPlanetCap(): boolean {
-    return this.earths.length >= MAX_PLANETS;
+    return this.worlds.length >= MAX_PLANETS;
   }
 
   private addStar(): void {
@@ -725,9 +728,10 @@ export class Game {
       kind: 'star',
       mergedCount: 1,
     });
+    track('sandbox_add', { kind: 'star', mode: 'random' });
   }
 
-  // Trisolaris: drop a planet onto a wide, roughly-circular orbit around the
+  // Drop a world onto a wide, roughly-circular orbit around the
   // barycenter — temperate at first; the suns' chaos does the rest. Repeatable.
   private addPlanet(): void {
     if (!this.sim || this.atPlanetCap()) return;
@@ -736,15 +740,16 @@ export class Game {
     const com = this.systemCOM();
     if (com.mass <= 0) return;
     const ang = Math.random() * Math.PI * 2;
-    const vCirc = Math.sqrt((PHYSICS.G * com.mass) / EARTH_ORBIT);
+    const vCirc = Math.sqrt((PHYSICS.G * com.mass) / WORLD_ORBIT);
     const planet = createBody(
-      EARTH_MASS,
-      vec2(com.x + Math.cos(ang) * EARTH_ORBIT, com.y + Math.sin(ang) * EARTH_ORBIT),
+      WORLD_MASS,
+      vec2(com.x + Math.cos(ang) * WORLD_ORBIT, com.y + Math.sin(ang) * WORLD_ORBIT),
       vec2(-Math.sin(ang) * vCirc, Math.cos(ang) * vCirc),
     );
     planet.vz = (Math.random() - 0.5) * vCirc * 0.6; // a slightly inclined orbit
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
-    this.earths.push(new EarthState(planet));
+    this.worlds.push(new WorldState(planet));
+    track('sandbox_add', { kind: 'planet', mode: 'random' });
   }
 
   // ── "Set" placement (quick-set: tap a drop point, +/- a star's mass) ──
@@ -757,7 +762,7 @@ export class Game {
     this.placing = {
       kind,
       pos: null,
-      mass: kind === 'star' ? SET_STAR_DEFAULT_MASS : EARTH_MASS,
+      mass: kind === 'star' ? SET_STAR_DEFAULT_MASS : WORLD_MASS,
       vel: null,
       velCustom: false,
     };
@@ -787,6 +792,7 @@ export class Game {
       kind: 'star',
       mergedCount: 1,
     });
+    track('sandbox_add', { kind: 'star', mode: 'set' });
   }
 
   private addPlanetAt(pos: { x: number; y: number }): void {
@@ -794,9 +800,10 @@ export class Game {
     const com = this.systemCOM();
     if (com.mass <= 0) return;
     const v = placedPlanetVelocity(pos, com, com.mass, PHYSICS.G);
-    const planet = createBody(EARTH_MASS, vec2(pos.x, pos.y), vec2(v.x, v.y));
+    const planet = createBody(WORLD_MASS, vec2(pos.x, pos.y), vec2(v.x, v.y));
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
-    this.earths.push(new EarthState(planet));
+    this.worlds.push(new WorldState(planet));
+    track('sandbox_add', { kind: 'planet', mode: 'set' });
   }
 
   // Invert the renderer's camera transform (design-canvas point → world point):
@@ -824,12 +831,12 @@ export class Game {
       this.simAccum -= PHYSICS.DT;
     }
     for (const t of this.unravelTracks) t.trail.push(t.body.pos.x, t.body.pos.y);
-    if (this.earths.length > 0) {
-      const planets = new Set(this.earths.map(e => e.body));
+    if (this.worlds.length > 0) {
+      const planets = new Set(this.worlds.map(e => e.body));
       const suns = this.nbody.bodies.filter(b => !planets.has(b));
-      for (const earth of this.earths) {
-        earth.update(dt, suns);
-        earth.trail.push(earth.body.pos.x, earth.body.pos.y);
+      for (const world of this.worlds) {
+        world.update(dt, suns);
+        world.trail.push(world.body.pos.x, world.body.pos.y);
       }
     }
     this.checkSandboxOutcome(dt);
@@ -839,19 +846,19 @@ export class Game {
   // edge of the most-zoomed-out view (planetEjectRadius) → lost to the dark.
   // COLLAPSE: the stars all fall together (≤ 1 left — merged, or detonated to
   // nothing) → a black hole, universe over. EXTINCTION: planets exist but every
-  // one has been dead longer than the grace window (civilizations get a chance to
+  // one has been dead longer than the grace window (life gets a chance to
   // reboot first).
   private checkSandboxOutcome(dt: number): void {
     if (!this.nbody || this.sandboxOutcome) return;
-    const planets = new Set(this.earths.map(e => e.body));
+    const planets = new Set(this.worlds.map(e => e.body));
     // EJECTION: any planet flung past the camera's furthest pull-back. Measured
     // from the same barycenter the camera zoom fits around, so at the instant of
     // loss the planet sits right at the readable edge of the frame.
-    if (this.earths.length > 0) {
+    if (this.worlds.length > 0) {
       const com = this.systemCOM();
       const { width: w, height: h } = this.renderer.layout.canvas;
       const ejectR = planetEjectRadius(Math.min(w, h));
-      for (const e of this.earths) {
+      for (const e of this.worlds) {
         const dist = Math.hypot(e.body.pos.x - com.x, e.body.pos.y - com.y);
         // The renderer reads driftFraction to warn ON the planet as it nears the
         // edge (≈¾ of the way out) — so the loss is telegraphed, not abrupt.
@@ -874,7 +881,7 @@ export class Game {
       this.sandboxOutcome = 'collapse';
       return;
     }
-    if (this.earths.length > 0 && this.earths.every(e => e.population <= 0.05)) {
+    if (this.worlds.length > 0 && this.worlds.every(e => e.population <= 0.05)) {
       this.extinctionTimer += dt;
       if (this.extinctionTimer > EXTINCTION_GRACE) this.sandboxOutcome = 'extinction';
     } else {
@@ -1052,11 +1059,11 @@ export class Game {
       countdownRemaining: this.countdownRemaining,
       trails: this.trails,
       unravel: this.nbody ? this.unravelTracks : null,
-      earths: this.earths.map(e => ({
+      worlds: this.worlds.map(e => ({
         body: e.body,
         trail: e.trail,
         population: e.population,
-        civilizations: e.civilizations,
+        dawns: e.dawns,
         era: e.era,
         chaos: e.chaos,
         stable: e.stable,
@@ -1083,7 +1090,7 @@ export class Game {
       sandboxOutcome: this.sandboxOutcome,
       placing: this.placing,
       starCount: this.starCount(),
-      planetCount: this.earths.length,
+      planetCount: this.worlds.length,
     });
   }
 
