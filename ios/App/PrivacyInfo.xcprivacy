@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Apple privacy manifest. Required at upload because the app touches a
+  "required-reason" API (NSUserDefaults, via PlayMeter/GameModel) — without
+  this file the App Store rejects the build with ITMS-91053. Values are the
+  ones pinned in docs/ios/V1-LOCK.md and verified against the shipping code:
+
+    NSPrivacyTracking            false  — no tracking, no IDFA, no ATT prompt.
+    NSPrivacyTrackingDomains     []     — nothing contacts the network at all.
+    NSPrivacyCollectedDataTypes  []     — "Data Not Collected" privacy label.
+    NSPrivacyAccessedAPITypes    UserDefaults → CA92.1 — the only required-reason
+                                        API in the Release binary (DebugBridge's
+                                        system-boot-time / file-timestamp uses are
+                                        all #if DEBUG and compile out of Release).
+
+  CA92.1: read/write information accessible only to this app itself. The app
+  uses UserDefaults.standard (no app group), so this is the exact, honest reason.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
