@@ -166,6 +166,19 @@ body[data-screen]:not([data-screen='title']) .dedication {
   color: rgba(244, 165, 141, 0.55); /* palette.rose @ 0.55 */
 }
 
+/* "My love" in Russian + Ukrainian, a whisper one step below "For Natalia".
+   Cardo carries no Cyrillic glyphs, so these render in the Georgia serif-italic
+   fallback — the same serif voice, quieter and smaller than the line above. */
+.dedication__love {
+  margin: 0.2rem 0 0;
+  font-family: 'Cardo', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: rgba(244, 165, 141, 0.42); /* palette.rose @ 0.42 */
+}
+
 /* On short viewports the bottom letterbox band can vanish; keep the signature
    from colliding with the court by hiding it when there's no room to breathe. */
 @media (max-height: 480px) {
