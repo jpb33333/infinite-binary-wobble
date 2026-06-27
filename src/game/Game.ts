@@ -260,6 +260,14 @@ export class Game {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    // DEV-only playtest shortcut (gated on import.meta.env.DEV, so Vite strips it
+    // from production builds): press "F" (for Fermi) to jump straight into a loud
+    // post-win sandbox and wake Act III's dark forest — skips the win + perturb
+    // grind when iterating on the act. Not present in the shipped game.
+    if (import.meta.env.DEV && (e.key === 'f' || e.key === 'F')) {
+      this.devJumpToActIII();
+      return;
+    }
     if (e.key !== 'Escape') return;
     // A chapter card is modal — Esc closes it (mirrors its ✕ / a tap anywhere) and
     // leaves the run underneath untouched, instead of abandoning to the title.
@@ -675,6 +683,39 @@ export class Game {
     this.meter.consumePlay();
     track('play_start');
     this.state = 'simulate';
+  }
+
+  // DEV-only (import.meta.env.DEV): stand up a post-win sandbox and pump it loud
+  // so Act III's dark forest wakes immediately — a testing shortcut past the win +
+  // perturbation. The added stars are massive (high luminosity → past the
+  // detection threshold) but on wide, gentle orbits so they don't instantly
+  // collide and collapse before the hunt can play out. Tree-shaken from prod.
+  private devJumpToActIII(): void {
+    if (!import.meta.env.DEV) return; // body collapses away in production builds
+    this.toSimulate(); // fresh sim + classifier from the current specs
+    this.outcome = { kind: 'win' };
+    this.burstedOnResolve = true; // skip the resolve burst + scoreboard record
+    this.state = 'resolved';
+    this.ensureNBodyFromWin();
+    if (!this.nbody) return;
+    const com = this.systemCOM();
+    for (let i = 0; i < 5 && !this.atStarCap(); i++) {
+      const ang = (i / 5) * Math.PI * 2;
+      const R = 520;
+      const vCirc = Math.sqrt((PHYSICS.G * Math.max(com.mass, 1)) / R) * 0.7;
+      const star = createBody(
+        5,
+        vec2(com.x + Math.cos(ang) * R, com.y + Math.sin(ang) * R),
+        vec2(-Math.sin(ang) * vCirc, Math.cos(ang) * vCirc),
+      );
+      this.nbody.addBody(star);
+      this.unravelTracks.push({
+        body: star,
+        trail: new Trail(TRAIL_CAPACITY),
+        kind: 'star',
+        mergedCount: 1,
+      });
+    }
   }
 
   private toResolved(o: Outcome): void {
