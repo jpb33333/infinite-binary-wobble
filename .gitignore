@@ -43,3 +43,9 @@ ios/App/Info.plist
 ios/**/.build/
 ios/**/xcuserdata/
 ios/**/DerivedData/
+
+# Secrets — NEVER commit. App Store Connect API keys (.p8) live in ~/Downloads,
+# outside the repo; this is a belt-and-suspenders guard in case one ever lands here.
+*.p8
+AuthKey_*.p8
+ApiKey_*.p8
