@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import {
   computeBroadcast,
+  systemBroadcast,
   DarkForest,
   VISIBILITY,
   type BroadcastSignals,
@@ -113,5 +114,58 @@ describe('DarkForest hunt', () => {
     const f = new DarkForest(systems());
     run(f, 40, sig(64, 20)); // run to a strike
     expect(f.update(1 / 60, sig(64, 20))).toBe(null);
+  });
+});
+
+describe('systemBroadcast (pure signal derivation)', () => {
+  test('luminosity sums star masses; life sums population × dawns', () => {
+    const { luminosity, life } = systemBroadcast(
+      [3, 5, 2],
+      [
+        { population: 4, dawns: 2 },
+        { population: 1, dawns: 3 },
+      ],
+    );
+    expect(luminosity).toBe(10);
+    expect(life).toBe(11); // 4*2 + 1*3
+  });
+
+  test('an empty system broadcasts nothing', () => {
+    expect(systemBroadcast([], [])).toEqual({ luminosity: 0, life: 0 });
+  });
+
+  test('a young world (dawns 0) contributes no life yet', () => {
+    expect(systemBroadcast([4], [{ population: 8, dawns: 0 }]).life).toBe(0);
+  });
+});
+
+describe('DarkForest progress ratios (meter legibility)', () => {
+  test('detectionProgress builds while loud; strikeProgress is 0 until a lock', () => {
+    const f = new DarkForest(systems());
+    // Loud, but stop short of the lock: detection is partway, no strike yet.
+    run(f, VISIBILITY.lockSeconds * 0.5, sig(64, 20));
+    expect(f.locked).toBe(false);
+    expect(f.detectionProgress).toBeGreaterThan(0);
+    expect(f.detectionProgress).toBeLessThan(1);
+    expect(f.strikeProgress).toBe(0);
+  });
+
+  test('once locked, strikeProgress advances and surviveProgress stays 0', () => {
+    const f = new DarkForest(systems());
+    for (let t = 0; t < 40 && !f.locked; t += 1 / 60) f.update(1 / 60, sig(64, 20));
+    expect(f.locked).toBe(true);
+    f.update(1 / 60, sig(64, 20));
+    expect(f.strikeProgress).toBeGreaterThan(0);
+    expect(f.surviveProgress).toBe(0); // locked → not surviving
+  });
+
+  test('surviveProgress advances only once provoked and gone quiet', () => {
+    const f = new DarkForest(systems());
+    expect(f.surviveProgress).toBe(0); // never provoked
+    run(f, 2, sig(64, 20)); // provoke without locking
+    expect(f.provoked).toBe(true);
+    run(f, 5, sig(4)); // fall quiet
+    expect(f.surviveProgress).toBeGreaterThan(0);
+    expect(f.surviveProgress).toBeLessThan(1);
   });
 });

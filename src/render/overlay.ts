@@ -1036,7 +1036,7 @@ export function drawChapterCard(
   // centre or the title and subtitle render left-anchored at w/2 and spill right.)
   ctx.textAlign = 'center';
   ctx.fillStyle = palette.cream;
-  ctx.font = `400 34px ${fonts.serif}`;
+  ctx.font = `400 ${cpx(34)}px ${fonts.serif}`;
   ctx.fillText(card.title, w / 2, cy + numeralTop + titleGap);
   // Subtitle — italic serif prose, wrapped.
   ctx.fillStyle = palette.rose;
@@ -1064,8 +1064,16 @@ export function drawChapterCard(
 export function drawVisibilityMeter(
   ctx: CanvasRenderingContext2D,
   w: number,
-  meter: { visibility: number; threshold: number; locked: boolean },
+  meter: {
+    visibility: number;
+    threshold: number;
+    locked: boolean;
+    provoked: boolean;
+    strikeProgress: number;
+    surviveProgress: number;
+  },
   time: number,
+  reducedMotion: boolean,
 ): void {
   const barW = 300;
   const barH = 10;
@@ -1074,7 +1082,8 @@ export function drawVisibilityMeter(
   const v = Math.max(0, Math.min(1, meter.visibility));
   const heat = Math.min(1, v / Math.max(0.001, meter.threshold));
   const fillColor = blendHex(palette.cream, palette.danger, heat);
-  const pulse = 0.6 + 0.4 * Math.sin(time * 8);
+  // reduced-motion: a steady glow instead of a strobing pulse.
+  const pulse = reducedMotion ? 1 : 0.6 + 0.4 * Math.sin(time * 8);
 
   ctx.save();
   ctx.textAlign = 'center';
@@ -1108,6 +1117,33 @@ export function drawVisibilityMeter(
   ctx.moveTo(tx, y - 3);
   ctx.lineTo(tx, y + barH + 3);
   ctx.stroke();
+
+  // Second row makes the hunt's two clocks legible. Once a hunter has locked on,
+  // a depleting danger bar counts down to the strike (go quiet to break it). Once
+  // the forest is woken but not locked, a filling cream bar tracks progress toward
+  // enduring the dark — both invisible before, leaving the player flying blind.
+  const y2 = y + barH + 14;
+  const drawRow = (frac: number, trackA: number, fill: string, text: string): void => {
+    const f = Math.max(0, Math.min(1, frac));
+    ctx.beginPath();
+    roundedRectPath(ctx, x, y2, barW, barH, barH / 2);
+    ctx.fillStyle = rgba(palette.cream, trackA);
+    ctx.fill();
+    if (f > 0) {
+      ctx.beginPath();
+      roundedRectPath(ctx, x, y2, Math.max(barH, barW * f), barH, barH / 2);
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+    ctx.font = `600 ${cpx(10)}px ${fonts.sans}`;
+    ctx.fillStyle = rgba(meter.locked ? palette.danger : palette.cream, meter.locked ? 0.9 : 0.6);
+    ctx.fillText(text, w / 2, y2 + barH + 12);
+  };
+  if (meter.locked) {
+    drawRow(1 - meter.strikeProgress, 0.14, rgba(palette.danger, pulse), 'STRIKE INCOMING — GO QUIET');
+  } else if (meter.provoked) {
+    drawRow(meter.surviveProgress, 0.1, rgba(palette.cream, 0.7), 'STAY SILENT TO ENDURE');
+  }
 
   ctx.restore();
 }

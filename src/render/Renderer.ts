@@ -133,8 +133,16 @@ export interface RenderInput {
     visibility: number;
     threshold: number;
     locked: boolean;
+    provoked: boolean;
+    detectionProgress: number;
+    strikeProgress: number;
+    surviveProgress: number;
+    lockAge: number | null;
     systems: { x: number; y: number; stir: number; hunter: boolean }[];
   } | null;
+  // The hunter's strike beam (Act III): hidden system → doomed star, fading over a
+  // beat. Drawn in canvas space with the hidden systems. null when no strike.
+  strikeBeam: { fromX: number; fromY: number; toX: number; toY: number; age: number } | null;
   // A chapter title card open (modal) over the current screen. null when none.
   chapterCard: { act: 1 | 2 | 3 } | null;
 }
@@ -837,17 +845,17 @@ export class Renderer {
     // meter. Drawn fixed (not camera-wrapped): the hunters ring the frame edge,
     // dim until your visibility stirs them; the locked one pulses danger.
     if (input.darkForest) {
-      for (const s of input.darkForest.systems) this.drawHiddenSystem(s, input.time);
-      drawVisibilityMeter(
-        ctx,
-        w,
-        {
-          visibility: input.darkForest.visibility,
-          threshold: input.darkForest.threshold,
-          locked: input.darkForest.locked,
-        },
-        input.time,
-      );
+      // reduced-motion: freeze the danger pulse (pass 0 for time) so the hunters
+      // and warning label don't strobe — mirrors the starfield/comet/ambient gating.
+      const dfTime = this.reducedMotion ? 0 : input.time;
+      // A lock just fired: a brief danger vignette so the lock reads as a moment,
+      // not only a meter colour change. (0.9s one-shot, fading out.)
+      const la = input.darkForest.lockAge;
+      if (la !== null && la < 0.9) this.drawLockVignette(w, h, 1 - la / 0.9);
+      // The strike beam lances in from the hunter just before the detonation.
+      if (input.strikeBeam) this.drawStrikeBeam(input.strikeBeam);
+      for (const s of input.darkForest.systems) this.drawHiddenSystem(s, dfTime);
+      drawVisibilityMeter(ctx, w, input.darkForest, dfTime, this.reducedMotion);
     }
 
     if (input.sim && input.classifier && !input.unravel) {
@@ -1021,6 +1029,53 @@ export class Renderer {
     ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
     ctx.fillStyle = rgba(color, Math.min(1, alpha + 0.2));
     ctx.fill();
+    ctx.restore();
+  }
+
+  // The hunter's strike: a beam from the hidden system to the doomed star — a hot
+  // cream core inside a danger glow, fading over a beat. Drawn in canvas space
+  // (with the hidden systems), so both ends already share one coordinate frame.
+  private drawStrikeBeam(beam: {
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    age: number;
+  }): void {
+    const dur = 0.55;
+    if (beam.age > dur) return;
+    const k = 1 - beam.age / dur; // 1 → 0
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = rgba(palette.danger, 0.5 * k);
+    ctx.lineWidth = 7 * k + 1;
+    ctx.beginPath();
+    ctx.moveTo(beam.fromX, beam.fromY);
+    ctx.lineTo(beam.toX, beam.toY);
+    ctx.stroke();
+    ctx.strokeStyle = rgba(palette.cream, 0.9 * k);
+    ctx.lineWidth = 2 * k + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(beam.fromX, beam.fromY);
+    ctx.lineTo(beam.toX, beam.toY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // A one-shot danger vignette when a hunter locks on — the dark pressing in from
+  // the frame edges, brightest at the instant of the lock, then fading out.
+  private drawLockVignette(w: number, h: number, intensity: number): void {
+    const ctx = this.ctx;
+    const inner = Math.min(w, h) * 0.34;
+    const outer = Math.max(w, h) * 0.64;
+    const g = ctx.createRadialGradient(w / 2, h / 2, inner, w / 2, h / 2, outer);
+    g.addColorStop(0, rgba(palette.danger, 0));
+    g.addColorStop(1, rgba(palette.danger, 0.34 * intensity));
+    ctx.save();
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
 

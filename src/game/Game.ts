@@ -12,7 +12,13 @@ import type { Body } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
 import { WorldState } from './world.ts';
-import { DarkForest, VISIBILITY, type HiddenSystem } from './visibility.ts';
+import {
+  DarkForest,
+  VISIBILITY,
+  computeBroadcast,
+  systemBroadcast,
+  type HiddenSystem,
+} from './visibility.ts';
 import { placedStarVelocity, placedPlanetVelocity, clampedVelocity } from './placement.ts';
 import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
@@ -25,9 +31,10 @@ const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
 const WORLD_MASS = 0.02; // a planet — feels the suns, barely tugs them back
 const WORLD_ORBIT = 850; // px from the barycenter where a planet is dropped in
-// Act III: a world this populous "announces itself" to the dark and wakes the
-// forest; this many silent civilizations then ring the edge of the field.
-const BROADCAST_POP = 6;
+// Act III: this many silent civilizations ring the edge of the field once the
+// forest wakes. It wakes when the system's broadcast first crosses the detection
+// threshold (see updateDarkForest) — bright stars, a thriving civilization, or a
+// supernova flare — not on population alone.
 const HIDDEN_SYSTEMS = 8;
 // "Set"-placed sandbox bodies (quick-set: tap a spot, pick a star's mass; the
 // velocity is supplied automatically — see placement.ts).
@@ -113,6 +120,20 @@ export class Game {
   private chapterCard: { act: 1 | 2 | 3 } | null = null;
   // Which acts' title cards have already been shown — each opens once per session.
   private shownChapters = new Set<number>();
+  // Act III broadcast flare: a supernova flash, decaying like the forest's own,
+  // tracked here too so a detonation can wake the forest before any hunt exists.
+  private sandboxFlare = 0;
+  // elapsed when a hunter locked on — drives the one-shot lock telegraph. null = none.
+  private lockedAt: number | null = null;
+  // The hunter's strike: a beam from the hidden system to the doomed star, drawn
+  // fading for a beat as the star detonates. null when no strike is in flight.
+  private strikeBeam: {
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    t0: number;
+  } | null = null;
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -240,6 +261,12 @@ export class Game {
 
   private onKeyDown(e: KeyboardEvent): void {
     if (e.key !== 'Escape') return;
+    // A chapter card is modal — Esc closes it (mirrors its ✕ / a tap anywhere) and
+    // leaves the run underneath untouched, instead of abandoning to the title.
+    if (this.chapterCard) {
+      this.chapterCard = null;
+      return;
+    }
     // On the title, Esc closes the explainer card if it's open (mirrors the ✕);
     // there's nothing else to escape to. Elsewhere it returns to the title.
     if (this.state === 'title') {
@@ -524,6 +551,9 @@ export class Game {
     this.sandboxOutcome = null;
     this.darkForest = null;
     this.chapterCard = null;
+    this.sandboxFlare = 0;
+    this.lockedAt = null;
+    this.strikeBeam = null;
     this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
@@ -563,6 +593,9 @@ export class Game {
     this.sandboxOutcome = null;
     this.darkForest = null;
     this.chapterCard = null;
+    this.sandboxFlare = 0;
+    this.lockedAt = null;
+    this.strikeBeam = null;
     this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
@@ -625,6 +658,9 @@ export class Game {
     this.sandboxOutcome = null;
     this.darkForest = null;
     this.chapterCard = null;
+    this.sandboxFlare = 0;
+    this.lockedAt = null;
+    this.strikeBeam = null;
     this.placing = null;
     this.extinctionTimer = 0;
     this.outcome = null;
@@ -926,20 +962,34 @@ export class Game {
   // flares; cross the threshold for too long and a hunter locks on, then strikes.
   private updateDarkForest(dt: number): void {
     if (!this.nbody) return;
+
+    // The two sustained broadcast signals, derived from the live system.
+    const planets = new Set(this.worlds.map(w => w.body));
+    const starMasses = this.nbody.bodies.filter(b => !planets.has(b)).map(b => b.mass);
+    const { luminosity, life } = systemBroadcast(starMasses, this.worlds);
+    // The pre-wake flare decays like the forest's own, so a supernova spike is a
+    // brief window in which a quiet system can still be noticed.
+    this.sandboxFlare = Math.max(0, this.sandboxFlare - VISIBILITY.flareDecay * dt);
+
     if (!this.darkForest) {
-      // Wake the forest the first time a world broadcasts (a populous civilization).
-      if (!this.worlds.some(w => w.population >= BROADCAST_POP)) return;
+      // Wake the forest the first time the system broadcasts past the detection
+      // threshold — loud stars, a thriving civilization, or a supernova flare, not
+      // population alone (the dark forest hears the loud, however they got loud).
+      if (computeBroadcast(luminosity, life, this.sandboxFlare) <= VISIBILITY.detectThreshold) {
+        return;
+      }
       this.darkForest = new DarkForest(this.seedHiddenSystems());
       this.queueChapter(3);
     }
-    const planets = new Set(this.worlds.map(w => w.body));
-    const luminosity = this.nbody.bodies
-      .filter(b => !planets.has(b))
-      .reduce((sum, b) => sum + b.mass, 0);
-    const life = this.worlds.reduce((sum, w) => sum + w.population * w.dawns, 0);
-    const com = this.systemCOM();
-    const ev = this.darkForest.update(dt, { luminosity, life, center: { x: com.x, y: com.y } });
-    if (ev === 'strike') this.darkForestStrike();
+
+    // markNearestHunter compares against where the system is SEEN: the camera keeps
+    // the barycenter at the canvas centre and the hidden ring is seeded in that same
+    // canvas space, so the on-screen centre — not the world COM — is the right
+    // reference (a world-space COM would light up the wrong-looking hunter).
+    const { width: cw, height: ch } = this.renderer.layout.canvas;
+    const ev = this.darkForest.update(dt, { luminosity, life, center: { x: cw / 2, y: ch / 2 } });
+    if (ev === 'locked') this.lockedAt = this.elapsed;
+    else if (ev === 'strike') this.darkForestStrike();
     else if (ev === 'survived') this.sandboxOutcome = 'survived';
   }
 
@@ -952,7 +1002,24 @@ export class Game {
       (best, b) => (!best || b.mass > best.mass ? b : best),
       null,
     );
-    if (target) {
+    if (target && this.nbody) {
+      // Aim the beam from the locked hunter (canvas space) to where the doomed
+      // star is SEEN: the camera draws world point P at centre + (P − COM)·zoom,
+      // so map the star into that same canvas space for the beam's far end.
+      const com = this.systemCOM();
+      const { width: cw, height: ch } = this.renderer.layout.canvas;
+      const z = this.cameraZoom;
+      const hunter = this.darkForest?.systems.find(s => s.hunter);
+      this.strikeBeam = {
+        fromX: hunter ? hunter.x : cw / 2,
+        fromY: hunter ? hunter.y : 0,
+        toX: cw / 2 + (target.pos.x - com.x) * z,
+        toY: ch / 2 + (target.pos.y - com.y) * z,
+        t0: this.elapsed,
+      };
+      // The detonation, and the star is annihilated: drop it from the render set
+      // (the sim is frozen now that the run is ending, so nothing re-adds it). The
+      // flash is transient — no remnant; the loud star is simply gone.
       this.supernova = {
         x: target.pos.x,
         y: target.pos.y,
@@ -960,6 +1027,7 @@ export class Game {
         mergedMass: target.mass,
         transient: true,
       };
+      this.unravelTracks = this.unravelTracks.filter(t => t.body !== target);
       this.renderer.burst(target.pos.x, target.pos.y, 360, palette.danger, 460);
     }
     this.sandboxOutcome = 'detected';
@@ -1028,8 +1096,10 @@ export class Game {
       palette.cream,
       event.supernova ? 440 : 340,
     );
-    // A detonation is a bright flash the dark forest can see (Act III).
+    // A detonation is a bright flash the dark forest can see (Act III): spike the
+    // woken forest's flare, and the pre-wake flare so a supernova alone can wake it.
     this.darkForest?.flash();
+    this.sandboxFlare = 1;
   }
 
   private activeSpec(): BodySpec | null {
@@ -1197,7 +1267,21 @@ export class Game {
             visibility: this.darkForest.visibility,
             threshold: VISIBILITY.detectThreshold,
             locked: this.darkForest.locked,
+            provoked: this.darkForest.provoked,
+            detectionProgress: this.darkForest.detectionProgress,
+            strikeProgress: this.darkForest.strikeProgress,
+            surviveProgress: this.darkForest.surviveProgress,
+            lockAge: this.lockedAt !== null ? this.elapsed - this.lockedAt : null,
             systems: this.darkForest.systems,
+          }
+        : null,
+      strikeBeam: this.strikeBeam
+        ? {
+            fromX: this.strikeBeam.fromX,
+            fromY: this.strikeBeam.fromY,
+            toX: this.strikeBeam.toX,
+            toY: this.strikeBeam.toY,
+            age: this.elapsed - this.strikeBeam.t0,
           }
         : null,
       chapterCard: this.chapterCard,

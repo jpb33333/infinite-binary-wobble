@@ -60,6 +60,19 @@ export function computeBroadcast(luminosity: number, life: number, flare: number
   return clamp(raw, 0, 1);
 }
 
+// Derive the two sustained broadcast signals from the live system: luminosity
+// (Σ star mass; the caller excludes planets) and life (Σ population×dawns over
+// the worlds). Pure, so the signal derivation is unit-tested — not just the hunt
+// that consumes it.
+export function systemBroadcast(
+  starMasses: number[],
+  worlds: { population: number; dawns: number }[],
+): { luminosity: number; life: number } {
+  const luminosity = starMasses.reduce((sum, m) => sum + m, 0);
+  const life = worlds.reduce((sum, w) => sum + w.population * w.dawns, 0);
+  return { luminosity, life };
+}
+
 export class DarkForest {
   readonly systems: HiddenSystem[];
   visibility = 0; // smoothed broadcast, 0..1 — what the meter shows
@@ -79,6 +92,21 @@ export class DarkForest {
   // which decays over the next few seconds.
   flash(): void {
     this.flareLevel = 1;
+  }
+
+  // Progress ratios (0..1) the meter reads to make the hunt legible: how close
+  // detection is to a lock, the strike countdown once a hunter has locked on, and
+  // how far the survival clock has run since the forest first woke.
+  get detectionProgress(): number {
+    return clamp(this.detection / VISIBILITY.lockSeconds, 0, 1);
+  }
+  get strikeProgress(): number {
+    return this.locked ? clamp(this.lockTimer / VISIBILITY.strikeSeconds, 0, 1) : 0;
+  }
+  get surviveProgress(): number {
+    return this.provoked && !this.locked
+      ? clamp(this.silentTimer / VISIBILITY.surviveSeconds, 0, 1)
+      : 0;
   }
 
   // Advance the hunt one frame. Returns the event that fired this frame (if any).
