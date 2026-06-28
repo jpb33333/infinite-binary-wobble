@@ -29,6 +29,7 @@ export const VISIBILITY = {
   strikeSeconds: 5, // grace after a lock before the strike lands — go quiet!
   unlockBelow: 0.3, // drop visibility below this (after a lock) to break the lock
   surviveSeconds: 25, // sustained quiet, once the forest has woken → you survive
+  darkDamp: 0.12, // "running dark" cuts the broadcast to this fraction — enough to fall quiet
 } as const;
 
 // A civilization hidden in the dark at the edge of the field. `stir` (0..1) is how
@@ -110,12 +111,15 @@ export class DarkForest {
   }
 
   // Advance the hunt one frame. Returns the event that fired this frame (if any).
-  update(dt: number, signals: BroadcastSignals): HuntEvent {
+  update(dt: number, signals: BroadcastSignals, quiet = false): HuntEvent {
     if (this.done) return null;
 
     // Flare decays continuously; broadcast eases toward its instantaneous value.
+    // "Running dark" (quiet) shrouds the system — the target collapses toward the
+    // floor, so a loud system can deliberately fall silent and break a lock.
     this.flareLevel = Math.max(0, this.flareLevel - VISIBILITY.flareDecay * dt);
-    const target = computeBroadcast(signals.luminosity, signals.life, this.flareLevel);
+    const broadcast = computeBroadcast(signals.luminosity, signals.life, this.flareLevel);
+    const target = quiet ? broadcast * VISIBILITY.darkDamp : broadcast;
     this.visibility += (target - this.visibility) * Math.min(1, VISIBILITY.smoothing * dt);
 
     const loud = this.visibility > VISIBILITY.detectThreshold;

@@ -143,6 +143,8 @@ export interface RenderInput {
   // The hunter's strike beam (Act III): hidden system → doomed star, fading over a
   // beat. Drawn in canvas space with the hidden systems. null when no strike.
   strikeBeam: { fromX: number; fromY: number; toX: number; toY: number; age: number } | null;
+  // Act III "Go Dark" engaged — the player has powered the system down to hide.
+  goingDark: boolean;
   // A chapter title card open (modal) over the current screen. null when none.
   chapterCard: { act: 1 | 2 | 3 } | null;
 }
@@ -771,9 +773,14 @@ export class Renderer {
       // sub-pixel dot) right out to the ejection boundary. The draw is inside the
       // cz-scaled transform, so divide the screen floor by cz to get world units.
       const cz = input.cameraZoom;
+      // Running dark dims the whole system — a visible "powered down" tell.
+      const darkMul = input.goingDark ? 0.45 : 1;
       for (const d of drawables) {
         const ds = depthScale(d.z);
-        const style = { ...d.style, haloAlpha: d.style.haloAlpha * Math.min(1.3, Math.max(0.5, ds)) };
+        const style = {
+          ...d.style,
+          haloAlpha: d.style.haloAlpha * Math.min(1.3, Math.max(0.5, ds)) * darkMul,
+        };
         const r = Math.max(d.r * ds, MIN_UNRAVEL_SCREEN_R / cz);
         drawStar(ctx, d.x, d.y, r, style, input.time);
       }
@@ -855,7 +862,7 @@ export class Renderer {
       // The strike beam lances in from the hunter just before the detonation.
       if (input.strikeBeam) this.drawStrikeBeam(input.strikeBeam);
       for (const s of input.darkForest.systems) this.drawHiddenSystem(s, dfTime);
-      drawVisibilityMeter(ctx, w, input.darkForest, dfTime, this.reducedMotion);
+      drawVisibilityMeter(ctx, w, input.darkForest, dfTime, this.reducedMotion, input.goingDark);
     }
 
     if (input.sim && input.classifier && !input.unravel) {
@@ -1364,6 +1371,29 @@ export class Renderer {
         });
         this.register('set_planet', planetSet);
         this.register('random_planet', planetRnd);
+        let helpY = row2 + pillH + 16;
+        // Act III: once the forest is awake, the player can "go dark" — power the
+        // system down to fall below the detection threshold and endure the hunt,
+        // at the cost of life (worlds wither while hidden → extinction risk). Shown
+        // the moment the forest exists, not only once provoked, so the lever is
+        // there as soon as Act III begins.
+        if (input.darkForest) {
+          const row3 = row2 + pillH + 10;
+          const darkBtn: CanvasButton = {
+            label: input.goingDark ? 'Running Dark' : 'Go Dark',
+            x: 16,
+            y: row3,
+            width: bw * 2 + 8,
+            height: pillH,
+          };
+          drawButton(ctx, darkBtn, {
+            primary: input.goingDark ? palette.hunter : palette.cream,
+            text: input.goingDark ? palette.cream : palette.voidDeep,
+            hovered: hoveredName === 'go_dark',
+          });
+          this.register('go_dark', darkBtn);
+          helpY = row3 + pillH + 16;
+        }
         ctx.save();
         ctx.textAlign = 'left';
         ctx.fillStyle = rgba(palette.cream, 0.5);
@@ -1371,7 +1401,7 @@ export class Renderer {
         ctx.fillText(
           `Set drops it where you tap.  Stars ${input.starCount}/${SANDBOX_CAP} · Planets ${input.planetCount}/${SANDBOX_CAP}.`,
           16,
-          row2 + pillH + 16,
+          helpY,
         );
         ctx.restore();
       }

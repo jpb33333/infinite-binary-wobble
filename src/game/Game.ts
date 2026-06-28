@@ -134,6 +134,9 @@ export class Game {
     toY: number;
     t0: number;
   } | null = null;
+  // Act III "Go Dark": the civilization powers down to fall below the forest's
+  // detection threshold — survival at the cost of life (worlds wither while dark).
+  private goingDark = false;
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -349,6 +352,11 @@ export class Game {
         this.beginPlacing('planet');
         return;
       }
+      // Act III: power the system down (toggle) to hide from the forest.
+      if (btn === 'go_dark' && this.darkForest) {
+        this.goingDark = !this.goingDark;
+        return;
+      }
     }
     // Placement-mode controls (active while a body is being Set-placed).
     if (this.placing) {
@@ -562,6 +570,7 @@ export class Game {
     this.sandboxFlare = 0;
     this.lockedAt = null;
     this.strikeBeam = null;
+    this.goingDark = false;
     this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
@@ -604,6 +613,7 @@ export class Game {
     this.sandboxFlare = 0;
     this.lockedAt = null;
     this.strikeBeam = null;
+    this.goingDark = false;
     this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
@@ -669,6 +679,7 @@ export class Game {
     this.sandboxFlare = 0;
     this.lockedAt = null;
     this.strikeBeam = null;
+    this.goingDark = false;
     this.placing = null;
     this.extinctionTimer = 0;
     this.outcome = null;
@@ -941,7 +952,7 @@ export class Game {
       const planets = new Set(this.worlds.map(e => e.body));
       const suns = this.nbody.bodies.filter(b => !planets.has(b));
       for (const world of this.worlds) {
-        world.update(dt, suns);
+        world.update(dt, suns, this.goingDark);
         world.trail.push(world.body.pos.x, world.body.pos.y);
       }
     }
@@ -1028,7 +1039,11 @@ export class Game {
     // canvas space, so the on-screen centre — not the world COM — is the right
     // reference (a world-space COM would light up the wrong-looking hunter).
     const { width: cw, height: ch } = this.renderer.layout.canvas;
-    const ev = this.darkForest.update(dt, { luminosity, life, center: { x: cw / 2, y: ch / 2 } });
+    const ev = this.darkForest.update(
+      dt,
+      { luminosity, life, center: { x: cw / 2, y: ch / 2 } },
+      this.goingDark,
+    );
     if (ev === 'locked') this.lockedAt = this.elapsed;
     else if (ev === 'strike') this.darkForestStrike();
     else if (ev === 'survived') this.sandboxOutcome = 'survived';
@@ -1325,6 +1340,7 @@ export class Game {
             age: this.elapsed - this.strikeBeam.t0,
           }
         : null,
+      goingDark: this.goingDark,
       chapterCard: this.chapterCard,
     });
   }

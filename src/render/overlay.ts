@@ -1074,6 +1074,7 @@ export function drawVisibilityMeter(
   },
   time: number,
   reducedMotion: boolean,
+  goingDark: boolean,
 ): void {
   const barW = 300;
   const barH = 10;
@@ -1089,9 +1090,13 @@ export function drawVisibilityMeter(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
 
-  // Label, or a flashing warning when a hunter is locked on.
-  const label = meter.locked ? 'DETECTED — GO DARK' : 'VISIBILITY';
-  ctx.fillStyle = meter.locked ? rgba(palette.danger, pulse) : rgba(palette.cream, 0.6);
+  // Label: running dark > the locked warning > the resting "visibility".
+  const label = goingDark ? 'RUNNING DARK' : meter.locked ? 'DETECTED — GO DARK' : 'VISIBILITY';
+  ctx.fillStyle = goingDark
+    ? rgba(palette.world, 0.9)
+    : meter.locked
+      ? rgba(palette.danger, pulse)
+      : rgba(palette.cream, 0.6);
   ctx.font = `600 ${cpx(11)}px ${fonts.sans}`;
   ctx.fillText(label, w / 2, y - 9);
 

@@ -169,3 +169,37 @@ describe('DarkForest progress ratios (meter legibility)', () => {
     expect(f.surviveProgress).toBeLessThan(1);
   });
 });
+
+describe('DarkForest running dark (the survival lever)', () => {
+  test('going dark damps the broadcast and breaks a lock — without changing the signals', () => {
+    const f = new DarkForest(systems());
+    for (let t = 0; t < 40 && !f.locked; t += 1 / 60) f.update(1 / 60, sig(64, 20));
+    expect(f.locked).toBe(true);
+    // Identical loud signals, but now quiet=true (running dark): visibility
+    // collapses below the unlock floor and the lock breaks — the reprieve.
+    let broke = false;
+    for (let t = 0; t < 6; t += 1 / 60) {
+      f.update(1 / 60, sig(64, 20), true);
+      if (!f.locked) {
+        broke = true;
+        break;
+      }
+    }
+    expect(broke).toBe(true);
+    expect(f.visibility).toBeLessThan(VISIBILITY.unlockBelow);
+  });
+
+  test('a brief loud spell then running dark reaches survival, even while loud', () => {
+    const f = new DarkForest(systems());
+    let survived = false;
+    for (let t = 0; t < VISIBILITY.surviveSeconds + 8; t += 1 / 60) {
+      const loud = t < 1.5; // wake the forest, then run dark through the window
+      const ev = f.update(1 / 60, sig(64, 20), !loud);
+      if (ev === 'survived') {
+        survived = true;
+        break;
+      }
+    }
+    expect(survived).toBe(true);
+  });
+});
