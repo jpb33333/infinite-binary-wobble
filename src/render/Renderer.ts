@@ -38,7 +38,11 @@ import {
   drawPaywallCard,
   drawTitleExplainerLink,
   drawExplainerCard,
+  drawChapterCard,
+  drawVisibilityMeter,
+  CHAPTERS,
   type CanvasButton,
+  type SandboxOutcome,
 } from './overlay.ts';
 import { bodyRadius } from '../physics/Body.ts';
 import { showsCornerAgain } from './cornerControls.ts';
@@ -84,7 +88,7 @@ export interface RenderInput {
   // unravel eases out below 1 to keep the whole spreading system in frame).
   cameraZoom: number;
   // How the sandbox failed, or null while it runs. Drives the game-over card.
-  sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null;
+  sandboxOutcome: SandboxOutcome | null;
   placing: {
     kind: 'star' | 'planet';
     pos: { x: number; y: number } | null;
@@ -121,6 +125,28 @@ export interface RenderInput {
     stable: boolean;
     driftWarn: number;
   }[];
+  // Act III — the hidden hunters in the dark + the player's broadcast meter.
+  // null until a thriving world wakes the forest. `systems` are at fixed
+  // design-space positions around the frame; `stir` (0..1) brightens them and
+  // the locked hunter pulses danger.
+  darkForest: {
+    visibility: number;
+    threshold: number;
+    locked: boolean;
+    provoked: boolean;
+    detectionProgress: number;
+    strikeProgress: number;
+    surviveProgress: number;
+    lockAge: number | null;
+    systems: { x: number; y: number; stir: number; hunter: boolean }[];
+  } | null;
+  // The hunter's strike beam (Act III): hidden system → doomed star, fading over a
+  // beat. Drawn in canvas space with the hidden systems. null when no strike.
+  strikeBeam: { fromX: number; fromY: number; toX: number; toY: number; age: number } | null;
+  // Act III "Go Dark" engaged — the player has powered the system down to hide.
+  goingDark: boolean;
+  // A chapter title card open (modal) over the current screen. null when none.
+  chapterCard: { act: 1 | 2 | 3 } | null;
 }
 
 // A world's drawn radius (fixed — it's a planet, far lighter than any star, so
@@ -363,6 +389,22 @@ export class Renderer {
 
     // Collision debris is positioned in design space — render it with the scene.
     this.burstLayer.draw(ctx);
+
+    // Modal chapter card sits above the whole scene (it pauses play while open).
+    // Registers only its ✕ hit rect; the Game also dismisses on a tap anywhere.
+    if (input.chapterCard) {
+      const { width: cw, height: ch } = this.layout.canvas;
+      const closeHovered = this.hoveredButton(input.hover) === 'chapter_close';
+      const close = drawChapterCard(ctx, cw, ch, CHAPTERS[input.chapterCard.act], closeHovered);
+      const hit = close.closeR + 9;
+      this.register('chapter_close', {
+        label: '',
+        x: close.closeX - hit,
+        y: close.closeY - hit,
+        width: hit * 2,
+        height: hit * 2,
+      });
+    }
 
     // Ambient motes paint last, on top, full-bleed (back to screen space) so
     // they keep the original "drifting in front" feel across the whole window.
@@ -731,9 +773,14 @@ export class Renderer {
       // sub-pixel dot) right out to the ejection boundary. The draw is inside the
       // cz-scaled transform, so divide the screen floor by cz to get world units.
       const cz = input.cameraZoom;
+      // Running dark dims the whole system — a visible "powered down" tell.
+      const darkMul = input.goingDark ? 0.45 : 1;
       for (const d of drawables) {
         const ds = depthScale(d.z);
-        const style = { ...d.style, haloAlpha: d.style.haloAlpha * Math.min(1.3, Math.max(0.5, ds)) };
+        const style = {
+          ...d.style,
+          haloAlpha: d.style.haloAlpha * Math.min(1.3, Math.max(0.5, ds)) * darkMul,
+        };
         const r = Math.max(d.r * ds, MIN_UNRAVEL_SCREEN_R / cz);
         drawStar(ctx, d.x, d.y, r, style, input.time);
       }
@@ -800,6 +847,23 @@ export class Renderer {
     }
 
     ctx.restore();
+
+    // Act III — the hidden systems watching from the dark, and the broadcast
+    // meter. Drawn fixed (not camera-wrapped): the hunters ring the frame edge,
+    // dim until your visibility stirs them; the locked one pulses danger.
+    if (input.darkForest) {
+      // reduced-motion: freeze the danger pulse (pass 0 for time) so the hunters
+      // and warning label don't strobe — mirrors the starfield/comet/ambient gating.
+      const dfTime = this.reducedMotion ? 0 : input.time;
+      // A lock just fired: a brief danger vignette so the lock reads as a moment,
+      // not only a meter colour change. (0.9s one-shot, fading out.)
+      const la = input.darkForest.lockAge;
+      if (la !== null && la < 0.9) this.drawLockVignette(w, h, 1 - la / 0.9);
+      // The strike beam lances in from the hunter just before the detonation.
+      if (input.strikeBeam) this.drawStrikeBeam(input.strikeBeam);
+      for (const s of input.darkForest.systems) this.drawHiddenSystem(s, dfTime);
+      drawVisibilityMeter(ctx, w, input.darkForest, dfTime, this.reducedMotion, input.goingDark);
+    }
 
     if (input.sim && input.classifier && !input.unravel) {
       const o = input.sim.orbit();
@@ -949,6 +1013,79 @@ export class Renderer {
 
   // The world, tinted by its climate so its state reads at a glance: red-hot when
   // scorching, dim/cold when frozen, pale blue when temperate.
+  // A civilization hidden in the dark (Act III): a small cold point, dim until
+  // the player's broadcast stirs it (stir → brighter), the locked hunter pulsing
+  // danger-red. Drawn additively so it glows against the void like a far star.
+  private drawHiddenSystem(
+    s: { x: number; y: number; stir: number; hunter: boolean },
+    time: number,
+  ): void {
+    const ctx = this.ctx;
+    const pulse = 0.6 + 0.4 * Math.sin(time * 8);
+    const alpha = s.hunter ? pulse : 0.16 + 0.5 * s.stir;
+    const color = s.hunter ? palette.danger : blendHex(palette.hunter, palette.danger, s.stir * 0.5);
+    const r = 3 + 3 * s.stir + (s.hunter ? 2 : 0);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 3);
+    g.addColorStop(0, rgba(color, alpha));
+    g.addColorStop(1, rgba(color, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(s.x - r * 3, s.y - r * 3, r * 6, r * 6);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = rgba(color, Math.min(1, alpha + 0.2));
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // The hunter's strike: a beam from the hidden system to the doomed star — a hot
+  // cream core inside a danger glow, fading over a beat. Drawn in canvas space
+  // (with the hidden systems), so both ends already share one coordinate frame.
+  private drawStrikeBeam(beam: {
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    age: number;
+  }): void {
+    const dur = 0.55;
+    if (beam.age > dur) return;
+    const k = 1 - beam.age / dur; // 1 → 0
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = rgba(palette.danger, 0.5 * k);
+    ctx.lineWidth = 7 * k + 1;
+    ctx.beginPath();
+    ctx.moveTo(beam.fromX, beam.fromY);
+    ctx.lineTo(beam.toX, beam.toY);
+    ctx.stroke();
+    ctx.strokeStyle = rgba(palette.cream, 0.9 * k);
+    ctx.lineWidth = 2 * k + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(beam.fromX, beam.fromY);
+    ctx.lineTo(beam.toX, beam.toY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // A one-shot danger vignette when a hunter locks on — the dark pressing in from
+  // the frame edges, brightest at the instant of the lock, then fading out.
+  private drawLockVignette(w: number, h: number, intensity: number): void {
+    const ctx = this.ctx;
+    const inner = Math.min(w, h) * 0.34;
+    const outer = Math.max(w, h) * 0.64;
+    const g = ctx.createRadialGradient(w / 2, h / 2, inner, w / 2, h / 2, outer);
+    g.addColorStop(0, rgba(palette.danger, 0));
+    g.addColorStop(1, rgba(palette.danger, 0.34 * intensity));
+    ctx.save();
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
   private worldStyle(era: string): StarStyle {
     if (era === 'scorching') {
       return { ...STYLE_WORLD, primary: blendHex(palette.world, palette.danger, 0.6) };
@@ -1234,6 +1371,29 @@ export class Renderer {
         });
         this.register('set_planet', planetSet);
         this.register('random_planet', planetRnd);
+        let helpY = row2 + pillH + 16;
+        // Act III: once the forest is awake, the player can "go dark" — power the
+        // system down to fall below the detection threshold and endure the hunt,
+        // at the cost of life (worlds wither while hidden → extinction risk). Shown
+        // the moment the forest exists, not only once provoked, so the lever is
+        // there as soon as Act III begins.
+        if (input.darkForest) {
+          const row3 = row2 + pillH + 10;
+          const darkBtn: CanvasButton = {
+            label: input.goingDark ? 'Running Dark' : 'Go Dark',
+            x: 16,
+            y: row3,
+            width: bw * 2 + 8,
+            height: pillH,
+          };
+          drawButton(ctx, darkBtn, {
+            primary: input.goingDark ? palette.hunter : palette.cream,
+            text: input.goingDark ? palette.cream : palette.voidDeep,
+            hovered: hoveredName === 'go_dark',
+          });
+          this.register('go_dark', darkBtn);
+          helpY = row3 + pillH + 16;
+        }
         ctx.save();
         ctx.textAlign = 'left';
         ctx.fillStyle = rgba(palette.cream, 0.5);
@@ -1241,7 +1401,7 @@ export class Renderer {
         ctx.fillText(
           `Set drops it where you tap.  Stars ${input.starCount}/${SANDBOX_CAP} · Planets ${input.planetCount}/${SANDBOX_CAP}.`,
           16,
-          row2 + pillH + 16,
+          helpY,
         );
         ctx.restore();
       }

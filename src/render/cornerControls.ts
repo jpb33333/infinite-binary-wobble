@@ -13,7 +13,7 @@
 // owns the screen — the card owns 'again' there.
 export function showsCornerAgain(o: {
   state: string;
-  sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null;
+  sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | 'detected' | 'survived' | null;
   unravel: boolean;
   outcomeKind: string | null;
   winCardDismissed: boolean;

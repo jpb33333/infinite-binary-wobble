@@ -34,4 +34,13 @@ describe('World climate + population', () => {
     expect(world.era).toBe('frozen');
     expect(world.stable).toBe(false);
   });
+
+  test('running dark suppresses growth — life wanes even in a temperate era', () => {
+    const world = new WorldState(createBody(0.02, vec2(0, 0), vec2(0, 0)));
+    const sun = createBody(2.5, vec2(500, 0), vec2(0, 0)); // warmth ≈ 1, temperate
+    world.population = 5;
+    for (let i = 0; i < 300; i++) world.update(1 / 60, [sun], true); // running dark
+    expect(world.era).toBe('temperate'); // the climate itself is unchanged…
+    expect(world.population).toBeLessThan(5); // …but a powered-down civilization wanes
+  });
 });

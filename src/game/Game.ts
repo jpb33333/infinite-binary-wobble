@@ -12,6 +12,13 @@ import type { Body } from '../physics/Body.ts';
 import { vec2 } from '../physics/Vec2.ts';
 import { OutcomeClassifier, outcomeConfigForLayout, type Outcome } from './outcomes.ts';
 import { WorldState } from './world.ts';
+import {
+  DarkForest,
+  VISIBILITY,
+  computeBroadcast,
+  systemBroadcast,
+  type HiddenSystem,
+} from './visibility.ts';
 import { placedStarVelocity, placedPlanetVelocity, clampedVelocity } from './placement.ts';
 import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
@@ -24,6 +31,11 @@ const COUNTDOWN_SECONDS = 3;
 const TRAIL_CAPACITY = 700;
 const WORLD_MASS = 0.02; // a planet — feels the suns, barely tugs them back
 const WORLD_ORBIT = 850; // px from the barycenter where a planet is dropped in
+// Act III: this many silent civilizations ring the edge of the field once the
+// forest wakes. It wakes when the system's broadcast first crosses the detection
+// threshold (see updateDarkForest) — bright stars, a thriving civilization, or a
+// supernova flare — not on population alone.
+const HIDDEN_SYSTEMS = 8;
 // "Set"-placed sandbox bodies (quick-set: tap a spot, pick a star's mass; the
 // velocity is supplied automatically — see placement.ts).
 const SET_STAR_DEFAULT_MASS = 3;
@@ -83,7 +95,8 @@ export class Game {
   private cameraZoom = 1;
   // How the sandbox finally fails (null while it's still running): the system
   // collapses to a black hole, or all life dies out.
-  private sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null = null;
+  private sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | 'detected' | 'survived' | null =
+    null;
   // Sandbox "Set" placement: when set, the unravel pauses and the player taps a
   // drop point (pos in WORLD coords) + picks a star's mass; Launch drops it.
   private placing: {
@@ -100,6 +113,30 @@ export class Game {
   // True while dragging a velocity vector out of the Set-star ghost.
   private placingVelGrab = false;
   private extinctionTimer = 0;
+  // Act III — "The Fermi Paradox". null until a thriving world wakes the forest;
+  // then it runs the visibility/detection hunt against the hidden systems.
+  private darkForest: DarkForest | null = null;
+  // A chapter title card currently open (modal; pauses the sandbox). null = none.
+  private chapterCard: { act: 1 | 2 | 3 } | null = null;
+  // Which acts' title cards have already been shown — each opens once per session.
+  private shownChapters = new Set<number>();
+  // Act III broadcast flare: a supernova flash, decaying like the forest's own,
+  // tracked here too so a detonation can wake the forest before any hunt exists.
+  private sandboxFlare = 0;
+  // elapsed when a hunter locked on — drives the one-shot lock telegraph. null = none.
+  private lockedAt: number | null = null;
+  // The hunter's strike: a beam from the hidden system to the doomed star, drawn
+  // fading for a beat as the star detonates. null when no strike is in flight.
+  private strikeBeam: {
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    t0: number;
+  } | null = null;
+  // Act III "Go Dark": the civilization powers down to fall below the forest's
+  // detection threshold — survival at the cost of life (worlds wither while dark).
+  private goingDark = false;
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -226,7 +263,21 @@ export class Game {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    // DEV-only playtest shortcut (gated on import.meta.env.DEV, so Vite strips it
+    // from production builds): press "F" (for Fermi) to jump straight into a loud
+    // post-win sandbox and wake Act III's dark forest — skips the win + perturb
+    // grind when iterating on the act. Not present in the shipped game.
+    if (import.meta.env.DEV && (e.key === 'f' || e.key === 'F')) {
+      this.devJumpToActIII();
+      return;
+    }
     if (e.key !== 'Escape') return;
+    // A chapter card is modal — Esc closes it (mirrors its ✕ / a tap anywhere) and
+    // leaves the run underneath untouched, instead of abandoning to the title.
+    if (this.chapterCard) {
+      this.chapterCard = null;
+      return;
+    }
     // On the title, Esc closes the explainer card if it's open (mirrors the ✕);
     // there's nothing else to escape to. Elsewhere it returns to the title.
     if (this.state === 'title') {
@@ -240,6 +291,13 @@ export class Game {
     e.preventDefault();
     const p = this.renderer.screenToLogical(e);
     this.hover = p;
+
+    // A chapter title card is modal: any tap (or its ✕) dismisses it, and nothing
+    // else happens on that press.
+    if (this.chapterCard) {
+      this.chapterCard = null;
+      return;
+    }
 
     // Button clicks first
     const btn = this.renderer.hoveredButton(p);
@@ -292,6 +350,11 @@ export class Game {
       }
       if (btn === 'set_planet') {
         this.beginPlacing('planet');
+        return;
+      }
+      // Act III: power the system down (toggle) to hide from the forest.
+      if (btn === 'go_dark' && this.darkForest) {
+        this.goingDark = !this.goingDark;
         return;
       }
     }
@@ -502,6 +565,12 @@ export class Game {
     this.worlds = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
+    this.darkForest = null;
+    this.chapterCard = null;
+    this.sandboxFlare = 0;
+    this.lockedAt = null;
+    this.strikeBeam = null;
+    this.goingDark = false;
     this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
@@ -539,6 +608,12 @@ export class Game {
     this.worlds = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
+    this.darkForest = null;
+    this.chapterCard = null;
+    this.sandboxFlare = 0;
+    this.lockedAt = null;
+    this.strikeBeam = null;
+    this.goingDark = false;
     this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
@@ -553,6 +628,7 @@ export class Game {
     this.explainerOpen = false;
     this.posControl.release();
     this.arrowControl.release();
+    this.queueChapter(1);
     this.state = 'setup_p1';
   }
 
@@ -598,6 +674,12 @@ export class Game {
     this.worlds = [];
     this.cameraZoom = 1;
     this.sandboxOutcome = null;
+    this.darkForest = null;
+    this.chapterCard = null;
+    this.sandboxFlare = 0;
+    this.lockedAt = null;
+    this.strikeBeam = null;
+    this.goingDark = false;
     this.placing = null;
     this.extinctionTimer = 0;
     this.outcome = null;
@@ -612,6 +694,39 @@ export class Game {
     this.meter.consumePlay();
     track('play_start');
     this.state = 'simulate';
+  }
+
+  // DEV-only (import.meta.env.DEV): stand up a post-win sandbox and pump it loud
+  // so Act III's dark forest wakes immediately — a testing shortcut past the win +
+  // perturbation. The added stars are massive (high luminosity → past the
+  // detection threshold) but on wide, gentle orbits so they don't instantly
+  // collide and collapse before the hunt can play out. Tree-shaken from prod.
+  private devJumpToActIII(): void {
+    if (!import.meta.env.DEV) return; // body collapses away in production builds
+    this.toSimulate(); // fresh sim + classifier from the current specs
+    this.outcome = { kind: 'win' };
+    this.burstedOnResolve = true; // skip the resolve burst + scoreboard record
+    this.state = 'resolved';
+    this.ensureNBodyFromWin();
+    if (!this.nbody) return;
+    const com = this.systemCOM();
+    for (let i = 0; i < 5 && !this.atStarCap(); i++) {
+      const ang = (i / 5) * Math.PI * 2;
+      const R = 520;
+      const vCirc = Math.sqrt((PHYSICS.G * Math.max(com.mass, 1)) / R) * 0.7;
+      const star = createBody(
+        5,
+        vec2(com.x + Math.cos(ang) * R, com.y + Math.sin(ang) * R),
+        vec2(-Math.sin(ang) * vCirc, Math.cos(ang) * vCirc),
+      );
+      this.nbody.addBody(star);
+      this.unravelTracks.push({
+        body: star,
+        trail: new Trail(TRAIL_CAPACITY),
+        kind: 'star',
+        mergedCount: 1,
+      });
+    }
   }
 
   private toResolved(o: Outcome): void {
@@ -673,6 +788,8 @@ export class Game {
     // The WIN card is gone now; drop any in-progress card drag.
     this.winCardOffset = { x: 0, y: 0 };
     this.draggingCard = false;
+    // Act II begins the first time the player perturbs the winning binary.
+    this.queueChapter(2);
   }
 
   // Mass-weighted barycenter of the whole running system (suns + the tiny
@@ -835,10 +952,11 @@ export class Game {
       const planets = new Set(this.worlds.map(e => e.body));
       const suns = this.nbody.bodies.filter(b => !planets.has(b));
       for (const world of this.worlds) {
-        world.update(dt, suns);
+        world.update(dt, suns, this.goingDark);
         world.trail.push(world.body.pos.x, world.body.pos.y);
       }
     }
+    this.updateDarkForest(dt);
     this.checkSandboxOutcome(dt);
   }
 
@@ -890,6 +1008,111 @@ export class Game {
   }
 
 
+  // Act III — once a world is loud enough to "announce itself", the dark forest
+  // wakes: hidden systems ring the dark and a visibility/detection hunt begins.
+  // Broadcast rises with stellar luminosity, civilization activity, and supernova
+  // flares; cross the threshold for too long and a hunter locks on, then strikes.
+  private updateDarkForest(dt: number): void {
+    if (!this.nbody) return;
+
+    // The two sustained broadcast signals, derived from the live system.
+    const planets = new Set(this.worlds.map(w => w.body));
+    const starMasses = this.nbody.bodies.filter(b => !planets.has(b)).map(b => b.mass);
+    const { luminosity, life } = systemBroadcast(starMasses, this.worlds);
+    // The pre-wake flare decays like the forest's own, so a supernova spike is a
+    // brief window in which a quiet system can still be noticed.
+    this.sandboxFlare = Math.max(0, this.sandboxFlare - VISIBILITY.flareDecay * dt);
+
+    if (!this.darkForest) {
+      // Wake the forest the first time the system broadcasts past the detection
+      // threshold — loud stars, a thriving civilization, or a supernova flare, not
+      // population alone (the dark forest hears the loud, however they got loud).
+      if (computeBroadcast(luminosity, life, this.sandboxFlare) <= VISIBILITY.detectThreshold) {
+        return;
+      }
+      this.darkForest = new DarkForest(this.seedHiddenSystems());
+      this.queueChapter(3);
+    }
+
+    // markNearestHunter compares against where the system is SEEN: the camera keeps
+    // the barycenter at the canvas centre and the hidden ring is seeded in that same
+    // canvas space, so the on-screen centre — not the world COM — is the right
+    // reference (a world-space COM would light up the wrong-looking hunter).
+    const { width: cw, height: ch } = this.renderer.layout.canvas;
+    const ev = this.darkForest.update(
+      dt,
+      { luminosity, life, center: { x: cw / 2, y: ch / 2 } },
+      this.goingDark,
+    );
+    if (ev === 'locked') this.lockedAt = this.elapsed;
+    else if (ev === 'strike') this.darkForestStrike();
+    else if (ev === 'survived') this.sandboxOutcome = 'survived';
+  }
+
+  // The hunt found you: a strike detonates your brightest star — the loud one
+  // that gave you away — and ends the run. Reuses the supernova flash visual.
+  private darkForestStrike(): void {
+    const planets = new Set(this.worlds.map(w => w.body));
+    const stars = this.nbody ? this.nbody.bodies.filter(b => !planets.has(b)) : [];
+    const target = stars.reduce<Body | null>(
+      (best, b) => (!best || b.mass > best.mass ? b : best),
+      null,
+    );
+    if (target && this.nbody) {
+      // Aim the beam from the locked hunter (canvas space) to where the doomed
+      // star is SEEN: the camera draws world point P at centre + (P − COM)·zoom,
+      // so map the star into that same canvas space for the beam's far end.
+      const com = this.systemCOM();
+      const { width: cw, height: ch } = this.renderer.layout.canvas;
+      const z = this.cameraZoom;
+      const hunter = this.darkForest?.systems.find(s => s.hunter);
+      this.strikeBeam = {
+        fromX: hunter ? hunter.x : cw / 2,
+        fromY: hunter ? hunter.y : 0,
+        toX: cw / 2 + (target.pos.x - com.x) * z,
+        toY: ch / 2 + (target.pos.y - com.y) * z,
+        t0: this.elapsed,
+      };
+      // The detonation, and the star is annihilated: drop it from the render set
+      // (the sim is frozen now that the run is ending, so nothing re-adds it). The
+      // flash is transient — no remnant; the loud star is simply gone.
+      this.supernova = {
+        x: target.pos.x,
+        y: target.pos.y,
+        t0: this.elapsed,
+        mergedMass: target.mass,
+        transient: true,
+      };
+      this.unravelTracks = this.unravelTracks.filter(t => t.body !== target);
+      this.renderer.burst(target.pos.x, target.pos.y, 360, palette.danger, 460);
+    }
+    this.sandboxOutcome = 'detected';
+  }
+
+  // Seed the hidden systems at fixed points around the frame's dark edge, so they
+  // always frame the play area (the renderer draws them canvas-fixed). A little
+  // angle jitter keeps the ring from reading as a mechanical pattern.
+  private seedHiddenSystems(): HiddenSystem[] {
+    const { width: w, height: h } = this.renderer.layout.canvas;
+    const cx = w / 2;
+    const cy = h / 2;
+    const rx = w / 2 - 40;
+    const ry = h / 2 - 40;
+    const out: HiddenSystem[] = [];
+    for (let i = 0; i < HIDDEN_SYSTEMS; i++) {
+      const a = (i / HIDDEN_SYSTEMS) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+      out.push({ x: cx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry, stir: 0, hunter: false });
+    }
+    return out;
+  }
+
+  // Open an act's title card the first time that act is reached this session.
+  private queueChapter(act: 1 | 2 | 3): void {
+    if (this.shownChapters.has(act)) return;
+    this.shownChapters.add(act);
+    this.chapterCard = { act };
+  }
+
   // A collision fused two stars. Retire the consumed tracks, give the merged
   // star a fresh track, and fire a transient flash at the merger point. The
   // merged body then carries on — we want to watch whether the survivor is
@@ -929,6 +1152,10 @@ export class Game {
       palette.cream,
       event.supernova ? 440 : 340,
     );
+    // A detonation is a bright flash the dark forest can see (Act III): spike the
+    // woken forest's flare, and the pre-wake flare so a supernova alone can wake it.
+    this.darkForest?.flash();
+    this.sandboxFlare = 1;
   }
 
   private activeSpec(): BodySpec | null {
@@ -1024,7 +1251,7 @@ export class Game {
         // its trails + merges. It never stops on a collision; merged stars just
         // carry on, watchable as long as the WIN it grew out of.
         if (this.nbody) {
-          if (!this.sandboxOutcome && !this.placing) this.advanceNBody(dt);
+          if (!this.sandboxOutcome && !this.placing && !this.chapterCard) this.advanceNBody(dt);
           break;
         }
         // For WINs, the wobble keeps going — it really is infinite. Keep the
@@ -1091,6 +1318,30 @@ export class Game {
       placing: this.placing,
       starCount: this.starCount(),
       planetCount: this.worlds.length,
+      darkForest: this.darkForest
+        ? {
+            visibility: this.darkForest.visibility,
+            threshold: VISIBILITY.detectThreshold,
+            locked: this.darkForest.locked,
+            provoked: this.darkForest.provoked,
+            detectionProgress: this.darkForest.detectionProgress,
+            strikeProgress: this.darkForest.strikeProgress,
+            surviveProgress: this.darkForest.surviveProgress,
+            lockAge: this.lockedAt !== null ? this.elapsed - this.lockedAt : null,
+            systems: this.darkForest.systems,
+          }
+        : null,
+      strikeBeam: this.strikeBeam
+        ? {
+            fromX: this.strikeBeam.fromX,
+            fromY: this.strikeBeam.fromY,
+            toX: this.strikeBeam.toX,
+            toY: this.strikeBeam.toY,
+            age: this.elapsed - this.strikeBeam.t0,
+          }
+        : null,
+      goingDark: this.goingDark,
+      chapterCard: this.chapterCard,
     });
   }
 
