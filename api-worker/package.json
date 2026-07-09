@@ -12,10 +12,10 @@
     "db:init": "wrangler d1 execute ibw --file=./schema.sql"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260625.1",
-    "typescript": "~6.0.2",
-    "vitest": "^4.1.9",
-    "wrangler": "^4.105.0"
+    "@cloudflare/workers-types": "^5.20260708.1",
+    "typescript": "~7.0.2",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.109.0"
   },
   "overrides": {
     "esbuild": "^0.28.1",
