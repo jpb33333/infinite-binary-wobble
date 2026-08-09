@@ -154,23 +154,11 @@ body[data-screen]:not([data-screen='title']) .dedication {
   color: rgba(255, 200, 155, 0.4); /* palette.cream @ 0.4 */
 }
 
-/* A quiet dedication below the copyright — Cardo italic, small and warm,
-   the title-screen subtitle voice scaled down to a whisper. */
-.dedication__natalia {
-  margin: 0.3rem 0 0;
-  font-family: 'Cardo', serif;
-  font-style: italic;
-  font-weight: 400;
-  font-size: 0.8rem;
-  letter-spacing: 0.02em;
-  color: rgba(244, 165, 141, 0.55); /* palette.rose @ 0.55 */
-}
-
-/* "My love" in Russian + Ukrainian, a whisper one step below "For Natalia".
+/* "My love" in Russian + Ukrainian, a whisper below the copyright.
    Cardo carries no Cyrillic glyphs, so these render in the Georgia serif-italic
-   fallback — the same serif voice, quieter and smaller than the line above. */
+   fallback — the title-screen subtitle voice scaled down to a whisper. */
 .dedication__love {
-  margin: 0.2rem 0 0;
+  margin: 0.3rem 0 0;
   font-family: 'Cardo', Georgia, serif;
   font-style: italic;
   font-weight: 400;
