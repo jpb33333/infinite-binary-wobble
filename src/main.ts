@@ -44,14 +44,11 @@ dedication.className = 'dedication';
 const copyright = document.createElement('p');
 copyright.className = 'dedication__copyright';
 copyright.textContent = '© Bowditch Gaming 2026';
-const natalia = document.createElement('p');
-natalia.className = 'dedication__natalia';
-natalia.textContent = 'For Natalia';
 // "My love" in Russian (любовь) and Ukrainian (любов), side by side.
 const love = document.createElement('p');
 love.className = 'dedication__love';
 love.textContent = 'Моя любовь · Моя любов';
-dedication.append(copyright, natalia, love);
+dedication.append(copyright, love);
 document.body.append(dedication);
 
 const game = new Game(canvas);
