@@ -28,6 +28,7 @@ import {
   drawPhaseLabel,
   drawHud,
   drawButton,
+  measureButtonLabel,
   drawTooltip,
   drawOutcomeCard,
   drawSandboxOver,
@@ -41,7 +42,12 @@ import {
   type CanvasButton,
 } from './overlay.ts';
 import { bodyRadius } from '../physics/Body.ts';
-import { showsCornerAgain } from './cornerControls.ts';
+import {
+  showsCornerAgain,
+  sandboxClusterLayout,
+  placementHudLayout,
+  SANDBOX_LABELS,
+} from './cornerControls.ts';
 import type { Body } from '../physics/Body.ts';
 import type { Simulation } from '../physics/Simulation.ts';
 import type { OutcomeClassifier, Outcome } from '../game/outcomes.ts';
@@ -1211,17 +1217,21 @@ export class Renderer {
       if (input.placing) {
         this.drawPlacementControls(input);
       } else {
-        const bw = 150;
-        const x2 = 16 + bw + 8;
-        const row2 = top + pillH + 10;
-        const starSet: CanvasButton = { label: 'Set Star', x: 16, y: top, width: bw, height: pillH };
-        const starRnd: CanvasButton = { label: 'Random Star', x: x2, y: top, width: bw, height: pillH };
+        // Pills sized to their compensated labels (cornerControls.ts) — fixed
+        // 150px rects overflowed on phone fits once cpx inflated the text.
+        const lay = sandboxClusterLayout({
+          orientation: this.layout.orientation,
+          measure: label => this.measurePillLabel(label),
+          captionAdvance: lineHeightFor(11),
+        });
+        const starSet: CanvasButton = { label: SANDBOX_LABELS.starSet, ...lay.starSet };
+        const starRnd: CanvasButton = { label: SANDBOX_LABELS.starRnd, ...lay.starRnd };
         drawButton(ctx, starSet, { primary: palette.danger, hovered: hoveredName === 'set_star' });
         drawButton(ctx, starRnd, { primary: palette.danger, hovered: hoveredName === 'random_star' });
         this.register('set_star', starSet);
         this.register('random_star', starRnd);
-        const planetSet: CanvasButton = { label: 'Set Planet', x: 16, y: row2, width: bw, height: pillH };
-        const planetRnd: CanvasButton = { label: 'Random Planet', x: x2, y: row2, width: bw, height: pillH };
+        const planetSet: CanvasButton = { label: SANDBOX_LABELS.planetSet, ...lay.planetSet };
+        const planetRnd: CanvasButton = { label: SANDBOX_LABELS.planetRnd, ...lay.planetRnd };
         drawButton(ctx, planetSet, {
           primary: palette.world,
           text: palette.voidDeep,
@@ -1240,8 +1250,8 @@ export class Renderer {
         ctx.font = `italic 400 ${cpx(11)}px ${fonts.serif}`;
         ctx.fillText(
           `Set drops it where you tap.  Stars ${input.starCount}/${SANDBOX_CAP} · Planets ${input.planetCount}/${SANDBOX_CAP}.`,
-          16,
-          row2 + pillH + 16,
+          lay.caption.x,
+          lay.caption.y,
         );
         ctx.restore();
       }
@@ -1255,9 +1265,24 @@ export class Renderer {
     const pl = input.placing;
     if (!pl) return;
     const { ctx } = this;
-    const top = 14;
     const hoveredName = this.hoveredButton(input.hover);
     const kind = pl.kind;
+
+    // Rows spaced by measured compensated text (cornerControls.ts) — the old
+    // fixed offsets left an 84px mass slot and 22px line steps that inflated
+    // phone-fit text exactly filled, overprinting its neighbours.
+    ctx.save();
+    ctx.font = `400 ${cpx(15)}px ${fonts.serif}`;
+    // Sized to the widest possible readout so the pills don't jitter with ±.
+    const massWidth = ctx.measureText('mass 5.0').width;
+    ctx.restore();
+    const lay = placementHudLayout({
+      kind,
+      hasPos: !!pl.pos,
+      hasVel: !!pl.vel,
+      massWidth,
+      lineAdvance: lineHeightFor(12),
+    });
 
     ctx.save();
     ctx.textAlign = 'left';
@@ -1270,15 +1295,13 @@ export class Renderer {
           : `Tap to move it · LAUNCH to drop the ${kind}`
         : `Tap the field to place the ${kind}`,
       16,
-      top + 8,
+      lay.hintY,
     );
     ctx.restore();
 
-    let y = top + 26;
-    if (kind === 'star') {
-      const pill = 40;
-      const minus: CanvasButton = { label: '−', x: 16, y, width: pill, height: pill };
-      const plus: CanvasButton = { label: '+', x: 16 + pill + 84, y, width: pill, height: pill };
+    if (lay.minus && lay.plus && lay.massCenter) {
+      const minus: CanvasButton = { label: '−', ...lay.minus };
+      const plus: CanvasButton = { label: '+', ...lay.plus };
       drawButton(ctx, minus, { primary: palette.danger, hovered: hoveredName === 'place_mass_minus' });
       drawButton(ctx, plus, { primary: palette.danger, hovered: hoveredName === 'place_mass_plus' });
       this.register('place_mass_minus', minus);
@@ -1288,35 +1311,37 @@ export class Renderer {
       ctx.textBaseline = 'middle';
       ctx.fillStyle = palette.cream;
       ctx.font = `400 ${cpx(15)}px ${fonts.serif}`;
-      ctx.fillText(`mass ${pl.mass.toFixed(1)}`, 16 + pill + 42, y + pill / 2);
+      ctx.fillText(`mass ${pl.mass.toFixed(1)}`, lay.massCenter.x, lay.massCenter.y);
       ctx.restore();
-      y += pill + 12;
     }
 
     // Live velocity readout for a Set star, so its aim reads like the setup HUD.
-    if (kind === 'star' && pl.pos && pl.vel) {
+    if (lay.velY !== null && pl.vel) {
       ctx.save();
       ctx.textAlign = 'left';
       ctx.fillStyle = rgba(palette.cream, 0.7);
       ctx.font = `400 ${cpx(12)}px ${fonts.sans}`;
-      ctx.fillText(`velocity ${Math.round(Math.hypot(pl.vel.x, pl.vel.y))} px/s`, 16, y + 4);
+      ctx.fillText(`velocity ${Math.round(Math.hypot(pl.vel.x, pl.vel.y))} px/s`, 16, lay.velY);
       ctx.restore();
-      y += 22;
     }
 
-    const bw = 110;
-    const bh = 44;
-    if (pl.pos) {
-      const launch: CanvasButton = { label: 'Launch', x: 16, y, width: bw, height: bh };
+    if (lay.launch) {
+      const launch: CanvasButton = { label: 'Launch', ...lay.launch };
       drawButton(ctx, launch, {
         primary: kind === 'star' ? palette.danger : palette.world,
         hovered: hoveredName === 'place_launch',
       });
       this.register('place_launch', launch);
     }
-    const cancel: CanvasButton = { label: 'Cancel', x: pl.pos ? 16 + bw + 8 : 16, y, width: bw, height: bh };
+    const cancel: CanvasButton = { label: 'Cancel', ...lay.cancel };
     drawButton(ctx, cancel, { primary: palette.terracotta, hovered: hoveredName === 'place_cancel' });
     this.register('place_cancel', cancel);
+  }
+
+  // Pill width driver for the act-2 cluster: the label as drawButton will
+  // actually draw it, measured through this frame's canvas.
+  private measurePillLabel(label: string): number {
+    return measureButtonLabel(this.ctx, label);
   }
 
   private renderResolved(input: RenderInput): void {
