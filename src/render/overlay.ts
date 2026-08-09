@@ -178,10 +178,31 @@ export function drawButton(
   ctx.fillStyle = text;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `600 ${cpx(14)}px ${fonts.sans}`;
-  const letterSpacing = 1.2;
-  drawSpacedText(ctx, btn.label.toUpperCase(), btn.x + btn.width / 2, btn.y + btn.height / 2 + 1, letterSpacing);
+  ctx.font = buttonLabelFont();
+  drawSpacedText(ctx, btn.label.toUpperCase(), btn.x + btn.width / 2, btn.y + btn.height / 2 + 1, BUTTON_LABEL_SPACING);
   ctx.restore();
+}
+
+// The label style drawButton renders with, shared with the measurer below so
+// pills sized to their text can never disagree with the drawn glyphs.
+const BUTTON_LABEL_SPACING = 1.2;
+function buttonLabelFont(): string {
+  return `600 ${cpx(14)}px ${fonts.sans}`;
+}
+
+// Width of a pill label exactly as drawButton draws it: uppercased, in the
+// compensated label font, advanced per-char with letterspacing (mirroring
+// drawSpacedText — canvas measureText of the whole string would add kerning
+// the spaced draw doesn't have). Used to size act-2 pills to their text.
+export function measureButtonLabel(ctx: CanvasRenderingContext2D, label: string): number {
+  ctx.save();
+  ctx.font = buttonLabelFont();
+  const chars = [...label.toUpperCase()];
+  const total =
+    chars.reduce((sum, c) => sum + ctx.measureText(c).width, 0) +
+    BUTTON_LABEL_SPACING * (chars.length - 1);
+  ctx.restore();
+  return total;
 }
 
 // A small circular ✕ button — used to dismiss the WIN card so the wobble can

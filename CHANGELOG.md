@@ -34,6 +34,18 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   rather than on another author's coined world.
 
 ### Fixed
+- **The sandbox buttons no longer overlap on phones.** The act-2 cluster (Set
+  Star / Random Star / Set Planet / Random Planet) and the Set-placement HUD
+  used fixed-width pills and fixed row offsets, tuned before phone text was
+  pulled up to the legibility floor — so on a phone the inflated labels
+  outgrew their pills and bled into the neighbouring button, while desktop
+  looked fine. Pills now size themselves to their measured labels, portrait
+  stacks the four into a single column clear of the centred phase label, and
+  the placement HUD's mass readout and line rows space themselves by measured
+  text. Desktop keeps its familiar layout (the longest labels gain a few
+  pixels of breathing room they were owed). Geometry is pure and unit-tested:
+  no two act-2 controls can intersect at any supported fit, on either
+  orientation.
 - **Text is legible on phones** — on the web game and the iOS app alike. Both
   render in a fixed design space that lands at about half-size on a phone held
   in portrait, which left help text, HUD labels, card stats, and tooltips far
