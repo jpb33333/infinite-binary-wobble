@@ -13,7 +13,7 @@
 // owns the screen — the card owns 'again' there.
 export function showsCornerAgain(o: {
   state: string;
-  sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | null;
+  sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | 'detected' | 'survived' | null;
   unravel: boolean;
   outcomeKind: string | null;
   winCardDismissed: boolean;
@@ -27,11 +27,12 @@ export function showsCornerAgain(o: {
 // The game continuing past the two-body waltz is a SURPRISE. Act 1's eyebrow
 // carries only the game's name; the first "ACT II" appears exactly when the
 // sandbox does (win card dismissed, or a third body already loose), and the
-// numeral retroactively names what came before. Keep 1 | 2 extensible: the
-// stranded feat/act3-fermi-paradox branch adds a 3 here when it lands.
+// numeral retroactively names what came before. Act 3 outranks both: the dark
+// forest waking IS the act change, however the player got loud.
 export const ACT_EYEBROWS = {
   1: 'INFINITE BINARY WOBBLE',
   2: 'ACT II · THE THREE-BODY PROBLEM',
+  3: 'ACT III · THE FERMI PARADOX',
 } as const;
 
 export function actForFrame(o: {
@@ -39,7 +40,9 @@ export function actForFrame(o: {
   unravel: boolean;
   outcomeKind: string | null;
   winCardDismissed: boolean;
-}): 1 | 2 {
+  darkForest: boolean;
+}): 1 | 2 | 3 {
+  if (o.darkForest) return 3;
   if (o.unravel) return 2;
   if (o.state === 'resolved' && o.outcomeKind === 'win' && o.winCardDismissed) return 2;
   return 1;
@@ -92,6 +95,7 @@ const PILL_MIN_W = 150;
 // Labels shared with the Renderer so measurement and drawing can't drift.
 export const PLACEMENT_LABELS = { launch: 'Launch', cancel: 'Cancel' } as const;
 export const CORNER_LABELS = { exit: 'Exit', again: 'Again' } as const;
+export const GO_DARK_LABELS = { idle: 'Go Dark', dark: 'Running Dark' } as const;
 
 export function pillWidth(
   measure: (label: string) => number,
@@ -122,6 +126,9 @@ export interface SandboxClusterLayout {
   starRnd: PillRect;
   planetSet: PillRect;
   planetRnd: PillRect;
+  // Act III "Go Dark" toggle: a full-width row under the grid once the dark
+  // forest is awake; null before act 3.
+  goDark: PillRect | null;
   // Caption baseline (textAlign left).
   caption: { x: number; y: number };
 }
@@ -144,6 +151,13 @@ export function sandboxClusterLayout(o: {
   captionAdvance: number;
   viewScale: number;
   phase: PhaseBlock;
+  // Act III: which Go Dark label is showing, or null before the forest wakes.
+  goDark: 'idle' | 'dark' | null;
+  // Measured caption width — folded into the yield rule ONLY when the centred
+  // block reaches the caption's band (the act-3 meter does; the act-2 phase
+  // block ends far above it). Callers pass 0 outside act 3 so act-1/2 layouts
+  // stay byte-identical to the pre-act-3 game.
+  captionWidth: number;
 }): SandboxClusterLayout {
   const wSetStar = pillWidth(o.measure, SANDBOX_LABELS.starSet);
   const wRndStar = pillWidth(o.measure, SANDBOX_LABELS.starRnd);
@@ -154,11 +168,19 @@ export function sandboxClusterLayout(o: {
   // max(16, advance): scale-1 advance is ~15, so desktop keeps the old fixed
   // 16px gap exactly; inflated captions get the room they measure.
   const captionGap = Math.max(16, Math.round(o.captionAdvance));
+  // The toggle pill must fit its WIDER label so flipping it never reflows.
+  const goDarkMin =
+    o.goDark === null
+      ? 0
+      : Math.max(
+          pillWidth(o.measure, GO_DARK_LABELS.idle, 110),
+          pillWidth(o.measure, GO_DARK_LABELS.dark, 110),
+        );
 
   if (o.orientation === 'portrait') {
-    const w = Math.max(wSetStar, wRndStar, wSetPlanet, wRndPlanet);
+    const w = Math.max(wSetStar, wRndStar, wSetPlanet, wRndPlanet, goDarkMin);
     const top = hudTop({
-      hudRight: CLUSTER_LEFT + w,
+      hudRight: Math.max(CLUSTER_LEFT + w, CLUSTER_LEFT + o.captionWidth),
       phaseLeft: o.phase.left,
       phaseBottom: o.phase.bottom,
     });
@@ -169,30 +191,40 @@ export function sandboxClusterLayout(o: {
       height: PILL_H,
     });
     const planetRnd = rect(3);
+    const goDark = o.goDark === null ? null : rect(4);
+    const lastRow = goDark ?? planetRnd;
     return {
       starSet: rect(0),
       starRnd: rect(1),
       planetSet: rect(2),
       planetRnd,
-      caption: { x: CLUSTER_LEFT, y: planetRnd.y + PILL_H + captionGap },
+      goDark,
+      caption: { x: CLUSTER_LEFT, y: lastRow.y + PILL_H + captionGap },
     };
   }
 
   const colL = Math.max(wSetStar, wSetPlanet);
   const colR = Math.max(wRndStar, wRndPlanet);
+  const span = Math.max(colL + gx + colR, goDarkMin);
   const top = hudTop({
-    hudRight: CLUSTER_LEFT + colL + gx + colR,
+    hudRight: Math.max(CLUSTER_LEFT + span, CLUSTER_LEFT + o.captionWidth),
     phaseLeft: o.phase.left,
     phaseBottom: o.phase.bottom,
   });
   const x2 = CLUSTER_LEFT + colL + gx;
   const row2 = top + PILL_H + gy;
+  const goDark: PillRect | null =
+    o.goDark === null
+      ? null
+      : { x: CLUSTER_LEFT, y: row2 + PILL_H + gy, width: span, height: PILL_H };
+  const lastRowY = goDark ? goDark.y : row2;
   return {
     starSet: { x: CLUSTER_LEFT, y: top, width: colL, height: PILL_H },
     starRnd: { x: x2, y: top, width: colR, height: PILL_H },
     planetSet: { x: CLUSTER_LEFT, y: row2, width: colL, height: PILL_H },
     planetRnd: { x: x2, y: row2, width: colR, height: PILL_H },
-    caption: { x: CLUSTER_LEFT, y: row2 + PILL_H + captionGap },
+    goDark,
+    caption: { x: CLUSTER_LEFT, y: lastRowY + PILL_H + captionGap },
   };
 }
 

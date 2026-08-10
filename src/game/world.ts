@@ -16,6 +16,7 @@ const SCORCH_ABOVE = 2.5;
 const POP_MAX = 10; // billions
 const GROWTH = 0.45; // logistic growth rate in a steady era
 const DECAY = 1.1; // population crash rate in a turbulent extreme
+const DARK_DECAY = 0.25; // gentle wane while the civilization is "running dark" (Act III)
 const EXTINCT_AT = 0.02;
 const REBOOT_AT = 0.5;
 
@@ -42,7 +43,7 @@ export class WorldState {
     this.trail = new Trail(700);
   }
 
-  update(dt: number, suns: Body[]): void {
+  update(dt: number, suns: Body[], suppressed = false): void {
     let insolation = 0;
     for (const s of suns) {
       const dx = this.body.pos.x - s.pos.x;
@@ -61,7 +62,16 @@ export class WorldState {
     this.era =
       warmth < FROZEN_BELOW ? 'frozen' : warmth > SCORCH_ABOVE ? 'scorching' : 'temperate';
 
-    if (this.era === 'temperate') {
+    if (suppressed) {
+      // The civilization has gone dark (Act III): powered down to hide from the
+      // forest. No growth even in a steady era, and a gentle decline — so hiding
+      // too long withers life toward extinction. The cost of silence.
+      this.population -= DARK_DECAY * dt * (this.population + 0.15);
+      if (this.population <= EXTINCT_AT) {
+        this.population = 0;
+        this.extinct = true;
+      }
+    } else if (this.era === 'temperate') {
       this.population += GROWTH * dt * (1 - this.population / POP_MAX);
       if (this.extinct && this.population >= REBOOT_AT) {
         this.dawns++;
