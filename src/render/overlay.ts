@@ -86,18 +86,23 @@ export function drawSessionStats(
   ctx.restore();
 }
 
+// The centred phase block: an act-title eyebrow over the live serif reading.
+// The eyebrow replaced the old "— phase —" filler with the act name — act 1
+// carries only the game's title so the existence of act 2 stays a surprise
+// (see ACT_EYEBROWS in cornerControls.ts).
 export function drawPhaseLabel(
   ctx: CanvasRenderingContext2D,
   text: string,
   w: number,
   highlightColor: string = palette.rose,
+  eyebrow: string = 'INFINITE BINARY WOBBLE',
 ): void {
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = rgba(palette.cream, 0.5);
   ctx.font = `500 ${cpx(11)}px ${fonts.sans}`;
-  ctx.fillText('— phase —', w / 2, 36);
+  ctx.fillText(eyebrow, w / 2, 36);
   ctx.fillStyle = highlightColor;
   ctx.font = `400 ${cpx(22)}px ${fonts.serif}`;
   ctx.fillText(text, w / 2, 64);
@@ -117,22 +122,33 @@ export function drawHud(
   // 16px gap was tuned for an uncompensated 18px value; the legibility floor
   // makes that value taller in portrait, so the label would overprint it.
   const labelGap = lineHeightFor(18);
-  ctx.font = `500 ${cpx(11)}px ${fonts.sans}`;
   ctx.textBaseline = 'alphabetic';
   let x = padX;
   for (const f of fields) {
     ctx.fillStyle = rgba(palette.cream, 0.55);
     ctx.textAlign = 'left';
+    ctx.font = `500 ${cpx(11)}px ${fonts.sans}`;
+    const labelWidth = ctx.measureText(f.label.toUpperCase()).width;
     ctx.fillText(f.label.toUpperCase(), x, baseY - labelGap);
     ctx.fillStyle = f.color;
     ctx.font = `400 ${cpx(18)}px ${fonts.serif}`;
-    ctx.fillText(f.value, x, baseY);
-    ctx.font = `500 ${cpx(11)}px ${fonts.sans}`;
+    // Measure in the VALUE font, before drawing advances the column — the old
+    // code switched back to the label font first and advanced on that width,
+    // so compensated labels overprinted their neighbours on phone fits.
     const valWidth = ctx.measureText(f.value).width;
-    x += Math.max(140, valWidth + 60);
+    ctx.fillText(f.value, x, baseY);
+    x += hudColumnAdvance(labelWidth, valWidth);
     if (x > w - padX - 100) break;
   }
   ctx.restore();
+}
+
+// Column advance for the metrics HUD: the legacy 140px grid, widened only when
+// a compensated label or value actually needs the room. At scale 1 every
+// current field fits under the floor, so desktop columns land exactly where
+// they always did.
+export function hudColumnAdvance(labelWidth: number, valueWidth: number): number {
+  return Math.max(140, Math.ceil(labelWidth) + 28, Math.ceil(valueWidth) + 24);
 }
 
 export function drawButton(
@@ -354,9 +370,9 @@ export function drawWorldTooltip(
   const title = info.stable ? 'Steady Era' : 'Turbulent Era';
   const climate =
     info.era === 'scorching'
-      ? 'scorching — the suns crowd the sky'
+      ? 'scorching—the suns crowd the sky'
       : info.era === 'frozen'
-        ? 'frozen — the suns have fled'
+        ? 'frozen—the suns have fled'
         : 'temperate';
   const turbulence =
     info.chaos < 0.15 ? 'steady skies' : info.chaos < 0.4 ? 'unsettled' : 'violent swings';
@@ -409,10 +425,10 @@ function worldSurfaceLine(info: {
   era: string;
   stable: boolean;
 }): string {
-  if (info.population <= 0.05) return 'Lifeless — awaiting the next dawn.';
+  if (info.population <= 0.05) return 'Lifeless—awaiting the next dawn.';
   if (info.era === 'scorching') return 'The seas boil; the cities burn.';
   if (info.era === 'frozen') return 'Ice entombs the last fires.';
-  if (info.stable) return 'A golden age — humanity flourishes.';
+  if (info.stable) return 'A golden age—humanity flourishes.';
   return 'An uneasy calm; the sky cannot be trusted.';
 }
 
@@ -521,10 +537,10 @@ export function drawSandboxOver(
         : 'Lost to the dark.';
   const body =
     outcome === 'collapse'
-      ? 'The stars all fell together — a black hole, and everything with it.'
+      ? 'The stars all fell together—a black hole, and everything with it.'
       : outcome === 'extinction'
         ? 'All life is ash. No one is left to watch the sky.'
-        : 'A close pass flung your world out of the system — into the endless cold.';
+        : 'A close pass flung your world out of the system—into the endless cold.';
 
   const cardW = 660;
   const cardH = 236;
@@ -742,12 +758,14 @@ export function drawTitleExplainerLink(
 const EXPLAINER_TITLE = 'binary stars';
 const EXPLAINER_BODY: readonly string[] = [
   'Most stars are not alone.',
-  'Perhaps half the stars you can see are two — bound to each other, circling a shared center of gravity, a point that belongs to neither and to both. Astronomers call them binary stars.',
-  'Often only one is bright enough to see. It wobbles, tugged by a companion no one can find — to an astronomer, a binary star is a wobble of light.',
-  'Neither star leads. Neither follows. Each bends the other’s path — and when the balance is right, the dance holds for billions of years.',
+  'Perhaps half the stars you can see are two—bound to each other, circling a shared center of gravity, a point that belongs to neither and to both. Astronomers call them binary stars.',
+  'Often only one is bright enough to see. It wobbles, tugged by a companion no one can find—to an astronomer, a binary star is a wobble of light.',
+  'That wobble is how astronomers weigh what they cannot see—starlight shifts blue as a star swings toward us, red as it swings away. The same trick, refined, now finds planets circling other suns.',
+  'In 1844 Friedrich Bessel read a wobble in Sirius’s path and declared an unseen companion. Eighteen years later a telescope found it—Sirius B, the first white dwarf ever known.',
+  'Neither star leads. Neither follows. Each bends the other’s path—and when the balance is right, the dance holds for billions of years.',
   'When it isn’t, they fall together, or fly apart.',
-  'Two bodies, Newton’s laws — set down over three centuries ago — can predict almost forever. Add a third, and the certainty breaks: the three-body problem has no general solution to this day.',
-  'You are about to be such a pair. But remember — other bodies that enter your system can influence it, and even destabilize it permanently.',
+  'Two bodies, Newton’s laws—set down over three centuries ago—can predict almost forever. Add a third, and the certainty breaks: the three-body problem has no general solution to this day.',
+  'You are about to be such a pair. But remember—other bodies that enter your system can influence it, and even destabilize it permanently.',
 ];
 
 export function drawExplainerCard(
@@ -763,30 +781,68 @@ export function drawExplainerCard(
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
 
-  const cardW = 640;
-  const padX = 56; // inner horizontal padding
-  const textW = cardW - padX * 2;
-  const paraGap = 14; // blank space between paragraphs
   const bodySize = 17;
   const bodyLineH = lineHeightFor(bodySize); // follows the legibility floor
+  const titleTop = 40; // title baseline offset from card top
+  const bottomPad = 40;
+  const maxH = h - 32; // the card must never leave the design space
 
-  // Measure the wrapped body up front so the card height fits the prose exactly
-  // — no clipped lines, no dead space — at any of the wrapped paragraph counts.
+  // Wrap the prose at a column width and flow it into 1 or 2 columns. Two
+  // columns split at the paragraph boundary that best balances their heights
+  // (a paragraph never breaks across columns).
   ctx.save();
   ctx.font = `italic 400 ${cpx(bodySize)}px ${fonts.serif}`;
-  const wrappedParas = EXPLAINER_BODY.map(p => wrapText(ctx, p, textW));
+  const layoutAt = (cardW: number, padX: number, paraGap: number, titleToBody: number, cols: 1 | 2) => {
+    const colGap = 40;
+    const colW = cols === 1 ? cardW - padX * 2 : (cardW - padX * 2 - colGap) / 2;
+    const paras = EXPLAINER_BODY.map(p => wrapText(ctx, p, colW));
+    const colH = (c: string[][]): number =>
+      c.reduce((s, p) => s + p.length * bodyLineH, 0) + Math.max(0, c.length - 1) * paraGap;
+    let columns: string[][][] = [paras];
+    if (cols === 2) {
+      let bestH = Infinity;
+      for (let s = 1; s < paras.length; s++) {
+        const split = [paras.slice(0, s), paras.slice(s)];
+        const m = Math.max(colH(split[0]), colH(split[1]));
+        if (m < bestH) {
+          bestH = m;
+          columns = split;
+        }
+      }
+    }
+    const bodyHeight = Math.max(...columns.map(colH));
+    return {
+      cardW,
+      padX,
+      paraGap,
+      titleToBody,
+      colGap,
+      colW,
+      columns,
+      bodyHeight,
+      cardH: titleTop + titleToBody + bodyHeight + bottomPad,
+    };
+  };
+
+  // Fit ladder: the classic 640 single-column card whenever it fits (desktop
+  // stays pixel-identical) → two balanced columns on a wide card (phone fits,
+  // where the legibility floor roughly doubles the prose) → as a last resort
+  // squeeze the body rhythm a few percent below the floor rather than clip.
+  let lay = layoutAt(640, 56, 14, 44, 1);
+  if (lay.cardH > maxH) lay = layoutAt(Math.min(1180, w - 64), 40, 12, 40, 2);
+  let squeeze = 1;
+  if (lay.cardH > maxH) {
+    const budget = maxH - titleTop - lay.titleToBody - bottomPad;
+    squeeze = Math.max(0.8, budget / lay.bodyHeight);
+  }
   ctx.restore();
-  const totalBodyLines = wrappedParas.reduce((n, lines) => n + lines.length, 0);
 
-  const titleTop = 40; // title baseline offset from card top
-  const titleToBody = 44; // gap from title baseline to first body line
-  const bottomPad = 40;
-  const bodyHeight =
-    totalBodyLines * bodyLineH + (wrappedParas.length - 1) * paraGap;
-  const cardH = titleTop + titleToBody + bodyHeight + bottomPad;
-
+  const lineH = bodyLineH * squeeze;
+  const gapH = lay.paraGap * squeeze;
+  const cardH = titleTop + lay.titleToBody + lay.bodyHeight * squeeze + bottomPad;
+  const cardW = lay.cardW;
   const cx = (w - cardW) / 2;
-  const cy = (h - cardH) / 2;
+  const cy = Math.max(12, (h - cardH) / 2);
 
   // Panel
   ctx.save();
@@ -799,25 +855,32 @@ export function drawExplainerCard(
   ctx.stroke();
   ctx.restore();
 
-  // Title
+  // Title — legibility-floored like the body (raw 30px fell below the floor
+  // on phone fits).
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = palette.cream;
-  ctx.font = `400 30px ${fonts.serif}`;
+  ctx.font = `400 ${cpx(30)}px ${fonts.serif}`;
   ctx.fillText(EXPLAINER_TITLE, w / 2, cy + titleTop);
 
-  // Body — centred, wrapped, paragraph by paragraph.
+  // Body — wrapped paragraph by paragraph: centred in the classic single
+  // column, left-aligned when flowed into two.
   ctx.fillStyle = palette.rose;
-  ctx.font = `italic 400 ${cpx(bodySize)}px ${fonts.serif}`;
-  let y = cy + titleTop + titleToBody;
-  for (const lines of wrappedParas) {
-    for (const line of lines) {
-      ctx.fillText(line, w / 2, y);
-      y += bodyLineH;
+  ctx.font = `italic 400 ${cpx(bodySize) * squeeze}px ${fonts.serif}`;
+  const single = lay.columns.length === 1;
+  ctx.textAlign = single ? 'center' : 'left';
+  lay.columns.forEach((colParas, i) => {
+    const x = single ? w / 2 : cx + lay.padX + i * (lay.colW + lay.colGap);
+    let y = cy + titleTop + lay.titleToBody;
+    for (const lines of colParas) {
+      for (const line of lines) {
+        ctx.fillText(line, x, y);
+        y += lineH;
+      }
+      y += gapH;
     }
-    y += paraGap;
-  }
+  });
   ctx.restore();
 
   // ✕ to dismiss, top-right of the card — same construction as the WIN card.
@@ -958,7 +1021,7 @@ export function drawPaywallCard(
   ctx.fillStyle = rgba(palette.cream, 0.65);
   ctx.font = `500 ${cpx(13)}px ${fonts.sans}`;
   ctx.fillText(
-    'Pay what it’s worth to you — from $1 — to keep playing, forever.',
+    'Pay what it’s worth to you—from $1—to keep playing, forever.',
     w / 2,
     cy + 150,
   );
