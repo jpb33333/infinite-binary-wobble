@@ -46,6 +46,7 @@ import {
   type SandboxOutcome,
 } from './overlay.ts';
 import { bodyRadius } from '../physics/Body.ts';
+import { activePings, pingGlint } from './pings.ts';
 import {
   showsCornerAgain,
   actForFrame,
@@ -144,6 +145,10 @@ export interface RenderInput {
   // brightens them and the locked hunter pulses danger.
   darkForest: {
     visibility: number;
+    // Instantaneous post-damp broadcast + supernova leak — what the ping
+    // wavefronts draw (the meter draws the smoothed `visibility`).
+    emission: number;
+    flare: number;
     threshold: number;
     locked: boolean;
     provoked: boolean;
@@ -868,9 +873,44 @@ export class Renderer {
       // not only a meter colour change. (0.9s one-shot, fading out.)
       const la = input.darkForest.lockAge;
       if (la !== null && la < 0.9) this.drawLockVignette(w, h, 1 - la / 0.9);
+      // Broadcast pings: expanding wavefronts drawing the INSTANTANEOUS
+      // emission (GO DARK kills them at once; the meter's smoothed bar lags —
+      // that visible gap is the running-dark mechanic explained). Skipped
+      // under reduced motion like the comet/ambient layers; the meter still
+      // carries the information.
+      const rings = this.reducedMotion
+        ? []
+        : activePings(
+            input.time,
+            input.darkForest.emission,
+            input.darkForest.flare,
+            Math.max(w, h) * 0.62,
+          );
+      if (rings.length) {
+        const heat = Math.min(
+          1,
+          input.darkForest.emission / Math.max(0.001, input.darkForest.threshold),
+        );
+        const ringColor = blendHex(palette.cream, palette.danger, heat);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (const ring of rings) {
+          if (ring.r < 2) continue;
+          ctx.beginPath();
+          ctx.arc(w / 2, h / 2, ring.r, 0, Math.PI * 2);
+          ctx.strokeStyle = rgba(ringColor, ring.alpha);
+          ctx.lineWidth = 1.5 + 2 * ring.alpha;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
       // The strike beam lances in from the hunter just before the detonation.
       if (input.strikeBeam) this.drawStrikeBeam(input.strikeBeam);
-      for (const s of input.darkForest.systems) this.drawHiddenSystem(s, dfTime);
+      for (const s of input.darkForest.systems) {
+        // Hunters glint as a wavefront crosses them — your signal, arriving.
+        const glint = pingGlint(rings, Math.hypot(s.x - w / 2, s.y - h / 2));
+        this.drawHiddenSystem(s, dfTime, glint);
+      }
       drawVisibilityMeter(
         ctx,
         w,
@@ -1020,12 +1060,15 @@ export class Renderer {
   private drawHiddenSystem(
     s: { x: number; y: number; stir: number; hunter: boolean },
     time: number,
+    // 0..1 — a passing broadcast wavefront briefly brightens the system
+    // (pings.ts pingGlint), so the signal visibly REACHES the watchers.
+    glint = 0,
   ): void {
     const ctx = this.ctx;
     const pulse = 0.6 + 0.4 * Math.sin(time * 8);
-    const alpha = s.hunter ? pulse : 0.16 + 0.5 * s.stir;
+    const alpha = s.hunter ? pulse : Math.min(1, 0.16 + 0.5 * s.stir + 0.45 * glint);
     const color = s.hunter ? palette.danger : blendHex(palette.hunter, palette.danger, s.stir * 0.5);
-    const r = 3 + 3 * s.stir + (s.hunter ? 2 : 0);
+    const r = 3 + 3 * s.stir + (s.hunter ? 2 : 0) + 1.5 * glint;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 3);

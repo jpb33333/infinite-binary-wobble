@@ -203,3 +203,31 @@ describe('DarkForest running dark (the survival lever)', () => {
     expect(survived).toBe(true);
   });
 });
+
+// The broadcast-ping layer draws these two quantities (see pings.test.ts):
+// lastEmission is the INSTANTANEOUS signal fed to the forest this frame — the
+// thing GO DARK cuts immediately — while `visibility` stays the slow EMA the
+// meter shows. Exposing them is what lets the renderer teach the difference.
+describe('emission + flare exposure for the ping layer', () => {
+  test('running dark cuts the emission to the damp floor at once', () => {
+    const f = new DarkForest(systems());
+    // Two loud seconds: the smoothed visibility climbs well above the floor.
+    for (let t = 0; t < 2; t += 1 / 60) f.update(1 / 60, sig(64, 20), false);
+    const loudEmission = f.lastEmission;
+    expect(loudEmission).toBeGreaterThan(VISIBILITY.detectThreshold);
+    f.update(1 / 60, sig(64, 20), true);
+    expect(f.lastEmission).toBeCloseTo(loudEmission * VISIBILITY.darkDamp, 5);
+    // ...while the smoothed visibility is still easing down, far above the
+    // emission — the exact gap the ping layer exists to explain.
+    expect(f.visibility).toBeGreaterThan(f.lastEmission);
+  });
+
+  test('the flare getter spikes on flash and decays through update', () => {
+    const f = new DarkForest(systems());
+    expect(f.flare).toBe(0);
+    f.flash();
+    expect(f.flare).toBe(1);
+    f.update(0.5, sig(0, 0), false);
+    expect(f.flare).toBeCloseTo(1 - VISIBILITY.flareDecay * 0.5, 5);
+  });
+});
