@@ -27,7 +27,13 @@ describe('showsCornerAgain — corner Again never collides with a game-over card
   } as const;
 
   test('suppressed during EVERY sandbox game-over, even from a dismissed win (the bug)', () => {
-    for (const sandboxOutcome of ['extinction', 'collapse', 'ejection'] as const) {
+    for (const sandboxOutcome of [
+      'extinction',
+      'collapse',
+      'ejection',
+      'detected',
+      'survived',
+    ] as const) {
       // dismissed win + game-over = the exact broken case
       expect(showsCornerAgain({ ...base, sandboxOutcome, unravel: true, winCardDismissed: true })).toBe(
         false,
@@ -65,6 +71,7 @@ describe('actForFrame — the act-ii reveal fires with the sandbox, never before
     unravel: false,
     outcomeKind: null as string | null,
     winCardDismissed: false,
+    darkForest: false,
   };
 
   test('act 1 through setup, simulate, and every LOSE resolution', () => {
@@ -92,9 +99,24 @@ describe('actForFrame — the act-ii reveal fires with the sandbox, never before
     ).toBe(2);
   });
 
-  test('eyebrow copy: act 1 never says "act", act 2 names the reveal', () => {
+  test('act 3 the moment the dark forest wakes, and it outranks the act-2 cases', () => {
+    expect(actForFrame({ ...base, state: 'resolved', darkForest: true })).toBe(3);
+    expect(
+      actForFrame({
+        ...base,
+        state: 'resolved',
+        outcomeKind: 'win',
+        winCardDismissed: true,
+        unravel: true,
+        darkForest: true,
+      }),
+    ).toBe(3);
+  });
+
+  test('eyebrow copy: act 1 never says "act", acts 2 and 3 name the reveals', () => {
     expect(ACT_EYEBROWS[1]).toBe('INFINITE BINARY WOBBLE');
     expect(ACT_EYEBROWS[2]).toBe('ACT II · THE THREE-BODY PROBLEM');
+    expect(ACT_EYEBROWS[3]).toBe('ACT III · THE FERMI PARADOX');
   });
 });
 
@@ -178,6 +200,8 @@ describe('sandboxClusterLayout — pills sized to their compensated labels', () 
       orientation: 'landscape',
       measure: labelMeasurerAt(1),
       captionAdvance: captionAdvanceAt(1),
+      goDark: null,
+      captionWidth: 0,
       viewScale: 1,
       phase: desktopPhase('landscape'),
     });
@@ -205,6 +229,8 @@ describe('sandboxClusterLayout — pills sized to their compensated labels', () 
           orientation,
           measure: labelMeasurerAt(scale),
           captionAdvance: captionAdvanceAt(scale),
+          goDark: null,
+          captionWidth: 0,
           viewScale: scale,
           phase: phaseAt(scale, canvasW, ACT_EYEBROWS[2], ACT2_SERIF),
         });
@@ -239,6 +265,8 @@ describe('sandboxClusterLayout — pills sized to their compensated labels', () 
           orientation,
           measure: labelMeasurerAt(scale),
           captionAdvance: captionAdvanceAt(scale),
+          goDark: null,
+          captionWidth: 0,
           viewScale: scale,
           phase,
         });
@@ -255,6 +283,8 @@ describe('sandboxClusterLayout — pills sized to their compensated labels', () 
         orientation,
         measure: labelMeasurerAt(1),
         captionAdvance: captionAdvanceAt(1),
+      goDark: null,
+      captionWidth: 0,
         viewScale: 1,
         phase: desktopPhase(orientation),
       });
@@ -436,5 +466,111 @@ describe('cornerClusterLayout — EXIT/AGAIN sized to their labels, yielding to 
     });
     expect(layout.again).toBeNull();
     expect(layout.exit.x + layout.exit.width).toBe(800 - 16);
+  });
+});
+
+// ── Act III: the GO DARK row ──
+//
+// Once the dark forest wakes, a full-width toggle pill joins the sandbox
+// cluster (below the 2×2 grid / column), and the caption drops below it. The
+// pill must fit the WIDER of its two labels ("Running Dark") so toggling never
+// reflows the cluster. In act 3 the centred block the HUD yields to is the
+// phase block PLUS the visibility meter (renderer passes left = min(phase,
+// meter edge), bottom = meter bottom) — the caption's own width joins the
+// yield input there, since the caption's band overlaps the meter's.
+describe('sandboxClusterLayout — the act-3 GO DARK row', () => {
+  const GO_DARK_SERIF = 'where is everybody?';
+  // Sandbox caption ≈ 56 chars at compensated italic 11px (~0.42em/char).
+  const captionWidthAt = (scale: number): number => 56 * cpxAt(11, scale) * 0.42;
+  // The act-3 centred block as the renderer builds it: phase strings widened to
+  // the meter's 300px bar, bottom at the meter's foot (meter top clears the
+  // compensated serif band + the meter's own label line — Renderer.meterTop).
+  const meterBlockAt = (scale: number, canvasW: number) => {
+    const phase = phaseAt(scale, canvasW, ACT_EYEBROWS[3], GO_DARK_SERIF);
+    const meterLeft = (canvasW - 300) / 2;
+    const meterTop = Math.max(
+      96,
+      Math.ceil(64 + (cpxAt(22, scale) * 1.35) / 2 + cpxAt(11, scale) * 1.35 + 4),
+    );
+    return {
+      left: Math.min(phase.left, meterLeft),
+      right: canvasW - meterLeft,
+      bottom: meterTop + 64,
+    };
+  };
+
+  test('desktop landscape: full-width pill spans the grid, caption drops below it', () => {
+    const layout = sandboxClusterLayout({
+      orientation: 'landscape',
+      measure: labelMeasurerAt(1),
+      captionAdvance: captionAdvanceAt(1),
+      viewScale: 1,
+      phase: meterBlockAt(1, 1280),
+      goDark: 'idle',
+      captionWidth: captionWidthAt(1),
+    });
+    const gd = layout.goDark!;
+    expect(gd).toEqual({ x: 16, y: 122, width: 308, height: PILL_H });
+    expect(layout.caption).toEqual({ x: 16, y: 182 });
+  });
+
+  test('goDark: null keeps the #74 cluster byte-identical (no row, old caption)', () => {
+    const layout = sandboxClusterLayout({
+      orientation: 'landscape',
+      measure: labelMeasurerAt(1),
+      captionAdvance: captionAdvanceAt(1),
+      viewScale: 1,
+      phase: desktopPhase('landscape'),
+      goDark: null,
+      captionWidth: 0,
+    });
+    expect(layout.goDark).toBeNull();
+    expect(layout.caption).toEqual({ x: 16, y: 128 });
+  });
+
+  test('phone scales: the row fits RUNNING DARK, overlaps nothing, caption clears it', () => {
+    for (const scale of PHONE_SCALES) {
+      for (const orientation of ['landscape', 'portrait'] as const) {
+        const canvasW = orientation === 'landscape' ? 1280 : 800;
+        const measure = labelMeasurerAt(scale);
+        const layout = sandboxClusterLayout({
+          orientation,
+          measure,
+          captionAdvance: captionAdvanceAt(scale),
+          viewScale: scale,
+          phase: meterBlockAt(scale, canvasW),
+          goDark: 'dark',
+          captionWidth: captionWidthAt(scale),
+        });
+        const gd = layout.goDark!;
+        expect(gd.width).toBeGreaterThanOrEqual(measure('Running Dark') + 20);
+        for (const r of pills(layout)) expect(intersects(r, gd)).toBe(false);
+        expect(layout.caption.y - (gd.y + gd.height)).toBeGreaterThanOrEqual(
+          (captionAdvanceAt(scale) / 1.35) * 0.75,
+        );
+      }
+    }
+  });
+
+  test('with the meter block, the whole cluster (caption included) clears it or drops', () => {
+    for (const scale of [1, ...PHONE_SCALES]) {
+      for (const orientation of ['landscape', 'portrait'] as const) {
+        const canvasW = orientation === 'landscape' ? 1280 : 800;
+        const block = meterBlockAt(scale, canvasW);
+        const captionWidth = captionWidthAt(scale);
+        const layout = sandboxClusterLayout({
+          orientation,
+          measure: labelMeasurerAt(scale),
+          captionAdvance: captionAdvanceAt(scale),
+          viewScale: scale,
+          phase: block,
+          goDark: 'idle',
+          captionWidth,
+        });
+        const right = Math.max(...pills(layout).map(r => r.x + r.width), 16 + captionWidth);
+        const top = Math.min(...pills(layout).map(r => r.y));
+        expect(right + 24 <= block.left || top >= block.bottom + 16).toBe(true);
+      }
+    }
   });
 });
