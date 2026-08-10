@@ -20,6 +20,8 @@ import {
   type HiddenSystem,
 } from './visibility.ts';
 import { placedStarVelocity, placedPlanetVelocity, clampedVelocity } from './placement.ts';
+import { PING_INTERVAL, pingStrength } from '../render/pings.ts';
+import { unlock as unlockAudio, playPing, playStrike } from '../audio/sfx.ts';
 import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
@@ -140,6 +142,9 @@ export class Game {
   // Act III "Go Dark": the civilization powers down to fall below the forest's
   // detection threshold — survival at the cost of life (worlds wither while dark).
   private goingDark = false;
+  // Last broadcast-wavefront tick a sonar pulse played for (pings.ts clock) —
+  // the audio fires exactly when the renderer births a ring.
+  private lastPingTick = -1;
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -266,6 +271,8 @@ export class Game {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    // Any keypress is a user gesture: arm the (autoplay-gated) audio context.
+    unlockAudio();
     // DEV-only playtest shortcut (gated on import.meta.env.DEV, so Vite strips it
     // from production builds): press "F" (for Fermi) to jump straight into a loud
     // post-win sandbox and wake Act III's dark forest — skips the win + perturb
@@ -292,6 +299,9 @@ export class Game {
 
   private onPointerDown(e: PointerEvent): void {
     e.preventDefault();
+    // First tap arms the (autoplay-gated) audio context — invisibly, since the
+    // game is tap-driven anyway. Safe to call every press.
+    unlockAudio();
     const p = this.renderer.screenToLogical(e);
     this.hover = p;
 
@@ -1049,6 +1059,16 @@ export class Game {
     if (ev === 'locked') this.lockedAt = this.elapsed;
     else if (ev === 'strike') this.darkForestStrike();
     else if (ev === 'survived') this.sandboxOutcome = 'survived';
+
+    // Sonar pulse on each wavefront birth — same phase-locked clock the
+    // renderer's rings emit on (elapsed IS the render input's time), volume
+    // scaled by the same strength the rings draw. Running dark is as audible
+    // as it is visible: near-silence.
+    const tick = Math.floor(this.elapsed / PING_INTERVAL);
+    if (tick !== this.lastPingTick) {
+      this.lastPingTick = tick;
+      playPing(pingStrength(this.darkForest.lastEmission, this.darkForest.flare));
+    }
   }
 
   // The hunt found you: a strike detonates your brightest star — the loud one
@@ -1088,6 +1108,8 @@ export class Game {
       this.unravelTracks = this.unravelTracks.filter(t => t.body !== target);
       this.renderer.burst(target.pos.x, target.pos.y, 360, palette.danger, 460);
     }
+    // The lance-and-boom lands with the beam + detonation visuals.
+    playStrike();
     this.sandboxOutcome = 'detected';
   }
 
