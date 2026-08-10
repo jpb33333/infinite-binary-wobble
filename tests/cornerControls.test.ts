@@ -1,8 +1,12 @@
 import { describe, test, expect } from 'vitest';
 import {
   showsCornerAgain,
+  actForFrame,
+  ACT_EYEBROWS,
   sandboxClusterLayout,
   placementHudLayout,
+  cornerClusterLayout,
+  hudTop,
   pillWidth,
   SANDBOX_LABELS,
   PILL_H,
@@ -49,6 +53,51 @@ describe('showsCornerAgain — corner Again never collides with a game-over card
   });
 });
 
+// ── Act titling ──
+//
+// The game continuing past the two-body waltz is a SURPRISE: act 1's eyebrow
+// carries only the game's name, and the first "ACT II" appears exactly when the
+// sandbox does (win card dismissed, or a third body already loose). That reveal
+// retroactively names what came before.
+describe('actForFrame — the act-ii reveal fires with the sandbox, never before', () => {
+  const base = {
+    state: 'simulate',
+    unravel: false,
+    outcomeKind: null as string | null,
+    winCardDismissed: false,
+  };
+
+  test('act 1 through setup, simulate, and every LOSE resolution', () => {
+    expect(actForFrame({ ...base, state: 'setup_p1' })).toBe(1);
+    expect(actForFrame({ ...base })).toBe(1);
+    for (const kind of ['lose_escape', 'lose_slingshot', 'lose_collision']) {
+      expect(actForFrame({ ...base, state: 'resolved', outcomeKind: kind })).toBe(1);
+    }
+  });
+
+  test('act 1 while the WIN card is still up — no spoiler behind the card', () => {
+    expect(actForFrame({ ...base, state: 'resolved', outcomeKind: 'win' })).toBe(1);
+  });
+
+  test('act 2 the moment the win card is dismissed (sandbox controls appear)', () => {
+    expect(
+      actForFrame({ ...base, state: 'resolved', outcomeKind: 'win', winCardDismissed: true }),
+    ).toBe(2);
+  });
+
+  test('act 2 whenever the unravel is live, including sandbox game-overs', () => {
+    expect(actForFrame({ ...base, state: 'resolved', unravel: true })).toBe(2);
+    expect(
+      actForFrame({ ...base, state: 'resolved', outcomeKind: 'win', unravel: true }),
+    ).toBe(2);
+  });
+
+  test('eyebrow copy: act 1 never says "act", act 2 names the reveal', () => {
+    expect(ACT_EYEBROWS[1]).toBe('INFINITE BINARY WOBBLE');
+    expect(ACT_EYEBROWS[2]).toBe('ACT II · THE THREE-BODY PROBLEM');
+  });
+});
+
 // ── Sandbox cluster + placement HUD geometry ──
 //
 // Regression guards for "overlapping Random Star/Planet buttons on iOS": pills
@@ -78,6 +127,22 @@ function labelMeasurerAt(viewScale: number): (label: string) => number {
 const captionAdvanceAt = (viewScale: number): number => cpxAt(11, viewScale) * 1.35;
 const lineAdvanceAt = (viewScale: number): number => cpxAt(12, viewScale) * 1.35;
 
+// The centred phase block as the Renderer measures it: eyebrow at cpx(11) sans
+// (~0.62em/char), serif line at cpx(22) (~0.48em/char). Left edge of the wider
+// line, and the serif baseline band's bottom (middle-anchored at y=64).
+function phaseAt(viewScale: number, canvasW: number, eyebrow: string, serif: string) {
+  const eyebrowW = eyebrow.length * cpxAt(11, viewScale) * 0.62;
+  const serifW = serif.length * cpxAt(22, viewScale) * 0.48;
+  const half = Math.max(eyebrowW, serifW) / 2;
+  return {
+    left: canvasW / 2 - half,
+    right: canvasW / 2 + half,
+    bottom: 64 + (cpxAt(22, viewScale) * 1.35) / 2,
+  };
+}
+
+const ACT2_SERIF = 'no stable solution';
+
 const intersects = (a: PillRect, b: PillRect): boolean =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
@@ -88,8 +153,24 @@ const pills = (l: ReturnType<typeof sandboxClusterLayout>): PillRect[] => [
   l.planetRnd,
 ];
 
-// iPhone portrait ≈ 0.49, iPhone 5-era floor ≈ 0.4.
-const PHONE_SCALES = [0.4875, 0.4] as const;
+// iPhone portrait ≈ 0.49, Safari-toolbar landscape ≈ 0.43/0.37, iPhone 5-era ≈ 0.4.
+const PHONE_SCALES = [0.4875, 0.428, 0.4, 0.367] as const;
+
+const desktopPhase = (orientation: 'landscape' | 'portrait') =>
+  phaseAt(1, orientation === 'landscape' ? 1280 : 800, ACT_EYEBROWS[2], ACT2_SERIF);
+
+describe('hudTop — the left HUD yields to the phase block instead of crossing it', () => {
+  test('stays at the legacy 14 when there is clear air', () => {
+    expect(hudTop({ hudRight: 401, phaseLeft: 545, phaseBottom: 79 })).toBe(14);
+  });
+  test('drops below the phase block when the HUD would reach into it', () => {
+    expect(hudTop({ hudRight: 502, phaseLeft: 406, phaseBottom: 82 })).toBe(98);
+  });
+  test('boundary: exactly 24px of air keeps the legacy top', () => {
+    expect(hudTop({ hudRight: 400, phaseLeft: 424, phaseBottom: 80 })).toBe(14);
+    expect(hudTop({ hudRight: 401, phaseLeft: 424, phaseBottom: 80 })).toBe(96);
+  });
+});
 
 describe('sandboxClusterLayout — pills sized to their compensated labels', () => {
   test('desktop (scale 1) is pixel-identical to the fixed-width era', () => {
@@ -97,6 +178,8 @@ describe('sandboxClusterLayout — pills sized to their compensated labels', () 
       orientation: 'landscape',
       measure: labelMeasurerAt(1),
       captionAdvance: captionAdvanceAt(1),
+      viewScale: 1,
+      phase: desktopPhase('landscape'),
     });
     expect(layout.starSet).toEqual({ x: 16, y: 14, width: 150, height: 44 });
     expect(layout.starRnd).toEqual({ x: 174, y: 14, width: 150, height: 44 });
@@ -114,18 +197,29 @@ describe('sandboxClusterLayout — pills sized to their compensated labels', () 
     }
   });
 
-  test('phone scales: pills never overlap and the caption clears the grid', () => {
+  test('phone scales: pills never overlap, gaps hold ≥8/10 CSS px, caption clears the grid', () => {
     for (const scale of PHONE_SCALES) {
       for (const orientation of ['landscape', 'portrait'] as const) {
+        const canvasW = orientation === 'landscape' ? 1280 : 800;
         const layout = sandboxClusterLayout({
           orientation,
           measure: labelMeasurerAt(scale),
           captionAdvance: captionAdvanceAt(scale),
+          viewScale: scale,
+          phase: phaseAt(scale, canvasW, ACT_EYEBROWS[2], ACT2_SERIF),
         });
         const rects = pills(layout);
         for (let i = 0; i < rects.length; i++)
           for (let j = i + 1; j < rects.length; j++)
             expect(intersects(rects[i], rects[j])).toBe(false);
+        // Neighbouring pills keep at least 8 (x) / 10 (y) CSS px of visible air.
+        if (orientation === 'landscape') {
+          expect((layout.starRnd.x - (layout.starSet.x + layout.starSet.width)) * scale)
+            .toBeGreaterThanOrEqual(8 - 1e-9);
+        }
+        const rows = orientation === 'landscape' ? [layout.planetSet] : [layout.starRnd];
+        expect((rows[0].y - (layout.starSet.y + layout.starSet.height)) * scale)
+          .toBeGreaterThanOrEqual(10 - 1e-9);
         // Caption baseline sits below the lowest pill by at least an
         // inflated cap height (~0.75em of the compensated 11px caption).
         const bottom = Math.max(...rects.map(r => r.y + r.height));
@@ -136,33 +230,51 @@ describe('sandboxClusterLayout — pills sized to their compensated labels', () 
     }
   });
 
-  test('portrait single column clears the centred phase label and the corner cluster', () => {
-    const PORTRAIT_W = 800;
-    for (const scale of PHONE_SCALES) {
-      const layout = sandboxClusterLayout({
-        orientation: 'portrait',
-        measure: labelMeasurerAt(scale),
-        captionAdvance: captionAdvanceAt(scale),
-      });
-      const rects = pills(layout);
-      // Single column: all pills share x and width.
-      for (const r of rects) {
-        expect(r.x).toBe(rects[0].x);
-        expect(r.width).toBe(rects[0].width);
+  test('the cluster never crosses the act-ii phase block: clear air or dropped below', () => {
+    for (const scale of [1, ...PHONE_SCALES]) {
+      for (const orientation of ['landscape', 'portrait'] as const) {
+        const canvasW = orientation === 'landscape' ? 1280 : 800;
+        const phase = phaseAt(scale, canvasW, ACT_EYEBROWS[2], ACT2_SERIF);
+        const layout = sandboxClusterLayout({
+          orientation,
+          measure: labelMeasurerAt(scale),
+          captionAdvance: captionAdvanceAt(scale),
+          viewScale: scale,
+          phase,
+        });
+        const right = Math.max(...pills(layout).map(r => r.x + r.width));
+        const top = Math.min(...pills(layout).map(r => r.y));
+        expect(right + 24 <= phase.left || top >= phase.bottom + 16).toBe(true);
       }
-      const right = rects[0].x + rects[0].width;
-      // "the three-body problem" draws centred at w/2 in cpx(22) serif
-      // (~0.48em per char). The column must stay left of its left edge.
-      const labelHalf = (cpxAt(22, scale) * 0.48 * 'the three-body problem'.length) / 2;
-      expect(right).toBeLessThan(PORTRAIT_W / 2 - labelHalf);
-      // And left of the corner Again pill (x = 800 − 16 − 96 − 12 − 110).
-      expect(right).toBeLessThan(566);
+    }
+  });
+
+  test('desktop never drops: scale-1 keeps the legacy top in both orientations', () => {
+    for (const orientation of ['landscape', 'portrait'] as const) {
+      const layout = sandboxClusterLayout({
+        orientation,
+        measure: labelMeasurerAt(1),
+        captionAdvance: captionAdvanceAt(1),
+        viewScale: 1,
+        phase: desktopPhase(orientation),
+      });
+      expect(layout.starSet.y).toBe(14);
     }
   });
 });
 
 describe('placementHudLayout — measured rows for the Set placement HUD', () => {
-  const desktop = { massWidth: 60, lineAdvance: lineAdvanceAt(1) };
+  // Hint strings as the Renderer draws them, cpx(12) sans ≈ 0.55em/char.
+  const hintWidthAt = (scale: number): number =>
+    'Tap to move · drag the star to aim · LAUNCH'.length * cpxAt(12, scale) * 0.55;
+  const desktop = {
+    massWidth: 60,
+    lineAdvance: lineAdvanceAt(1),
+    measure: labelMeasurerAt(1),
+    viewScale: 1,
+    hintWidth: hintWidthAt(1),
+    phase: desktopPhase('landscape'),
+  };
 
   test('desktop star flow is pixel-identical to the fixed-offset era', () => {
     const layout = placementHudLayout({ kind: 'star', hasPos: true, hasVel: true, ...desktop });
@@ -183,6 +295,32 @@ describe('placementHudLayout — measured rows for the Set placement HUD', () =>
     expect(layout.cancel).toEqual({ x: 16, y: 40, width: 110, height: PILL_H });
   });
 
+  test('phone scales: Launch/Cancel fit their labels and keep ≥8 CSS px of air', () => {
+    for (const scale of PHONE_SCALES) {
+      const measure = labelMeasurerAt(scale);
+      const layout = placementHudLayout({
+        kind: 'star',
+        hasPos: true,
+        hasVel: true,
+        massWidth: cpxAt(15, scale) * 0.5 * 'mass 5.0'.length,
+        lineAdvance: lineAdvanceAt(scale),
+        measure,
+        viewScale: scale,
+        hintWidth: hintWidthAt(scale),
+        phase: phaseAt(scale, 1280, ACT_EYEBROWS[2], ACT2_SERIF),
+      });
+      const launch = layout.launch!;
+      const cancel = layout.cancel;
+      // Labels fit inside their pills with the same padding as the cluster.
+      expect(launch.width).toBeGreaterThanOrEqual(measure('Launch') + 20);
+      expect(cancel.width).toBeGreaterThanOrEqual(measure('Cancel') + 20);
+      // The pair shares one width and keeps visible air between the pills.
+      expect(cancel.width).toBe(launch.width);
+      expect((cancel.x - (launch.x + launch.width)) * scale).toBeGreaterThanOrEqual(8 - 1e-9);
+      expect(intersects(launch, cancel)).toBe(false);
+    }
+  });
+
   test('phone scales: mass readout, velocity line, and buttons never collide', () => {
     for (const scale of PHONE_SCALES) {
       const lineAdvance = lineAdvanceAt(scale);
@@ -194,6 +332,10 @@ describe('placementHudLayout — measured rows for the Set placement HUD', () =>
         hasVel: true,
         massWidth,
         lineAdvance,
+        measure: labelMeasurerAt(scale),
+        viewScale: scale,
+        hintWidth: hintWidthAt(scale),
+        phase: phaseAt(scale, 1280, ACT_EYEBROWS[2], ACT2_SERIF),
       });
       const minus = layout.minus!;
       const plus = layout.plus!;
@@ -206,5 +348,93 @@ describe('placementHudLayout — measured rows for the Set placement HUD', () =>
       expect(layout.launch!.y).toBeGreaterThan(layout.velY!);
       expect(layout.cancel.y).toBe(layout.launch!.y);
     }
+  });
+
+  test('the whole HUD — hint included — clears the phase block or drops below it', () => {
+    for (const scale of PHONE_SCALES) {
+      for (const canvasW of [1280, 800]) {
+        const phase = phaseAt(scale, canvasW, ACT_EYEBROWS[2], ACT2_SERIF);
+        const hintWidth = hintWidthAt(scale);
+        const layout = placementHudLayout({
+          kind: 'star',
+          hasPos: true,
+          hasVel: true,
+          massWidth: cpxAt(15, scale) * 0.5 * 'mass 5.0'.length,
+          lineAdvance: lineAdvanceAt(scale),
+          measure: labelMeasurerAt(scale),
+          viewScale: scale,
+          hintWidth,
+          phase,
+        });
+        const right = Math.max(16 + hintWidth, layout.cancel.x + layout.cancel.width);
+        expect(right + 24 <= phase.left || layout.hintY - 8 >= phase.bottom + 16).toBe(true);
+      }
+    }
+  });
+});
+
+describe('cornerClusterLayout — EXIT/AGAIN sized to their labels, yielding to the eyebrow', () => {
+  test('desktop (scale 1) is pixel-identical to the fixed-width era', () => {
+    for (const [canvasW, phase] of [
+      [1280, desktopPhase('landscape')],
+      [800, desktopPhase('portrait')],
+    ] as const) {
+      const layout = cornerClusterLayout({
+        canvasWidth: canvasW,
+        measure: labelMeasurerAt(1),
+        showAgain: true,
+        viewScale: 1,
+        phaseRight: phase.right,
+      });
+      expect(layout.exit).toEqual({ x: canvasW - 16 - 96, y: 14, width: 96, height: PILL_H });
+      expect(layout.again).toEqual({
+        x: canvasW - 16 - 96 - 12 - 110,
+        y: 14,
+        width: 110,
+        height: PILL_H,
+      });
+    }
+  });
+
+  test('phone scales: labels fit and the pair never crosses the act-ii eyebrow', () => {
+    for (const scale of PHONE_SCALES) {
+      for (const canvasW of [1280, 800]) {
+        const measure = labelMeasurerAt(scale);
+        const phase = phaseAt(scale, canvasW, ACT_EYEBROWS[2], ACT2_SERIF);
+        const layout = cornerClusterLayout({
+          canvasWidth: canvasW,
+          measure,
+          showAgain: true,
+          viewScale: scale,
+          phaseRight: phase.right,
+        });
+        expect(layout.exit.width).toBeGreaterThanOrEqual(measure('Exit') + 20);
+        expect(layout.again!.width).toBeGreaterThanOrEqual(measure('Again') + 20);
+        expect(intersects(layout.exit, layout.again!)).toBe(false);
+        // Either beside with visible air, or stacked below the exit pill.
+        const beside = layout.again!.y === layout.exit.y;
+        if (beside) {
+          expect(layout.again!.x).toBeGreaterThanOrEqual(phase.right + 8);
+          expect((layout.exit.x - (layout.again!.x + layout.again!.width)) * scale)
+            .toBeGreaterThanOrEqual(8 - 1e-9);
+        } else {
+          expect(layout.again!.y - (layout.exit.y + layout.exit.height)).toBeGreaterThan(0);
+          // Stacked pill hugs the same right margin as the exit pill.
+          expect(layout.again!.x + layout.again!.width).toBe(layout.exit.x + layout.exit.width);
+        }
+      }
+    }
+  });
+
+  test('no Again: exit alone, same right-anchored geometry at any scale', () => {
+    const layout = cornerClusterLayout({
+      canvasWidth: 800,
+      measure: labelMeasurerAt(0.428),
+      showAgain: false,
+      viewScale: 0.428,
+      phaseRight: phaseAt(0.428, 800, ACT_EYEBROWS[1], 'in motion').right,
+    });
+    expect(layout.again).toBeNull();
+    expect(layout.exit.x + layout.exit.width).toBe(800 - 16);
   });
 });

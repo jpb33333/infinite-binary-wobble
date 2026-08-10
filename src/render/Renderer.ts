@@ -44,9 +44,15 @@ import {
 import { bodyRadius } from '../physics/Body.ts';
 import {
   showsCornerAgain,
+  actForFrame,
+  ACT_EYEBROWS,
   sandboxClusterLayout,
   placementHudLayout,
+  cornerClusterLayout,
   SANDBOX_LABELS,
+  PLACEMENT_LABELS,
+  CORNER_LABELS,
+  type PhaseBlock,
 } from './cornerControls.ts';
 import type { Body } from '../physics/Body.ts';
 import type { Simulation } from '../physics/Simulation.ts';
@@ -471,13 +477,8 @@ export class Renderer {
     });
 
     // Phase label
-    const phaseColor = activePlayer === 1 ? palette.player1 : palette.player2;
-    drawPhaseLabel(
-      ctx,
-      activePlayer === 1 ? 'Player 1 — set your star' : 'Player 2 — set your star',
-      w,
-      phaseColor,
-    );
+    const phase = this.phaseBlockFor(input);
+    drawPhaseLabel(ctx, phase.text, w, phase.color, phase.eyebrow);
 
     // The OTHER player's star: dimmed (if already set in P2 phase) or absent
     // (if it's their first time and P2 hasn't entered setup yet).
@@ -827,25 +828,9 @@ export class Renderer {
       ]);
     }
 
-    // Phase label echoes the actual state of the system. WIN keeps the orbit
-    // alive so 'in motion' stays honest; LOSE outcomes freeze the bodies, so
-    // 'in motion' would lie. Match each frozen outcome to a one-word reading.
-    let phaseText = 'in motion';
-    if (input.state === 'resolved' && input.outcome) {
-      switch (input.outcome.kind) {
-        case 'lose_escape':
-        case 'lose_slingshot':
-          phaseText = 'drifting';
-          break;
-        case 'lose_collision':
-          phaseText = 'stilled';
-          break;
-      }
-    }
-    // The unravel overrides everything: three bodies, no stable solution.
-    if (input.unravel) phaseText = 'the three-body problem';
-    const phaseColor = input.unravel ? palette.danger : palette.rose;
-    drawPhaseLabel(ctx, phaseText, w, phaseColor);
+    // Phase block: act eyebrow + live serif reading (phaseBlockFor).
+    const phase = this.phaseBlockFor(input);
+    drawPhaseLabel(ctx, phase.text, w, phase.color, phase.eyebrow);
 
     // Inspection tooltip — hover/tap a star to read its class, mass, lineage.
     this.drawHoveredStarTooltip(input);
@@ -1156,6 +1141,73 @@ export class Renderer {
     }
   }
 
+  // The centred phase block for this frame — act eyebrow, live serif reading,
+  // colors, and its measured extent so the corner pills and top-left HUDs can
+  // yield to it (cornerControls.hudTop) instead of crossing the text. The act
+  // eyebrow is the reveal mechanic: act 1 shows only the game's name, and the
+  // first "ACT II" lands exactly when the sandbox does.
+  private phaseBlockFor(input: RenderInput): {
+    eyebrow: string;
+    text: string;
+    color: string;
+    block: PhaseBlock;
+  } {
+    const act = actForFrame({
+      state: input.state,
+      unravel: !!input.unravel,
+      outcomeKind: input.outcome?.kind ?? null,
+      winCardDismissed: input.winCardDismissed,
+    });
+    const eyebrow = ACT_EYEBROWS[act];
+
+    let text: string;
+    let color: string;
+    if (input.state === 'setup_p1' || input.state === 'setup_p2') {
+      const p1 = input.state === 'setup_p1';
+      text = p1 ? 'Player 1—set your star' : 'Player 2—set your star';
+      color = p1 ? palette.player1 : palette.player2;
+    } else if (act === 2) {
+      // The act title names the problem; the serif line states its truth.
+      text = 'no stable solution';
+      color = palette.danger;
+    } else {
+      // Echo the actual state of the system. WIN keeps the orbit alive so
+      // 'in motion' stays honest; LOSE outcomes freeze the bodies, so match
+      // each frozen outcome to a one-word reading.
+      text = 'in motion';
+      if (input.state === 'resolved' && input.outcome) {
+        switch (input.outcome.kind) {
+          case 'lose_escape':
+          case 'lose_slingshot':
+            text = 'drifting';
+            break;
+          case 'lose_collision':
+            text = 'stilled';
+            break;
+        }
+      }
+      color = palette.rose;
+    }
+
+    const { ctx } = this;
+    ctx.save();
+    ctx.font = `500 ${cpx(11)}px ${fonts.sans}`;
+    const eyebrowW = ctx.measureText(eyebrow).width;
+    ctx.font = `400 ${cpx(22)}px ${fonts.serif}`;
+    const serifW = ctx.measureText(text).width;
+    ctx.restore();
+    const half = Math.max(eyebrowW, serifW) / 2;
+    const w = this.layout.canvas.width;
+    return {
+      eyebrow,
+      text,
+      color,
+      // The serif line is middle-anchored at y=64; its band's bottom is half
+      // a compensated line below.
+      block: { left: w / 2 - half, right: w / 2 + half, bottom: 64 + lineHeightFor(22) / 2 },
+    };
+  }
+
   // Top-right control cluster, shown in every non-title state. The EXIT pill
   // is the on-screen counterpart of the ESC key (the only way back to title
   // for touch players). Once a WIN card has been dismissed, AGAIN joins it
@@ -1163,42 +1215,34 @@ export class Renderer {
   private drawCornerControls(input: RenderInput): void {
     const { ctx } = this;
     const w = this.layout.canvas.width;
-    const pillH = 44;
-    const top = 14;
-    const rightMargin = 16;
     const hoveredName = this.hoveredButton(input.hover);
+    const phase = this.phaseBlockFor(input);
 
-    const exitW = 96;
-    const exitBtn: CanvasButton = {
-      label: 'Exit',
-      x: w - rightMargin - exitW,
-      y: top,
-      width: exitW,
-      height: pillH,
-    };
+    // Pills sized to their labels and right-anchored; AGAIN stacks under EXIT
+    // when the act-ii eyebrow reaches the beside slot (phone portrait fits).
+    const corner = cornerClusterLayout({
+      canvasWidth: w,
+      measure: label => this.measurePillLabel(label),
+      showAgain: showsCornerAgain({
+        state: input.state,
+        sandboxOutcome: input.sandboxOutcome,
+        unravel: !!input.unravel,
+        outcomeKind: input.outcome?.kind ?? null,
+        winCardDismissed: input.winCardDismissed,
+      }),
+      viewScale: this.fit.scale,
+      phaseRight: phase.block.right,
+    });
+
+    const exitBtn: CanvasButton = { label: CORNER_LABELS.exit, ...corner.exit };
     drawButton(ctx, exitBtn, {
       primary: palette.terracotta,
       hovered: hoveredName === 'to_title',
     });
     this.register('to_title', exitBtn);
 
-    if (
-      showsCornerAgain({
-        state: input.state,
-        sandboxOutcome: input.sandboxOutcome,
-        unravel: !!input.unravel,
-        outcomeKind: input.outcome?.kind ?? null,
-        winCardDismissed: input.winCardDismissed,
-      })
-    ) {
-      const againW = 110;
-      const againBtn: CanvasButton = {
-        label: 'Again',
-        x: exitBtn.x - 12 - againW,
-        y: top,
-        width: againW,
-        height: pillH,
-      };
+    if (corner.again) {
+      const againBtn: CanvasButton = { label: CORNER_LABELS.again, ...corner.again };
       drawButton(ctx, againBtn, {
         primary: palette.cream,
         hovered: hoveredName === 'again',
@@ -1215,7 +1259,7 @@ export class Renderer {
       !input.sandboxOutcome
     ) {
       if (input.placing) {
-        this.drawPlacementControls(input);
+        this.drawPlacementControls(input, phase.block);
       } else {
         // Pills sized to their compensated labels (cornerControls.ts) — fixed
         // 150px rects overflowed on phone fits once cpx inflated the text.
@@ -1223,6 +1267,8 @@ export class Renderer {
           orientation: this.layout.orientation,
           measure: label => this.measurePillLabel(label),
           captionAdvance: lineHeightFor(11),
+          viewScale: this.fit.scale,
+          phase: phase.block,
         });
         const starSet: CanvasButton = { label: SANDBOX_LABELS.starSet, ...lay.starSet };
         const starRnd: CanvasButton = { label: SANDBOX_LABELS.starRnd, ...lay.starRnd };
@@ -1261,7 +1307,7 @@ export class Renderer {
   // The "Set" placement HUD (top-left), shown while a body is being dropped: a
   // hint, +/- mass for a star, and Launch (once a spot is tapped) / Cancel. The
   // ghost preview itself is drawn in renderSimulate (world space).
-  private drawPlacementControls(input: RenderInput): void {
+  private drawPlacementControls(input: RenderInput, phase: PhaseBlock): void {
     const pl = input.placing;
     if (!pl) return;
     const { ctx } = this;
@@ -1270,11 +1316,19 @@ export class Renderer {
 
     // Rows spaced by measured compensated text (cornerControls.ts) — the old
     // fixed offsets left an 84px mass slot and 22px line steps that inflated
-    // phone-fit text exactly filled, overprinting its neighbours.
+    // phone-fit text exactly filled, overprinting its neighbours. The hint is
+    // measured too, so the whole HUD can yield to the centred phase block.
+    const hint = pl.pos
+      ? kind === 'star'
+        ? `Tap to move · drag the star to aim · LAUNCH`
+        : `Tap to move it · LAUNCH to drop the ${kind}`
+      : `Tap the field to place the ${kind}`;
     ctx.save();
     ctx.font = `400 ${cpx(15)}px ${fonts.serif}`;
     // Sized to the widest possible readout so the pills don't jitter with ±.
     const massWidth = ctx.measureText('mass 5.0').width;
+    ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
+    const hintWidth = ctx.measureText(hint).width;
     ctx.restore();
     const lay = placementHudLayout({
       kind,
@@ -1282,21 +1336,17 @@ export class Renderer {
       hasVel: !!pl.vel,
       massWidth,
       lineAdvance: lineHeightFor(12),
+      measure: label => this.measurePillLabel(label),
+      viewScale: this.fit.scale,
+      hintWidth,
+      phase,
     });
 
     ctx.save();
     ctx.textAlign = 'left';
     ctx.fillStyle = rgba(palette.cream, 0.7);
     ctx.font = `500 ${cpx(12)}px ${fonts.sans}`;
-    ctx.fillText(
-      pl.pos
-        ? kind === 'star'
-          ? `Tap to move · drag the star to aim · LAUNCH`
-          : `Tap to move it · LAUNCH to drop the ${kind}`
-        : `Tap the field to place the ${kind}`,
-      16,
-      lay.hintY,
-    );
+    ctx.fillText(hint, 16, lay.hintY);
     ctx.restore();
 
     if (lay.minus && lay.plus && lay.massCenter) {
@@ -1326,14 +1376,14 @@ export class Renderer {
     }
 
     if (lay.launch) {
-      const launch: CanvasButton = { label: 'Launch', ...lay.launch };
+      const launch: CanvasButton = { label: PLACEMENT_LABELS.launch, ...lay.launch };
       drawButton(ctx, launch, {
         primary: kind === 'star' ? palette.danger : palette.world,
         hovered: hoveredName === 'place_launch',
       });
       this.register('place_launch', launch);
     }
-    const cancel: CanvasButton = { label: 'Cancel', ...lay.cancel };
+    const cancel: CanvasButton = { label: PLACEMENT_LABELS.cancel, ...lay.cancel };
     drawButton(ctx, cancel, { primary: palette.terracotta, hovered: hoveredName === 'place_cancel' });
     this.register('place_cancel', cancel);
   }
