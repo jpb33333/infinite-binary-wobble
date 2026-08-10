@@ -82,6 +82,11 @@ export class DarkForest {
   lockTimer = 0; // seconds since the lock — counts toward the strike
   provoked = false; // the forest has woken at least once (gates the survival win)
   silentTimer = 0; // seconds of sustained quiet since waking
+  // The instantaneous post-damp signal fed to the forest this frame — what the
+  // broadcast pings draw. GO DARK cuts this at once, while `visibility` (the
+  // meter) only eases toward it: exposing both is what lets the renderer show
+  // the difference.
+  lastEmission = 0;
   private flareLevel = 0; // decaying supernova flash, 0..1
   private done = false; // latched once a strike or survival has fired
 
@@ -93,6 +98,12 @@ export class DarkForest {
   // which decays over the next few seconds.
   flash(): void {
     this.flareLevel = 1;
+  }
+
+  // Current flare level for the ping layer — the leak that stays visible even
+  // while running dark.
+  get flare(): number {
+    return this.flareLevel;
   }
 
   // Progress ratios (0..1) the meter reads to make the hunt legible: how close
@@ -120,6 +131,7 @@ export class DarkForest {
     this.flareLevel = Math.max(0, this.flareLevel - VISIBILITY.flareDecay * dt);
     const broadcast = computeBroadcast(signals.luminosity, signals.life, this.flareLevel);
     const target = quiet ? broadcast * VISIBILITY.darkDamp : broadcast;
+    this.lastEmission = target;
     this.visibility += (target - this.visibility) * Math.min(1, VISIBILITY.smoothing * dt);
 
     const loud = this.visibility > VISIBILITY.detectThreshold;

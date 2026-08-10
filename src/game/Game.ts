@@ -1323,6 +1323,8 @@ export class Game {
       darkForest: this.darkForest
         ? {
             visibility: this.darkForest.visibility,
+            emission: this.darkForest.lastEmission,
+            flare: this.darkForest.flare,
             threshold: VISIBILITY.detectThreshold,
             locked: this.darkForest.locked,
             provoked: this.darkForest.provoked,
