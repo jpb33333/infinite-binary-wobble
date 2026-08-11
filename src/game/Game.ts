@@ -994,12 +994,12 @@ export class Game {
     this.checkSandboxOutcome(dt);
   }
 
-  // The sandbox fails in three ways. EJECTION: a planet is slingshot past the
+  // The sandbox's planetary endings. EJECTION: a planet is slingshot past the
   // edge of the most-zoomed-out view (planetEjectRadius) → lost to the dark.
-  // COLLAPSE: the stars all fall together (≤ 1 left — merged, or detonated to
-  // nothing) → a black hole, universe over. EXTINCTION: planets exist but every
-  // one has been dead longer than the grace window (life gets a chance to
-  // reboot first).
+  // EXTINCTION: planets exist but every one has been dead longer than the grace
+  // window (life gets a chance to reboot first). Stars merging is NOT an ending
+  // — mergers grow stars until the supernova mass detonates them (nbody.ts),
+  // and the dark forest (visibility.ts) handles the rest.
   private checkSandboxOutcome(dt: number): void {
     if (!this.nbody || this.sandboxOutcome) return;
     // EJECTION: any planet flung past the camera's furthest pull-back. Measured
