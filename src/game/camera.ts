@@ -5,7 +5,7 @@
 // "lost to the dark" while still on screen, or vanish off-frame before the loss
 // ever fires.
 
-export const CAMERA_MIN_ZOOM = 0.25; // furthest the camera pulls back (4× wider view)
+export const CAMERA_MIN_ZOOM = 0.2; // furthest the camera pulls back (5× wider view)
 export const CAMERA_MARGIN = 0.8; // fraction of the short axis the system fills
 export const CAMERA_EASE = 2.5; // zoom easing rate, per second (smooth, not jumpy)
 
