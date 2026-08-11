@@ -59,8 +59,11 @@ import {
   PLACEMENT_LABELS,
   CORNER_LABELS,
   GO_DARK_LABELS,
+  musicPillLayout,
+  MUSIC_PILL_GLYPH,
   type PhaseBlock,
 } from './cornerControls.ts';
+import { hasStation } from '../audio/station.ts';
 import type { Body } from '../physics/Body.ts';
 import type { Simulation } from '../physics/Simulation.ts';
 import type { OutcomeClassifier, Outcome } from '../game/outcomes.ts';
@@ -166,6 +169,8 @@ export interface RenderInput {
   goingDark: boolean;
   // An act title card open (modal) over the current screen. null when none.
   chapterCard: { act: 2 | 3 } | null;
+  // The ♪ music pill: whether its panel/whisper is open (Game.musicOpen).
+  musicOpen: boolean;
 }
 
 // A world's drawn radius (fixed — it's a planet, far lighter than any star, so
@@ -395,6 +400,9 @@ export class Renderer {
     // Drawn after the per-state scene so they always sit on top, but still in
     // design space (before we drop back to screen space for the motes).
     if (input.state !== 'title') this.drawCornerControls(input);
+    // The ♪ pill floats bottom-right in EVERY state — the game's one constant
+    // piece of furniture (audio/station.ts).
+    this.drawMusicPill(input);
 
     // Register the WIN-card drag handle LAST of all buttons, so first-match
     // hit-testing lets EVERY real button win over it — including the EXIT/AGAIN
@@ -1413,6 +1421,35 @@ export class Renderer {
   // yield block to there so left HUDs clear the whole meter.
   private meterTop(): number {
     return Math.max(96, Math.ceil(64 + lineHeightFor(22) / 2 + lineHeightFor(11) + 4));
+  }
+
+  // The hovering ♪ — bottom-right, every state. Unconfigured (no station URL
+  // yet), a tap answers with a quiet whisper instead of a player; once
+  // audio/station.ts carries JP's SoundCloud link, the Game shows the real
+  // panel and this pill is its switch.
+  private drawMusicPill(input: RenderInput): void {
+    const { ctx } = this;
+    const { width: w, height: h } = this.layout.canvas;
+    const lay = musicPillLayout({
+      canvasWidth: w,
+      canvasHeight: h,
+      measure: label => this.measurePillLabel(label),
+    });
+    const btn: CanvasButton = { label: MUSIC_PILL_GLYPH, ...lay };
+    drawButton(ctx, btn, {
+      primary: palette.cream,
+      hovered: this.hoveredButton(input.hover) === 'music_pill',
+    });
+    this.register('music_pill', btn);
+    if (input.musicOpen && !hasStation()) {
+      ctx.save();
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = rgba(palette.cream, 0.6);
+      ctx.font = `italic 400 ${cpx(12)}px ${fonts.serif}`;
+      ctx.fillText('No station tuned—yet.', lay.x + lay.width, lay.y - 14);
+      ctx.restore();
+    }
   }
 
   // Top-right control cluster, shown in every non-title state. The EXIT pill
