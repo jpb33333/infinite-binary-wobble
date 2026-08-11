@@ -520,9 +520,9 @@ export function drawWorldStatus(
   ctx.restore();
 }
 
-// Game-over card for the sandbox: the system collapsed into a black hole, all
-// life died out, a world was flung away — or the dark forest ended the run
-// (Act III), where surviving the hunt is the game's one bright ending.
+// Game-over card for the sandbox: all life died out, a world was flung away —
+// or the dark forest ended the run (Act III), where surviving the hunt is the
+// game's one bright ending.
 // Centered + dimmed; returns the AGAIN anchor.
 export type SandboxOutcome = 'extinction' | 'ejection' | 'detected' | 'survived';
 

@@ -1655,7 +1655,7 @@ export class Renderer {
 
     if (!input.outcome) return;
 
-    // The sandbox failed — collapse (black hole) or extinction. Game-over card.
+    // The sandbox ended — extinction, ejection, or the dark forest's verdict.
     if (input.sandboxOutcome) {
       const desolate =
         input.worlds.length === 0 || input.worlds.every(e => e.population <= 0.05);
