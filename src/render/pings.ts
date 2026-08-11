@@ -19,6 +19,13 @@ export interface PingRing {
   alpha: number; // 0..~0.55 — emission × radial fade
 }
 
+// The one number that scales BOTH the rings' brightness and the sonar pulse's
+// volume (audio/sfx.ts): the instantaneous emission plus the supernova leak.
+// Sight and sound sharing this formula is what keeps them honest together.
+export function pingStrength(emission: number, flare: number): number {
+  return Math.min(1, Math.max(0, emission) + Math.max(0, flare) * 0.8);
+}
+
 // All wavefronts alive at `time`, innermost first. `emission` is the system's
 // current post-damp broadcast (DarkForest.lastEmission); `flare` (0..1) leaks
 // through even while dark, so a supernova's pulse is always visible.
@@ -29,7 +36,7 @@ export function activePings(
   maxR: number,
 ): PingRing[] {
   if (!(time >= 0) || !(maxR > 0)) return []; // guards negatives + NaN
-  const strength = Math.min(1, Math.max(0, emission) + Math.max(0, flare) * 0.8);
+  const strength = pingStrength(emission, flare);
   if (strength <= 0.02) return [];
   const life = maxR / PING_SPEED;
   const rings: PingRing[] = [];

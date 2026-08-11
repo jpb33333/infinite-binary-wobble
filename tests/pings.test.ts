@@ -1,5 +1,11 @@
 import { describe, test, expect } from 'vitest';
-import { activePings, pingGlint, PING_INTERVAL, PING_SPEED } from '../src/render/pings.ts';
+import {
+  activePings,
+  pingGlint,
+  pingStrength,
+  PING_INTERVAL,
+  PING_SPEED,
+} from '../src/render/pings.ts';
 
 // The broadcast ping layer (Act III): expanding rings that draw the system's
 // INSTANTANEOUS emission — the quantity GO DARK cuts immediately — while the
@@ -61,6 +67,25 @@ describe('activePings — deterministic expanding wavefronts', () => {
   test('guards junk time', () => {
     expect(activePings(-1, 1, 1, MAX_R)).toEqual([]);
     expect(activePings(Number.NaN, 1, 1, MAX_R)).toEqual([]);
+  });
+});
+
+describe('pingStrength — one formula for what is seen AND heard', () => {
+  test('emission plus the flare leak, clamped to 1', () => {
+    expect(pingStrength(0.5, 0)).toBeCloseTo(0.5, 10);
+    expect(pingStrength(0.12, 1)).toBeCloseTo(Math.min(1, 0.12 + 0.8), 10);
+    expect(pingStrength(0.9, 1)).toBe(1);
+    expect(pingStrength(0, 0)).toBe(0);
+    expect(pingStrength(-1, -1)).toBe(0); // junk-proof
+  });
+
+  test('ring alpha scales with the same strength the audio volume uses', () => {
+    const soft = activePings(25, 0.2, 0, 800);
+    const loud = activePings(25, 0.8, 0, 800);
+    expect(loud[0].alpha / soft[0].alpha).toBeCloseTo(
+      pingStrength(0.8, 0) / pingStrength(0.2, 0),
+      10,
+    );
   });
 });
 
