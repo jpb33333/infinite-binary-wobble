@@ -1,4 +1,4 @@
-import { palette, rgba } from '../theme.ts';
+import { blendHex, palette, rgba } from '../theme.ts';
 
 // Painterly star. Three layered radial gradients with slightly offset centers
 // (asymmetric corona — feels painted rather than photoreal), plus an additive
@@ -82,6 +82,19 @@ export const STYLE_STAR: StarStyle = {
   core: palette.cream,
   haloAlpha: 0.9,
   haloRadiusFactor: 2.6,
+};
+
+// A merger product — a blue straggler: hot, luminous, blue-white. Bright by
+// design: its old style (a dark blend of the player colors under a 3× halo)
+// read as a huge dark sphere with a glowing core — a black hole, visually —
+// which #79 made permanent once merged giants stopped ending the run. A
+// straggler must LOOK like the tooltip's own class: the brightest thing the
+// dance has made, not a void in it.
+export const STYLE_MERGED: StarStyle = {
+  primary: blendHex(palette.cream, palette.world, 0.45),
+  core: palette.cream,
+  haloAlpha: 0.95,
+  haloRadiusFactor: 2.8,
 };
 
 // A world adrift in a multi-star system — a small pale-blue planet with a
