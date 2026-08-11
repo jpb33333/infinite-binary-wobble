@@ -6,6 +6,7 @@ import {
   sandboxClusterLayout,
   placementHudLayout,
   cornerClusterLayout,
+  musicPillLayout,
   hudTop,
   pillWidth,
   SANDBOX_LABELS,
@@ -564,6 +565,32 @@ describe('sandboxClusterLayout — the act-3 GO DARK row', () => {
         const right = Math.max(...pills(layout).map(r => r.x + r.width), 16 + captionWidth);
         const top = Math.min(...pills(layout).map(r => r.y));
         expect(right + 24 <= block.left || top >= block.bottom + 16).toBe(true);
+      }
+    }
+  });
+});
+
+// ── The music pill ──
+//
+// A quiet ♪ anchored bottom-right in every state — the one control that lives
+// on the canvas floor. Measured like every pill since #74; nothing overlaps it
+// down there (metrics flow from bottom-left and truncate; hints are centred).
+describe('musicPillLayout — bottom-right anchor in both design spaces', () => {
+  test('anchors 16px off the corner with a finger-sized pill at any scale', () => {
+    for (const scale of [1, ...PHONE_SCALES]) {
+      for (const [cw, ch] of [
+        [1280, 800],
+        [800, 1280],
+      ] as const) {
+        const pill = musicPillLayout({
+          canvasWidth: cw,
+          canvasHeight: ch,
+          measure: labelMeasurerAt(scale),
+        });
+        expect(pill.x + pill.width).toBe(cw - 16);
+        expect(pill.y + pill.height).toBe(ch - 16);
+        expect(pill.width).toBeGreaterThanOrEqual(48);
+        expect(pill.height).toBe(PILL_H);
       }
     }
   });

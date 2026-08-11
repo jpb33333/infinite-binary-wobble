@@ -26,7 +26,10 @@
     <title>Infinite Binary Wobble</title>
     <!-- Strict Content-Security-Policy. default-src 'none' denies every
          resource type by default; only same-origin script/style/img/font/
-         manifest are re-allowed (manifest-src set explicitly — it falls back
+         manifest are re-allowed, plus frame-src for the one sanctioned outsider:
+         the SoundCloud embed the music pill opens (its player runs entirely
+         inside its own iframe; nothing external loads into THIS page)
+         (manifest-src set explicitly — it falls back
          to default-src 'none', which silently blocked the PWA manifest), and
          the game makes zero network requests (connect falls back to 'none').
          require-trusted-types-for neutralises DOM-XSS sinks.
@@ -41,7 +44,7 @@
          fails loudly if either anchor stops matching. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; frame-src https://w.soundcloud.com; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests; require-trusted-types-for 'script'"
     />
     <!-- Don't leak the game's URL to any site a player navigates to from here. -->
     <meta name="referrer" content="no-referrer" />

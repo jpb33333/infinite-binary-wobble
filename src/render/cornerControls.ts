@@ -354,3 +354,21 @@ export function cornerClusterLayout(o: {
         };
   return { exit, again };
 }
+
+// The music pill — a quiet ♪ anchored to the canvas's bottom-right corner in
+// every state, the future home of JP's station (audio/station.ts). Measured
+// like every pill; 48 keeps a lone glyph finger-sized.
+export function musicPillLayout(o: {
+  canvasWidth: number;
+  canvasHeight: number;
+  measure: (label: string) => number;
+}): PillRect {
+  const w = pillWidth(o.measure, MUSIC_PILL_GLYPH, 48);
+  return {
+    x: o.canvasWidth - RIGHT_MARGIN - w,
+    y: o.canvasHeight - 16 - PILL_H,
+    width: w,
+    height: PILL_H,
+  };
+}
+export const MUSIC_PILL_GLYPH = '♪';

@@ -22,6 +22,7 @@ import {
 import { placedStarVelocity, placedPlanetVelocity, clampedVelocity } from './placement.ts';
 import { PING_INTERVAL, pingStrength } from '../render/pings.ts';
 import { unlock as unlockAudio, playPing, playStrike, playGraze } from '../audio/sfx.ts';
+import { STATION_URL, hasStation, stationEmbedSrc } from '../audio/station.ts';
 import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
@@ -146,6 +147,10 @@ export class Game {
   // Last broadcast-wavefront tick a sonar pulse played for (pings.ts clock) —
   // the audio fires exactly when the renderer births a ring.
   private lastPingTick = -1;
+  // The ♪ pill: whisper/panel open, and the lazily built SoundCloud embed
+  // panel (null until a station URL exists and the pill is first tapped).
+  private musicOpen = false;
+  private stationPanel: HTMLDivElement | null = null;
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -315,6 +320,14 @@ export class Game {
 
     // Button clicks first
     const btn = this.renderer.hoveredButton(p);
+    // The ♪ pill toggles the station in every state. Unconfigured, the
+    // renderer answers with a whisper; configured, the SoundCloud panel
+    // shows/hides (syncStationPanel).
+    if (btn === 'music_pill') {
+      this.musicOpen = !this.musicOpen;
+      this.syncStationPanel();
+      return;
+    }
     // Title-screen explainer: open on the quiet link, dismiss on its ✕. While
     // open it's modal (BEGIN isn't registered underneath), so these are the
     // only title buttons the renderer exposes.
@@ -1214,6 +1227,27 @@ export class Game {
     return out;
   }
 
+  // Show/hide the SoundCloud embed panel — only once a station URL exists
+  // (audio/station.ts). Built lazily with DOM APIs and styled by classes in
+  // style.css (no inline styles: CSP has no 'unsafe-inline'), the dedication
+  // footer's pattern. Unconfigured, the canvas whisper answers instead.
+  private syncStationPanel(): void {
+    if (!hasStation()) return;
+    if (!this.stationPanel) {
+      const panel = document.createElement('div');
+      panel.className = 'station-panel';
+      const frame = document.createElement('iframe');
+      frame.className = 'station-panel__frame';
+      frame.src = stationEmbedSrc(STATION_URL);
+      frame.allow = 'autoplay';
+      frame.title = 'Music station';
+      panel.append(frame);
+      document.body.append(panel);
+      this.stationPanel = panel;
+    }
+    this.stationPanel.classList.toggle('station-panel--open', this.musicOpen);
+  }
+
   // Open an act's title card the first time that act is reached this session.
   private queueChapter(act: 2 | 3): void {
     if (this.shownChapters.has(act)) return;
@@ -1452,6 +1486,7 @@ export class Game {
         : null,
       goingDark: this.goingDark,
       chapterCard: this.chapterCard,
+      musicOpen: this.musicOpen,
     });
   }
 
