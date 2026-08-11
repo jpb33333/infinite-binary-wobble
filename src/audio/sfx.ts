@@ -113,6 +113,41 @@ export function playPing(strength: number): void {
   }
 }
 
+// A grazing shot — the lance at reduced weight with a short crack, no boom.
+// Plays when a lock breaks late enough that the strike was already loosed.
+export function playGraze(): void {
+  if (!ctx || !master || ctx.state !== 'running') return;
+  try {
+    const t0 = ctx.currentTime;
+    const end = t0 + SFX.strike.lanceSeconds * 0.8;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(SFX.strike.lancePeak * 0.6, t0);
+    env.gain.exponentialRampToValueAtTime(0.0001, end);
+    env.connect(master);
+    const lance = ctx.createOscillator();
+    lance.type = 'sawtooth';
+    lance.frequency.setValueAtTime(SFX.strike.lanceFrom, t0);
+    lance.frequency.exponentialRampToValueAtTime(SFX.strike.lanceTo * 2, end);
+    lance.connect(env);
+    lance.start(t0);
+    lance.stop(end);
+    // The crack: a hard, brief square blip as the shot clips the system.
+    const crackEnd = t0 + 0.12;
+    const crackEnv = ctx.createGain();
+    crackEnv.gain.setValueAtTime(SFX.strike.lancePeak * 0.5, t0 + 0.05);
+    crackEnv.gain.exponentialRampToValueAtTime(0.0001, crackEnd + 0.05);
+    crackEnv.connect(master);
+    const crack = ctx.createOscillator();
+    crack.type = 'square';
+    crack.frequency.setValueAtTime(180, t0 + 0.05);
+    crack.connect(crackEnv);
+    crack.start(t0 + 0.05);
+    crack.stop(crackEnd + 0.05);
+  } catch {
+    // Silence over breakage, always.
+  }
+}
+
 // The hunter's strike: the beam as a descending lance, then the detonation as
 // a low boom under a band-passed noise burst. Timed so the lance spans the
 // beam's 0.55s fade and the boom lands as the supernova blooms.

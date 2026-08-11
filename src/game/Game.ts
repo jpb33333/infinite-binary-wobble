@@ -21,7 +21,7 @@ import {
 } from './visibility.ts';
 import { placedStarVelocity, placedPlanetVelocity, clampedVelocity } from './placement.ts';
 import { PING_INTERVAL, pingStrength } from '../render/pings.ts';
-import { unlock as unlockAudio, playPing, playStrike } from '../audio/sfx.ts';
+import { unlock as unlockAudio, playPing, playStrike, playGraze } from '../audio/sfx.ts';
 import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
@@ -57,7 +57,7 @@ const MAX_PLANETS = 10;
 // fall together (≤1 left), or humanity goes extinct if every planet stays dead
 // this long (life gets a grace window to begin again first).
 const EXTINCTION_GRACE = 6; // seconds
-const EJECT_GRACE = 2.5; // seconds a planet must stay past the boundary before it's lost
+const EJECT_GRACE = 4; // seconds a planet must stay past the boundary before it's lost
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
 
 export class Game {
@@ -349,25 +349,40 @@ export class Game {
       (this.outcome?.kind === 'win' || this.nbody !== null) &&
       !this.sandboxOutcome;
     if (sandboxOpen && !this.placing) {
-      if (btn === 'random_star') {
+      // Powered down (Act III "go dark"): a hidden civilization launches
+      // nothing. The spawners go dead — the renderer draws them disabled —
+      // and only powering back up (or Exit/Again) is available. Hiding costs
+      // agency even when there are no worlds left to wither.
+      const powered = !this.goingDark;
+      if (powered && btn === 'random_star') {
         this.addStar();
         return;
       }
-      if (btn === 'random_planet') {
+      if (powered && btn === 'random_planet') {
         this.addPlanet();
         return;
       }
-      if (btn === 'set_star') {
+      if (powered && btn === 'set_star') {
         this.beginPlacing('star');
         return;
       }
-      if (btn === 'set_planet') {
+      if (powered && btn === 'set_planet') {
         this.beginPlacing('planet');
         return;
       }
       // Act III: power the system down (toggle) to hide from the forest.
       if (btn === 'go_dark' && this.darkForest) {
         this.goingDark = !this.goingDark;
+        return;
+      }
+      // Tapping the act eyebrow reopens the current act's title card — the
+      // cards stay re-readable after their one automatic showing.
+      if (btn === 'act_info' && this.darkForest) {
+        this.chapterCard = { act: 3 };
+        return;
+      }
+      if (btn === 'act_info') {
+        this.chapterCard = { act: 2 };
         return;
       }
     }
@@ -584,6 +599,9 @@ export class Game {
     this.lockedAt = null;
     this.strikeBeam = null;
     this.goingDark = false;
+    // A fresh sitting from the title replays the act reveal cards; the quick
+    // AGAIN loop (resetForReplay) deliberately does not.
+    this.shownChapters.clear();
     this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
@@ -627,6 +645,9 @@ export class Game {
     this.lockedAt = null;
     this.strikeBeam = null;
     this.goingDark = false;
+    // A fresh sitting from the title replays the act reveal cards; the quick
+    // AGAIN loop (resetForReplay) deliberately does not.
+    this.shownChapters.clear();
     this.placing = null;
     this.extinctionTimer = 0;
     this.sim = null;
@@ -1058,6 +1079,7 @@ export class Game {
     );
     if (ev === 'locked') this.lockedAt = this.elapsed;
     else if (ev === 'strike') this.darkForestStrike();
+    else if (ev === 'graze') this.darkForestGraze();
     else if (ev === 'survived') this.sandboxOutcome = 'survived';
 
     // Sonar pulse on each wavefront birth — same phase-locked clock the
@@ -1113,6 +1135,71 @@ export class Game {
     this.sandboxOutcome = 'detected';
   }
 
+  // A LATE escape: the lock broke after the shot was loosed, so it lands
+  // reduced - a graze, and play continues. With stars to spare the smallest
+  // one detonates (and the flash itself is loud: being grazed briefly spikes
+  // the broadcast - a vicious little loop); otherwise a living world is
+  // scorched; otherwise nothing survives to be hit and the escape was truly
+  // lucky. The beam fires from the hidden system nearest the on-screen centre
+  // (the just-cleared hunter, before it stood down).
+  private darkForestGraze(): void {
+    const { width: cw, height: ch } = this.renderer.layout.canvas;
+    const src = (this.darkForest?.systems ?? []).reduce<{ x: number; y: number } | null>(
+      (best, s) => {
+        if (!best) return s;
+        const d = (s.x - cw / 2) ** 2 + (s.y - ch / 2) ** 2;
+        const bd = (best.x - cw / 2) ** 2 + (best.y - ch / 2) ** 2;
+        return d < bd ? s : best;
+      },
+      null,
+    );
+    const planets = new Set(this.worlds.map(w => w.body));
+    const stars = this.nbody ? this.nbody.bodies.filter(b => !planets.has(b)) : [];
+    const com = this.systemCOM();
+    const z = this.cameraZoom;
+    const beamTo = (p: { x: number; y: number }) => ({
+      toX: cw / 2 + (p.x - com.x) * z,
+      toY: ch / 2 + (p.y - com.y) * z,
+    });
+
+    if (this.nbody && stars.length >= 3) {
+      const target = stars.reduce((min, b) => (b.mass < min.mass ? b : min), stars[0]);
+      this.strikeBeam = {
+        fromX: src ? src.x : cw / 2,
+        fromY: src ? src.y : 0,
+        ...beamTo(target.pos),
+        t0: this.elapsed,
+      };
+      this.supernova = {
+        x: target.pos.x,
+        y: target.pos.y,
+        t0: this.elapsed,
+        mergedMass: target.mass,
+        transient: true,
+      };
+      this.nbody.removeBody(target);
+      this.unravelTracks = this.unravelTracks.filter(tk => tk.body !== target);
+      this.renderer.burst(target.pos.x, target.pos.y, 220, palette.danger, 340);
+      // The graze's own flash is a broadcast the forest sees.
+      this.darkForest?.flash();
+      this.sandboxFlare = 1;
+    } else {
+      const world = this.worlds.find(w => w.population > 0.05);
+      if (world) {
+        this.strikeBeam = {
+          fromX: src ? src.x : cw / 2,
+          fromY: src ? src.y : 0,
+          ...beamTo(world.body.pos),
+          t0: this.elapsed,
+        };
+        // Scorched, not annihilated: three quarters of everyone, gone.
+        world.population *= 0.25;
+        this.renderer.burst(world.body.pos.x, world.body.pos.y, 140, palette.danger, 260);
+      }
+    }
+    playGraze();
+  }
+
   // Seed the hidden systems at fixed points around the frame's dark edge, so they
   // always frame the play area (the renderer draws them canvas-fixed). A little
   // angle jitter keeps the ring from reading as a mechanical pattern.
@@ -1125,7 +1212,9 @@ export class Game {
     const out: HiddenSystem[] = [];
     for (let i = 0; i < HIDDEN_SYSTEMS; i++) {
       const a = (i / HIDDEN_SYSTEMS) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
-      out.push({ x: cx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry, stir: 0, hunter: false });
+      const sx = cx + Math.cos(a) * rx;
+      const sy = cy + Math.sin(a) * ry;
+      out.push({ x: sx, y: sy, hx: sx, hy: sy, stir: 0, hunter: false });
     }
     return out;
   }
@@ -1347,7 +1436,7 @@ export class Game {
             visibility: this.darkForest.visibility,
             emission: this.darkForest.lastEmission,
             flare: this.darkForest.flare,
-            threshold: VISIBILITY.detectThreshold,
+            threshold: this.darkForest.effectiveThreshold,
             locked: this.darkForest.locked,
             provoked: this.darkForest.provoked,
             detectionProgress: this.darkForest.detectionProgress,

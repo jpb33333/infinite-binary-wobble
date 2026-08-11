@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { unlock, playPing, playStrike } from '../src/audio/sfx.ts';
+import { unlock, playPing, playStrike, playGraze } from '../src/audio/sfx.ts';
 
 // The SFX module's unit-testable surface is its fail-open contract: in an
 // environment with no AudioContext (Node/vitest — and any browser where audio
@@ -25,5 +25,11 @@ describe('sfx — fail-open without an AudioContext', () => {
     expect(() => playStrike()).not.toThrow();
     unlock();
     expect(() => playStrike()).not.toThrow();
+  });
+
+  test('playGraze never throws', () => {
+    expect(() => playGraze()).not.toThrow();
+    unlock();
+    expect(() => playGraze()).not.toThrow();
   });
 });

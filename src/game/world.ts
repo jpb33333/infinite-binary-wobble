@@ -11,14 +11,14 @@ import { Trail } from '../render/trail.ts';
 // Constants are game-feel-tuned (mixed pixel/mass units), not SI.
 
 const WARMTH_REF = 1e-5; // insolation that reads as "comfortable" → warmth ≈ 1
-const FROZEN_BELOW = 0.45;
-const SCORCH_ABOVE = 2.5;
+const FROZEN_BELOW = 0.32;
+const SCORCH_ABOVE = 3.0;
 const POP_MAX = 10; // billions
-const GROWTH = 0.45; // logistic growth rate in a steady era
-const DECAY = 1.1; // population crash rate in a turbulent extreme
-const DARK_DECAY = 0.25; // gentle wane while the civilization is "running dark" (Act III)
+const GROWTH = 0.55; // logistic growth rate in a steady era
+const DECAY = 0.75; // population crash rate in a turbulent extreme
+const DARK_DECAY = 0.15; // gentle wane while the civilization is "running dark" (Act III)
 const EXTINCT_AT = 0.02;
-const REBOOT_AT = 0.5;
+const REBOOT_AT = 0.35;
 
 export type Era = 'frozen' | 'temperate' | 'scorching';
 

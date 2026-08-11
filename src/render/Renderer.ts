@@ -1337,6 +1337,7 @@ export class Renderer {
   // eyebrow is the reveal mechanic: act 1 shows only the game's name, and the
   // first "ACT II" lands exactly when the sandbox does.
   private phaseBlockFor(input: RenderInput): {
+    act: 1 | 2 | 3;
     eyebrow: string;
     text: string;
     color: string;
@@ -1405,7 +1406,7 @@ export class Renderer {
       right = Math.max(right, (w + 300) / 2);
       bottom = Math.max(bottom, this.meterTop() + 64);
     }
-    return { eyebrow, text, color, block: { left, right, bottom } };
+    return { act, eyebrow, text, color, block: { left, right, bottom } };
   }
 
   // Act-3 meter bar top: just below the phase serif band plus its own label's
@@ -1425,6 +1426,20 @@ export class Renderer {
     const w = this.layout.canvas.width;
     const hoveredName = this.hoveredButton(input.hover);
     const phase = this.phaseBlockFor(input);
+
+    // The act eyebrow is a quiet re-read affordance: tapping the phase block
+    // reopens the current act's chapter card (acts 2/3 — act 1 has none, and a
+    // game-over card owns the screen when one is up). Invisible finger-sized
+    // hit rect, the drawTitleExplainerLink pattern.
+    if (phase.act >= 2 && !input.sandboxOutcome) {
+      this.register('act_info', {
+        label: '',
+        x: phase.block.left - 8,
+        y: 14,
+        width: phase.block.right - phase.block.left + 16,
+        height: 72,
+      });
+    }
 
     // Pills sized to their labels and right-anchored; AGAIN stacks under EXIT
     // when the act-ii eyebrow reaches the beside slot (phone portrait fits).
@@ -1474,7 +1489,12 @@ export class Renderer {
         // In act 3 the caption's own width joins the yield rule (the meter's
         // band reaches it); before act 3 pass 0 so act-2 layouts stay exactly
         // as shipped.
-        const caption = `Set drops it where you tap.  Stars ${input.starCount}/${SANDBOX_CAP} · Planets ${input.planetCount}/${SANDBOX_CAP}.`;
+        const caption = input.goingDark
+          ? `Powered down. Nothing launches in the dark.`
+          : `Set drops it where you tap.  Stars ${input.starCount}/${SANDBOX_CAP} · Planets ${input.planetCount}/${SANDBOX_CAP}.`;
+        // Powered down: the spawners are dead while running dark (the Game
+        // ignores their taps; drawn ghosted so the deadness reads).
+        const dead = input.goingDark;
         let captionWidth = 0;
         if (input.darkForest) {
           ctx.save();
@@ -1493,8 +1513,8 @@ export class Renderer {
         });
         const starSet: CanvasButton = { label: SANDBOX_LABELS.starSet, ...lay.starSet };
         const starRnd: CanvasButton = { label: SANDBOX_LABELS.starRnd, ...lay.starRnd };
-        drawButton(ctx, starSet, { primary: palette.danger, hovered: hoveredName === 'set_star' });
-        drawButton(ctx, starRnd, { primary: palette.danger, hovered: hoveredName === 'random_star' });
+        drawButton(ctx, starSet, { primary: palette.danger, hovered: hoveredName === 'set_star', disabled: dead });
+        drawButton(ctx, starRnd, { primary: palette.danger, hovered: hoveredName === 'random_star', disabled: dead });
         this.register('set_star', starSet);
         this.register('random_star', starRnd);
         const planetSet: CanvasButton = { label: SANDBOX_LABELS.planetSet, ...lay.planetSet };
@@ -1503,11 +1523,13 @@ export class Renderer {
           primary: palette.world,
           text: palette.voidDeep,
           hovered: hoveredName === 'set_planet',
+          disabled: dead,
         });
         drawButton(ctx, planetRnd, {
           primary: palette.world,
           text: palette.voidDeep,
           hovered: hoveredName === 'random_planet',
+          disabled: dead,
         });
         this.register('set_planet', planetSet);
         this.register('random_planet', planetRnd);
@@ -1635,11 +1657,14 @@ export class Renderer {
 
     // The sandbox failed — collapse (black hole) or extinction. Game-over card.
     if (input.sandboxOutcome) {
+      const desolate =
+        input.worlds.length === 0 || input.worlds.every(e => e.population <= 0.05);
       const over = drawSandboxOver(
         this.ctx,
         input.sandboxOutcome,
         this.layout.canvas.width,
         this.layout.canvas.height,
+        desolate,
       );
       const btn: CanvasButton = {
         label: 'Again',
