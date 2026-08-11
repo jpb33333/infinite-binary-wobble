@@ -27,13 +27,7 @@ describe('showsCornerAgain — corner Again never collides with a game-over card
   } as const;
 
   test('suppressed during EVERY sandbox game-over, even from a dismissed win (the bug)', () => {
-    for (const sandboxOutcome of [
-      'extinction',
-      'collapse',
-      'ejection',
-      'detected',
-      'survived',
-    ] as const) {
+    for (const sandboxOutcome of ['extinction', 'ejection', 'detected', 'survived'] as const) {
       // dismissed win + game-over = the exact broken case
       expect(showsCornerAgain({ ...base, sandboxOutcome, unravel: true, winCardDismissed: true })).toBe(
         false,

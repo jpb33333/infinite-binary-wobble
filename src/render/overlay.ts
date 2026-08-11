@@ -524,7 +524,7 @@ export function drawWorldStatus(
 // life died out, a world was flung away — or the dark forest ended the run
 // (Act III), where surviving the hunt is the game's one bright ending.
 // Centered + dimmed; returns the AGAIN anchor.
-export type SandboxOutcome = 'collapse' | 'extinction' | 'ejection' | 'detected' | 'survived';
+export type SandboxOutcome = 'extinction' | 'ejection' | 'detected' | 'survived';
 
 export function drawSandboxOver(
   ctx: CanvasRenderingContext2D,
@@ -543,10 +543,6 @@ export function drawSandboxOver(
   // Survival is the one bright ending — cream, not danger.
   const titleColor = outcome === 'survived' ? palette.cream : palette.danger;
   const copy: Record<SandboxOutcome, { title: string; body: string }> = {
-    collapse: {
-      title: 'The universe collapsed.',
-      body: 'The stars all fell together—a black hole, and everything with it.',
-    },
     extinction: {
       title: 'Humanity is extinct.',
       body: 'All life is ash. No one is left to watch the sky.',

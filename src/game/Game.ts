@@ -53,9 +53,11 @@ const MAX_PLANETS = 10;
 // shared, unit-tested). There is no leash any more: real gravity is allowed to
 // slingshot a planet out, and a planet flung past planetEjectRadius — the edge
 // of the most-zoomed-out view — is lost to the dark (an ejection game-over).
-// The sandbox can be LOST: it collapses into a black hole when the stars all
-// fall together (≤1 left), or humanity goes extinct if every planet stays dead
-// this long (life gets a grace window to begin again first).
+// The sandbox can be LOST to extinction (every planet dead past the grace
+// window), ejection, or the dark forest — or SURVIVED. Stars merging is not an
+// ending: mergers fuse into bigger stars (blue stragglers) until the supernova
+// mass (physics/nbody.ts) detonates them — one merged giant with worlds is
+// simply a solar system, and the forest hears loud giants just fine.
 const EXTINCTION_GRACE = 6; // seconds
 const EJECT_GRACE = 4; // seconds a planet must stay past the boundary before it's lost
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
@@ -95,10 +97,9 @@ export class Game {
   private worlds: WorldState[] = [];
   // Eased camera zoom for the unravel (1 = the two-body game's fixed view).
   private cameraZoom = 1;
-  // How the sandbox finally fails (null while it's still running): the system
-  // collapses to a black hole, or all life dies out.
-  private sandboxOutcome: 'collapse' | 'extinction' | 'ejection' | 'detected' | 'survived' | null =
-    null;
+  // How the sandbox finally ends (null while it's still running): life dies
+  // out, a world is flung away, or the dark forest finds you — or you endure.
+  private sandboxOutcome: 'extinction' | 'ejection' | 'detected' | 'survived' | null = null;
   // Sandbox "Set" placement: when set, the unravel pauses and the player taps a
   // drop point (pos in WORLD coords) + picks a star's mass; Launch drops it.
   private placing: {
@@ -1001,7 +1002,6 @@ export class Game {
   // reboot first).
   private checkSandboxOutcome(dt: number): void {
     if (!this.nbody || this.sandboxOutcome) return;
-    const planets = new Set(this.worlds.map(e => e.body));
     // EJECTION: any planet flung past the camera's furthest pull-back. Measured
     // from the same barycenter the camera zoom fits around, so at the instant of
     // loss the planet sits right at the readable edge of the frame.
@@ -1026,11 +1026,6 @@ export class Game {
           e.secondsAdrift = 0; // pulled home — reprieve
         }
       }
-    }
-    const starCount = this.nbody.bodies.filter(b => !planets.has(b)).length;
-    if (starCount <= 1) {
-      this.sandboxOutcome = 'collapse';
-      return;
     }
     if (this.worlds.length > 0 && this.worlds.every(e => e.population <= 0.05)) {
       this.extinctionTimer += dt;
