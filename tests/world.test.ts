@@ -80,3 +80,16 @@ describe('survivability tuning', () => {
     expect(world.population).toBeGreaterThan(1);
   });
 });
+
+// With the "collapse" ending removed, a starless sky must still end honestly:
+// zero suns → zero insolation → frozen → life decays toward extinction (the
+// Game's extinction grace then fires the card).
+describe('a starless sky', () => {
+  test('no suns freezes the world and life wanes toward extinction', () => {
+    const world = new WorldState(createBody(0.02, vec2(0, 0), vec2(0, 0)));
+    world.population = 5;
+    for (let i = 0; i < 60 * 20; i++) world.update(1 / 60, []);
+    expect(world.era).toBe('frozen');
+    expect(world.population).toBeLessThanOrEqual(0.05);
+  });
+});
