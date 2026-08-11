@@ -17,6 +17,7 @@ import {
   STYLE_P2,
   STYLE_STAR,
   STYLE_WORLD,
+  STYLE_MERGED,
   type StarStyle,
 } from './star.ts';
 import { Trail, drawTrail } from './trail.ts';
@@ -1043,12 +1044,9 @@ export class Renderer {
       case 'star':
         return STYLE_STAR;
       default:
-        return {
-          primary: blendHex(palette.player1, palette.player2, 0.5),
-          core: palette.cream,
-          haloAlpha: 0.9,
-          haloRadiusFactor: 3.0,
-        };
+        // Merged stars are blue stragglers — see STYLE_MERGED's comment for
+        // why they must be bright.
+        return STYLE_MERGED;
     }
   }
 
