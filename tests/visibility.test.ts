@@ -15,9 +15,9 @@ import {
 const CENTER = { x: 0, y: 0 };
 function systems(): HiddenSystem[] {
   return [
-    { x: 1000, y: 0, stir: 0, hunter: false },
-    { x: 0, y: 1000, stir: 0, hunter: false },
-    { x: -800, y: -600, stir: 0, hunter: false },
+    { x: 900, y: 0, hx: 900, hy: 0, stir: 0, hunter: false },
+    { x: 0, y: 1000, hx: 0, hy: 1000, stir: 0, hunter: false },
+    { x: -800, y: -600, hx: -800, hy: -600, stir: 0, hunter: false },
   ];
 }
 function sig(luminosity: number, life = 0): BroadcastSignals {
@@ -229,5 +229,130 @@ describe('emission + flare exposure for the ping layer', () => {
     expect(f.flare).toBe(1);
     f.update(0.5, sig(0, 0), false);
     expect(f.flare).toBeCloseTo(1 - VISIBILITY.flareDecay * 0.5, 5);
+  });
+});
+
+// ── Stakes: the forest remembers, shots graze, the ring closes ──
+describe('wariness — every broken lock sharpens the forest', () => {
+  const breakLock = (f: DarkForest): void => {
+    // Get locked (loud past the effective lock window), then go dark to break it early.
+    let guard = 0;
+    while (!f.locked && guard++ < 60 * 30) f.update(1 / 60, sig(64, 20), false);
+    expect(f.locked).toBe(true);
+    guard = 0;
+    while (f.locked && guard++ < 60 * 30) f.update(1 / 60, sig(64, 20), true);
+    expect(f.locked).toBe(false);
+  };
+
+  test('escalation getters equal the base constants before any escape', () => {
+    const f = new DarkForest(systems());
+    expect(f.effectiveThreshold).toBeCloseTo(VISIBILITY.detectThreshold, 10);
+    expect(f.effectiveLockSeconds).toBeCloseTo(VISIBILITY.lockSeconds, 10);
+    expect(f.effectiveStrikeSeconds).toBeCloseTo(VISIBILITY.strikeSeconds, 10);
+  });
+
+  test('each broken lock lowers the threshold and shortens both windows, to floors', () => {
+    const f = new DarkForest(systems());
+    let prevT = f.effectiveThreshold;
+    let prevL = f.effectiveLockSeconds;
+    let prevS = f.effectiveStrikeSeconds;
+    for (let i = 0; i < 3; i++) {
+      breakLock(f);
+      expect(f.locksBroken).toBe(i + 1);
+      expect(f.effectiveThreshold).toBeLessThanOrEqual(prevT);
+      expect(f.effectiveLockSeconds).toBeLessThanOrEqual(prevL);
+      expect(f.effectiveStrikeSeconds).toBeLessThanOrEqual(prevS);
+      prevT = f.effectiveThreshold;
+      prevL = f.effectiveLockSeconds;
+      prevS = f.effectiveStrikeSeconds;
+    }
+    // Floors hold no matter how many escapes.
+    for (let i = 0; i < 12; i++) f.locksBroken++;
+    expect(f.effectiveThreshold).toBeGreaterThanOrEqual(VISIBILITY.waryThresholdFloor);
+    expect(f.effectiveThreshold).toBeGreaterThan(VISIBILITY.unlockBelow);
+    expect(f.effectiveLockSeconds).toBeGreaterThanOrEqual(VISIBILITY.waryLockFloor);
+    expect(f.effectiveStrikeSeconds).toBeGreaterThanOrEqual(VISIBILITY.waryStrikeFloor);
+  });
+
+  test('a warier forest locks on measurably faster', () => {
+    const timeToLock = (f: DarkForest): number => {
+      let t = 0;
+      while (!f.locked && t < 60) {
+        f.update(1 / 60, sig(64, 20), false);
+        t += 1 / 60;
+      }
+      return t;
+    };
+    const fresh = new DarkForest(systems());
+    const wary = new DarkForest(systems());
+    wary.locksBroken = 2;
+    expect(timeToLock(wary)).toBeLessThan(timeToLock(fresh));
+  });
+});
+
+describe('grazes — a late escape still costs', () => {
+  const lockUp = (f: DarkForest): void => {
+    let guard = 0;
+    while (!f.locked && guard++ < 60 * 30) f.update(1 / 60, sig(64, 20), false);
+    expect(f.locked).toBe(true);
+  };
+
+  test('escaping early in the strike window is a clean break — null, no graze', () => {
+    const f = new DarkForest(systems());
+    lockUp(f);
+    // Go dark immediately: lockTimer is still tiny.
+    let ev: HuntEvent = null;
+    let guard = 0;
+    while (f.locked && guard++ < 60 * 30) ev = f.update(1 / 60, sig(64, 20), true);
+    expect(ev).toBeNull();
+    expect(f.locksBroken).toBe(1);
+  });
+
+  test('escaping past the graze fraction returns exactly one graze', () => {
+    const f = new DarkForest(systems());
+    lockUp(f);
+    // Ride the lock deep into the window, then break it.
+    const deep = f.effectiveStrikeSeconds * (VISIBILITY.grazeAfter + 0.15);
+    let t = 0;
+    while (t < deep && f.locked) {
+      f.update(1 / 60, sig(64, 20), false);
+      t += 1 / 60;
+    }
+    expect(f.locked).toBe(true);
+    const events: HuntEvent[] = [];
+    let guard = 0;
+    while (f.locked && guard++ < 60 * 30) events.push(f.update(1 / 60, sig(64, 20), true));
+    expect(events.filter(e => e === 'graze').length).toBe(1);
+    expect(events).not.toContain('strike');
+    expect(f.locksBroken).toBe(1);
+    // The hunt goes on — no latch after a graze (a quiet frame passes
+    // eventlessly; a LOUD one would legitimately re-lock the warier forest).
+    expect(f.update(1 / 60, sig(0, 0), true)).toBeNull();
+  });
+});
+
+describe('the ring closes in — and remembers', () => {
+  const dist = (s: HiddenSystem): number => Math.hypot(s.x - CENTER.x, s.y - CENTER.y);
+
+  test('a loud, provoked forest drifts inward from home', () => {
+    const f = new DarkForest(systems());
+    const before = f.systems.map(dist);
+    for (let t = 0; t < 10; t += 1 / 60) f.update(1 / 60, sig(64, 20), false);
+    f.systems.forEach((s, i) => expect(dist(s)).toBeLessThan(before[i]));
+  });
+
+  test('falling quiet retreats only partway once locks have been broken', () => {
+    const f = new DarkForest(systems());
+    f.locksBroken = 2;
+    // Stir them up while staying under the wary threshold (≈0.36): visibility
+    // ~0.35 wakes the ring without ever forming a lock or latching a strike.
+    for (let t = 0; t < 12; t += 1 / 60) f.update(1 / 60, sig(22.4, 0), false);
+    // Long quiet: stir decays toward 0, but the wariness close-in remains.
+    for (let t = 0; t < 40; t += 1 / 60) f.update(1 / 60, sig(0, 0), false);
+    const s = f.systems[0];
+    const homeD = Math.hypot(s.hx - CENTER.x, s.hy - CENTER.y);
+    const kept = 1 - dist(s) / homeD;
+    expect(kept).toBeGreaterThan(VISIBILITY.ringClosePerLock * f.locksBroken * 0.8);
+    expect(kept).toBeLessThanOrEqual(VISIBILITY.ringCloseMax + 1e-6);
   });
 });

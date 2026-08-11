@@ -158,13 +158,17 @@ export function drawButton(
     primary?: string;
     text?: string;
     hovered?: boolean;
+    // A dead control (e.g. the spawners while running dark): no halo, pill and
+    // label ghosted, hover ignored. The caller also ignores its taps.
+    disabled?: boolean;
   } = {},
 ): void {
   const primary = opts.primary ?? palette.rose;
   const text = opts.text ?? palette.voidDeep;
-  const hovered = opts.hovered ?? false;
+  const hovered = (opts.hovered ?? false) && !opts.disabled;
 
   ctx.save();
+  if (opts.disabled) ctx.globalAlpha = 0.35;
   // Soft halo (additive). The fill area must fully contain the gradient
   // circle (radius haloR around the button center), otherwise wide-but-short
   // buttons get their glow clipped into a visible rectangle. A 2·haloR square
@@ -182,6 +186,7 @@ export function drawButton(
 
   // Pill body
   ctx.save();
+  if (opts.disabled) ctx.globalAlpha = 0.35;
   const r = btn.height / 2;
   ctx.beginPath();
   roundedRectPath(ctx, btn.x, btn.y, btn.width, btn.height, r);
@@ -526,6 +531,9 @@ export function drawSandboxOver(
   outcome: SandboxOutcome,
   w: number,
   h: number,
+  // Survival with every world dead (or none ever made) is a bleaker victory:
+  // the copy shifts from triumph to elegy.
+  desolate = false,
 ): { titleColor: string; buttonY: number; x: number; y: number; width: number; height: number } {
   ctx.save();
   ctx.fillStyle = rgba(palette.voidDeep, 0.72);
@@ -556,7 +564,13 @@ export function drawSandboxOver(
       body: 'You stayed silent, and the hunters never found you. The paradox holds: the quiet endure.',
     },
   };
-  const { title, body } = copy[outcome];
+  const { title, body } =
+    outcome === 'survived' && desolate
+      ? {
+          title: 'The stars endure.',
+          body: 'You were never found. There is no one left to know it.',
+        }
+      : copy[outcome];
 
   const cardW = 660;
   const cardH = 236;

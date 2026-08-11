@@ -248,6 +248,15 @@ export class NBodySimulation {
     if (noMerge) this.noMerge.add(body);
   }
 
+  // Remove a body mid-flight. An Act-III graze annihilates a star while the
+  // sandbox keeps running - unlike the terminal strike, the surviving system
+  // must actually stop feeling the lost star's gravity.
+  removeBody(body: Body): void {
+    const i = this.bodies.indexOf(body);
+    if (i !== -1) this.bodies.splice(i, 1);
+    this.noMerge.delete(body);
+  }
+
   // Resolve the first overlapping pair (surfaces touching). Below the supernova
   // mass they fuse — perfectly inelastic: combined mass, momentum-conserving
   // velocity, COM position. At/above it they DETONATE: both are removed and a
