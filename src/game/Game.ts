@@ -58,8 +58,8 @@ const MAX_PLANETS = 10;
 // ending: mergers fuse into bigger stars (blue stragglers) until the supernova
 // mass (physics/nbody.ts) detonates them — one merged giant with worlds is
 // simply a solar system, and the forest hears loud giants just fine.
-const EXTINCTION_GRACE = 6; // seconds
-const EJECT_GRACE = 4; // seconds a planet must stay past the boundary before it's lost
+const EXTINCTION_GRACE = 12; // seconds — long enough for a re-dawn to arrive
+const EJECT_GRACE = 8; // seconds a planet must stay past the boundary before it's lost
 const DT_CAP = 1 / 30; // never let a stutter feed the physics more than this
 
 export class Game {

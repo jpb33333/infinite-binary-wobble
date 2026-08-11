@@ -93,3 +93,36 @@ describe('a starless sky', () => {
     expect(world.population).toBeLessThanOrEqual(0.05);
   });
 });
+
+// The Trisolaran dormancy: a frozen civilization dehydrates and endures, so
+// cold decays at half the scorching rate. Same world, same time, different
+// extreme — the frozen one keeps meaningfully more of its people, and both
+// re-dawn from less (REBOOT_AT 0.25).
+describe('frozen dormancy', () => {
+  test('freezing preserves far more life than scorching over the same stretch', () => {
+    const frozen = new WorldState(createBody(0.02, vec2(0, 0), vec2(0, 0)));
+    const scorched = new WorldState(createBody(0.02, vec2(0, 0), vec2(0, 0)));
+    const farSun = createBody(1, vec2(2000, 0), vec2(0, 0)); // deep frozen
+    const nearSun = createBody(5, vec2(150, 0), vec2(0, 0)); // scorching
+    frozen.population = 5;
+    scorched.population = 5;
+    for (let i = 0; i < 60 * 5; i++) {
+      frozen.update(1 / 60, [farSun]);
+      scorched.update(1 / 60, [nearSun]);
+    }
+    expect(frozen.era).toBe('frozen');
+    expect(scorched.era).toBe('scorching');
+    expect(frozen.population).toBeGreaterThan(scorched.population * 1.5);
+  });
+
+  test('a fallen world re-dawns once it climbs back past 0.25', () => {
+    const world = new WorldState(createBody(0.02, vec2(0, 0), vec2(0, 0)));
+    const sun = createBody(2.5, vec2(500, 0), vec2(0, 0)); // temperate
+    world.population = 0.01;
+    // Force the fallen state the way a real crash leaves it.
+    for (let i = 0; i < 60; i++) world.update(1 / 60, [createBody(1, vec2(3000, 0), vec2(0, 0))]);
+    const dawnsBefore = world.dawns;
+    for (let i = 0; i < 60 * 30 && world.dawns === dawnsBefore; i++) world.update(1 / 60, [sun]);
+    expect(world.dawns).toBe(dawnsBefore + 1);
+  });
+});

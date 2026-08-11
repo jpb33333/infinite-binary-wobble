@@ -16,9 +16,12 @@ const SCORCH_ABOVE = 3.0;
 const POP_MAX = 10; // billions
 const GROWTH = 0.55; // logistic growth rate in a steady era
 const DECAY = 0.75; // population crash rate in a turbulent extreme
-const DARK_DECAY = 0.15; // gentle wane while the civilization is "running dark" (Act III)
+const DARK_DECAY = 0.15;
+// Frozen-era crash rate multiplier: a frozen civilization dehydrates and
+// endures (the Trisolaran survival trick) — cold is dormancy, not the fire.
+const FROZEN_DORMANCY = 0.5; // gentle wane while the civilization is "running dark" (Act III)
 const EXTINCT_AT = 0.02;
-const REBOOT_AT = 0.35;
+const REBOOT_AT = 0.25;
 
 export type Era = 'frozen' | 'temperate' | 'scorching';
 
@@ -78,8 +81,10 @@ export class WorldState {
         this.extinct = false;
       }
     } else {
-      // Scorching / frozen extremes burn or freeze the population away.
-      this.population -= DECAY * dt * (this.population + 0.15);
+      // Scorching burns at the full rate; frozen decays at half — dehydrated
+      // dormancy through the cold eras, the way the Trisolarans endure.
+      const rate = this.era === 'frozen' ? DECAY * FROZEN_DORMANCY : DECAY;
+      this.population -= rate * dt * (this.population + 0.15);
       if (this.population <= EXTINCT_AT) {
         this.population = 0;
         this.extinct = true;

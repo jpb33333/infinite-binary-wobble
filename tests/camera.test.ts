@@ -22,9 +22,9 @@ describe('planet ejection boundary ties to the camera’s furthest pull-back', (
     expect(planetEjectRadius(minDim) * CAMERA_MIN_ZOOM).toBeCloseTo(cameraFitRadius(minDim), 9);
   });
 
-  test('the camera pulls back to 4× and the boundary follows it (≈1280 px)', () => {
-    expect(CAMERA_MIN_ZOOM).toBeCloseTo(0.25, 9); // 4× wider view
-    expect(planetEjectRadius(minDim)).toBeCloseTo(1280, 9); // fitRadius (320) / 0.25
+  test('the camera pulls back to 5× and the boundary follows it (≈1600 px)', () => {
+    expect(CAMERA_MIN_ZOOM).toBeCloseTo(0.2, 9); // 5× wider view
+    expect(planetEjectRadius(minDim)).toBeCloseTo(1600, 9); // fitRadius (320) / 0.2
   });
 
   test('the boundary is far outside the normal (zoom = 1) view, so it takes a real slingshot', () => {
