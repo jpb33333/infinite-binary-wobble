@@ -22,7 +22,15 @@ import {
 import { placedStarVelocity, placedPlanetVelocity, clampedVelocity } from './placement.ts';
 import { PING_INTERVAL, pingStrength } from '../render/pings.ts';
 import { unlock as unlockAudio, playPing, playStrike, playGraze } from '../audio/sfx.ts';
-import { STATION_URL, hasStation, stationEmbedSrc } from '../audio/station.ts';
+import {
+  DEFAULT_STATION,
+  hasStation,
+  stationEmbedSrc,
+  looksLikeSoundcloud,
+  resolveStation,
+  loadStations,
+  saveStations,
+} from '../audio/station.ts';
 import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
@@ -151,6 +159,13 @@ export class Game {
   // panel (null until a station URL exists and the pill is first tapped).
   private musicOpen = false;
   private stationPanel: HTMLDivElement | null = null;
+  private stationFrame: HTMLIFrameElement | null = null;
+  private stationStrip: HTMLDivElement | null = null;
+  private stationNote: HTMLParagraphElement | null = null;
+  private stationInput: HTMLInputElement | null = null;
+  // The player's private directory (localStorage-backed, fails open).
+  private stationStore = loadStations();
+  private stationBusy = false;
 
   private hover: { x: number; y: number } | null = null;
   private lastFrameTime = 0;
@@ -277,6 +292,9 @@ export class Game {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    // Typing a link into the station directory must never drive the game
+    // (F would jump acts in dev, Esc would exit): the panel owns its keys.
+    if (e.target instanceof HTMLElement && e.target.closest('.station-panel')) return;
     // Any keypress is a user gesture: arm the (autoplay-gated) audio context.
     unlockAudio();
     // DEV-only playtest shortcut (gated on import.meta.env.DEV, so Vite strips it
@@ -1227,25 +1245,126 @@ export class Game {
     return out;
   }
 
-  // Show/hide the SoundCloud embed panel — only once a station URL exists
-  // (audio/station.ts). Built lazily with DOM APIs and styled by classes in
-  // style.css (no inline styles: CSP has no 'unsafe-inline'), the dedication
-  // footer's pattern. Unconfigured, the canvas whisper answers instead.
+  // Show/hide the station panel: the SoundCloud embed plus the player's
+  // private directory (add/tune/remove — audio/station.ts). Built lazily with
+  // DOM APIs and styled by classes in style.css (no inline styles: CSP has no
+  // 'unsafe-inline'), the dedication footer's pattern.
   private syncStationPanel(): void {
     if (!hasStation()) return;
-    if (!this.stationPanel) {
-      const panel = document.createElement('div');
-      panel.className = 'station-panel';
-      const frame = document.createElement('iframe');
-      frame.className = 'station-panel__frame';
-      frame.src = stationEmbedSrc(STATION_URL);
-      frame.allow = 'autoplay';
-      frame.title = 'Music station';
-      panel.append(frame);
-      document.body.append(panel);
-      this.stationPanel = panel;
+    if (!this.stationPanel) this.buildStationPanel();
+    this.stationPanel!.classList.toggle('station-panel--open', this.musicOpen);
+  }
+
+  private buildStationPanel(): void {
+    const panel = document.createElement('div');
+    panel.className = 'station-panel';
+    const frame = document.createElement('iframe');
+    frame.className = 'station-panel__frame';
+    frame.src = stationEmbedSrc(this.stationStore.selected);
+    frame.allow = 'autoplay';
+    frame.title = 'Music station';
+    const strip = document.createElement('div');
+    strip.className = 'station-strip';
+    panel.append(frame, strip);
+    document.body.append(panel);
+    this.stationPanel = panel;
+    this.stationFrame = frame;
+    this.stationStrip = strip;
+    this.renderStationStrip();
+  }
+
+  // Rebuild the directory rows: the default station first (non-removable),
+  // then the player's own, each tunable by tap; an add row takes any pasted
+  // SoundCloud link (short links resolve via oEmbed in resolveStation).
+  private renderStationStrip(): void {
+    const strip = this.stationStrip;
+    if (!strip) return;
+    strip.replaceChildren();
+    const stations = [DEFAULT_STATION, ...this.stationStore.added];
+    for (const st of stations) {
+      const row = document.createElement('div');
+      row.className =
+        'station-strip__row' +
+        (st.url === this.stationStore.selected ? ' station-strip__row--live' : '');
+      const tune = document.createElement('button');
+      tune.type = 'button';
+      tune.className = 'station-strip__tune';
+      tune.textContent = st.title;
+      tune.addEventListener('click', () => this.tuneTo(st.url));
+      row.append(tune);
+      if (st.url !== DEFAULT_STATION.url) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'station-strip__remove';
+        remove.textContent = '✕';
+        remove.setAttribute('aria-label', 'Remove ' + st.title);
+        remove.addEventListener('click', () => this.removeStation(st.url));
+        row.append(remove);
+      }
+      strip.append(row);
     }
-    this.stationPanel.classList.toggle('station-panel--open', this.musicOpen);
+    const add = document.createElement('div');
+    add.className = 'station-strip__add';
+    const input = document.createElement('input');
+    input.type = 'url';
+    input.className = 'station-strip__input';
+    input.placeholder = 'Paste a SoundCloud link';
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') void this.addStation();
+    });
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'station-strip__addbtn';
+    btn.textContent = 'Add';
+    btn.addEventListener('click', () => void this.addStation());
+    add.append(input, btn);
+    strip.append(add);
+    const note = document.createElement('p');
+    note.className = 'station-strip__note';
+    strip.append(note);
+    this.stationInput = input;
+    this.stationNote = note;
+  }
+
+  private tuneTo(url: string): void {
+    this.stationStore.selected = url;
+    saveStations(this.stationStore);
+    if (this.stationFrame) this.stationFrame.src = stationEmbedSrc(url);
+    this.renderStationStrip();
+  }
+
+  private removeStation(url: string): void {
+    this.stationStore.added = this.stationStore.added.filter(s => s.url !== url);
+    if (this.stationStore.selected === url) this.stationStore.selected = DEFAULT_STATION.url;
+    saveStations(this.stationStore);
+    if (this.stationFrame) this.stationFrame.src = stationEmbedSrc(this.stationStore.selected);
+    this.renderStationStrip();
+  }
+
+  private async addStation(): Promise<void> {
+    if (this.stationBusy || !this.stationInput || !this.stationNote) return;
+    const raw = this.stationInput.value.trim();
+    if (!raw) return;
+    if (!looksLikeSoundcloud(raw)) {
+      this.stationNote.textContent = "That link doesn't tune.";
+      return;
+    }
+    this.stationBusy = true;
+    this.stationNote.textContent = 'Tuning…';
+    const station = await resolveStation(raw);
+    this.stationBusy = false;
+    if (!station) {
+      this.stationNote.textContent = "That link doesn't tune.";
+      return;
+    }
+    this.stationNote.textContent = '';
+    const existing = this.stationStore.added.find(s => s.url === station.url);
+    if (!existing) {
+      this.stationStore.added.push(station);
+      saveStations(this.stationStore);
+    }
+    this.stationInput.value = '';
+    this.tuneTo(station.url);
   }
 
   // Open an act's title card the first time that act is reached this session.
