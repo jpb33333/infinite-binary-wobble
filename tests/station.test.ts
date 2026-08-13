@@ -1,17 +1,15 @@
 import { describe, test, expect } from 'vitest';
 import { STATION_URL, hasStation, stationEmbedSrc } from '../src/audio/station.ts';
 
-// The music pill ships fully wired to an intentionally empty station constant
-// (JP has no SoundCloud link yet). These pin the gate: empty stays silent,
-// and a future URL builds exactly one kind of src — the official SoundCloud
-// embed host — with the URL safely encoded.
+// The music pill is tuned to JP's station. These pin the gate — an emptied
+// constant falls back to the silent whisper — and the src builder: exactly
+// one kind of src, the official SoundCloud embed host, URL safely encoded.
 describe('station', () => {
-  test('ships unconfigured: the constant is empty and hasStation gates on it', () => {
-    expect(STATION_URL).toBe('');
-    expect(hasStation()).toBe(false);
+  test('the station is tuned to JP\'s profile and hasStation gates correctly', () => {
+    expect(STATION_URL).toBe('https://soundcloud.com/jpenningtonb');
+    expect(hasStation()).toBe(true);
     expect(hasStation('')).toBe(false);
     expect(hasStation('   ')).toBe(false);
-    expect(hasStation('https://soundcloud.com/jp/sets/wobble')).toBe(true);
   });
 
   test('embed src pins the SoundCloud widget host and encodes the URL', () => {

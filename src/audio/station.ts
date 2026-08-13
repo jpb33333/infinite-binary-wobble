@@ -1,8 +1,7 @@
-// The music station — JP's SoundCloud, one day. The pill and panel ship fully
-// wired to this constant; it is deliberately empty until JP supplies the link
-// (drop a SoundCloud track/playlist URL here and the pill starts playing it).
-// Empty means the pill answers with a quiet whisper instead of a player.
-export const STATION_URL = '';
+// The music station — JP's SoundCloud: "jpbowditch — beeps & boops & etc."
+// The profile URL embeds as a feed of JP's tracks in the widget. Emptying
+// this constant returns the pill to its quiet whisper.
+export const STATION_URL = 'https://soundcloud.com/jpenningtonb';
 
 export function hasStation(url: string = STATION_URL): boolean {
   return url.trim().length > 0;
