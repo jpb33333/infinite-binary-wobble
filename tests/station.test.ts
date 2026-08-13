@@ -5,8 +5,8 @@ import { STATION_URL, hasStation, stationEmbedSrc } from '../src/audio/station.t
 // constant falls back to the silent whisper — and the src builder: exactly
 // one kind of src, the official SoundCloud embed host, URL safely encoded.
 describe('station', () => {
-  test('the station is tuned to JP\'s profile and hasStation gates correctly', () => {
-    expect(STATION_URL).toBe('https://soundcloud.com/jpenningtonb');
+  test('the station is tuned and hasStation gates correctly', () => {
+    expect(STATION_URL).toBe('https://soundcloud.com/resident-advisor/ra521-the-range');
     expect(hasStation()).toBe(true);
     expect(hasStation('')).toBe(false);
     expect(hasStation('   ')).toBe(false);
