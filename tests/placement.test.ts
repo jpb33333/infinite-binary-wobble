@@ -1,5 +1,10 @@
 import { describe, test, expect } from 'vitest';
-import { placedPlanetVelocity, placedStarVelocity, clampedVelocity } from '../src/game/placement.ts';
+import {
+  placedPlanetVelocity,
+  placedStarVelocity,
+  clampedVelocity,
+  randomStarEntry,
+} from '../src/game/placement.ts';
 
 // The auto-velocity for a "Set"-placed sandbox body. The interaction (tap to
 // place, +/- mass) is canvas-only and untested; this proves the drop physics.
@@ -53,5 +58,40 @@ describe('clampedVelocity (player-aimed Set star)', () => {
   test('a zero-length drag returns zero — never NaN', () => {
     expect(clampedVelocity(from, from, 300)).toEqual({ x: 0, y: 0 });
     expect(clampedVelocity({ x: 5, y: 5 }, { x: 5, y: 5 }, 300)).toEqual({ x: 0, y: 0 });
+  });
+});
+
+// Act 2 breathes: random stars must enter with real angular momentum (a
+// tangential component well above the plunge regime) and only a gentle
+// infall — the shape that turns instant mergers back into three-body dances.
+describe('randomStarEntry', () => {
+  const G = 1.5e7;
+
+  test('carries strong tangential motion and gentle inward drift', () => {
+    for (let k = 0; k < 200; k++) {
+      const e = randomStarEntry(6, 3, 768, G);
+      const cos = Math.cos(e.theta);
+      const sin = Math.sin(e.theta);
+      // Decompose back into radial (outward +) and tangential parts.
+      const vr = e.vx * cos + e.vy * sin;
+      const vt = -e.vx * sin + e.vy * cos;
+      const vCirc = Math.sqrt((G * 9) / 768);
+      expect(vr).toBeLessThan(0); // always drifting in…
+      expect(vr).toBeGreaterThanOrEqual(-120); // …but never a plunge
+      expect(Math.abs(vt)).toBeGreaterThanOrEqual(vCirc * 0.55 - 1e-9);
+      expect(Math.abs(vt)).toBeLessThanOrEqual(vCirc * 0.85 + 1e-9);
+      expect(Math.abs(e.vz)).toBeLessThanOrEqual(30);
+    }
+  });
+
+  test('deterministic under an injected rand', () => {
+    const seq = [0.25, 0.5, 0.9, 0.1];
+    let i = 0;
+    const rand = () => seq[i++ % seq.length];
+    i = 0;
+    const a = randomStarEntry(6, 3, 768, G, rand);
+    i = 0;
+    const b = randomStarEntry(6, 3, 768, G, rand);
+    expect(a).toEqual(b);
   });
 });
