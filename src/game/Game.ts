@@ -19,7 +19,12 @@ import {
   systemBroadcast,
   type HiddenSystem,
 } from './visibility.ts';
-import { placedStarVelocity, placedPlanetVelocity, clampedVelocity } from './placement.ts';
+import {
+  placedStarVelocity,
+  placedPlanetVelocity,
+  clampedVelocity,
+  randomStarEntry,
+} from './placement.ts';
 import { PING_INTERVAL, pingStrength } from '../render/pings.ts';
 import { unlock as unlockAudio, playPing, playStrike, playGraze } from '../audio/sfx.ts';
 import {
@@ -893,16 +898,18 @@ export class Game {
     const com = this.systemCOM();
     const { width: w, height: h } = this.renderer.layout.canvas;
     const mass = 2 + Math.random() * 3;
-    const theta = Math.random() * Math.PI * 2;
     const reach = Math.max(w, h) * 0.6;
-    const speed = 150 + Math.random() * 140;
-    const aim = theta + Math.PI + (Math.random() - 0.5) * (Math.PI / 3);
+    // Orbital entry, not a plunge (placement.randomStarEntry): the old
+    // near-radial recipe merged 97% of entries within seconds; an orbit with
+    // real angular momentum lets act 2 dance, slingshot, and only sometimes
+    // fuse — the physically honest distribution.
+    const entry = randomStarEntry(com.mass, mass, reach, PHYSICS.G);
     const star = createBody(
       mass,
-      vec2(com.x + Math.cos(theta) * reach, com.y + Math.sin(theta) * reach),
-      vec2(Math.cos(aim) * speed, Math.sin(aim) * speed),
+      vec2(com.x + Math.cos(entry.theta) * reach, com.y + Math.sin(entry.theta) * reach),
+      vec2(entry.vx, entry.vy),
     );
-    star.vz = (Math.random() - 0.5) * speed; // arrive out of the plane → real 3D
+    star.vz = entry.vz; // a whisper of tilt → gently 3D
     this.nbody.addBody(star);
     this.unravelTracks.push({
       body: star,

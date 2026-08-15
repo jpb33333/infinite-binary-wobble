@@ -27,7 +27,12 @@ export const BLAST_VMAX = 500;
 // come within this fraction of the summed radii. Grazing passes slingshot
 // instead, so the three-body chaos lasts far longer before collapsing to a
 // stable binary. (1.0 = "surfaces touch"; lower = rarer, more chaotic.)
-const MERGE_OVERLAP = 0.5;
+// 0.35: stars fuse only on a genuinely deep hit. Visual radii are ~40× fatter
+// (relative to orbit scales) than real stars, so a generous contact factor
+// turned every graze into a merger — act 2 lasted a median 1.4s per added
+// star. At 0.35 grazes slingshot past, the physically dominant outcome of
+// real three-body encounters; fusion still happens on committed plunges.
+const MERGE_OVERLAP = 0.35;
 
 // N-body Plummer-softened gravity + PEFRL, for the post-win "third star"
 // unravel (the three-body problem tearing a stable binary apart).
