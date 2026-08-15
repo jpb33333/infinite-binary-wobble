@@ -113,6 +113,9 @@ export interface RenderInput {
     mass: number;
     vel: { x: number; y: number } | null;
   } | null;
+  // True while the pointer holds the placement ghost (aim grab armed): the
+  // ghost draws "held" so the mode switch is visible before any drag starts.
+  placingGrabbed: boolean;
   starCount: number;
   planetCount: number;
   // Per-session scoreboard rendered on the title screen and (briefly) above
@@ -841,14 +844,16 @@ export class Renderer {
         const baseR = input.placing.kind === 'star' ? bodyRadius(input.placing.mass) : WORLD_DRAW_R;
         const gr = Math.max(baseR, MIN_UNRAVEL_SCREEN_R / cz);
         const col = kindAccent(input.placing.kind);
+        // Held ghost brightens and thickens its ring — the grab is armed.
+        const grabbed = input.placingGrabbed;
         ctx.save();
-        ctx.globalAlpha = 0.5;
+        ctx.globalAlpha = grabbed ? 0.7 : 0.5;
         ctx.fillStyle = col;
         ctx.beginPath();
         ctx.arc(gp.x, gp.y, gr, 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalAlpha = 0.85;
-        ctx.lineWidth = 1.5 / cz;
+        ctx.globalAlpha = grabbed ? 1 : 0.85;
+        ctx.lineWidth = (grabbed ? 2.5 : 1.5) / cz;
         ctx.strokeStyle = col;
         ctx.beginPath();
         ctx.arc(gp.x, gp.y, gr + 7 / cz, 0, Math.PI * 2);

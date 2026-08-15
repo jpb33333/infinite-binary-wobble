@@ -534,10 +534,13 @@ export class Game {
       // star field (placement.autoPlanetOrbit — S-type near a star, P-type
       // circumbinary otherwise, always prograde).
       if (!pl.velCustom) {
-        pl.vel =
-          pl.kind === 'star'
-            ? placedStarVelocity(pl.pos, this.systemCOM(), SET_STAR_INBOUND_SPEED)
-            : this.seedPlanetOrbit(pl.pos);
+        if (pl.kind === 'star') {
+          pl.vel = placedStarVelocity(pl.pos, this.systemCOM(), SET_STAR_INBOUND_SPEED);
+        } else {
+          // The preview is the in-plane aim; the seed's vz rides at launch.
+          const seed = this.seedPlanetOrbit(pl.pos);
+          pl.vel = { x: seed.x, y: seed.y };
+        }
       }
       return;
     }
@@ -1038,15 +1041,20 @@ export class Game {
     return this.nbody.bodies.filter(b => !worlds.has(b));
   }
 
-  // The live suns as the orbit seeder sees them (position with z — the field
-  // is 3D and the seeder ranges by true distance).
-  private liveStars(): { x: number; y: number; z: number; vx: number; vy: number; mass: number }[] {
+  // The live suns as the orbit seeder sees them (full 3D position and
+  // velocity — the seeder ranges by true distance and rides the frame's vz).
+  private liveStars(): {
+    x: number; y: number; z: number;
+    vx: number; vy: number; vz: number;
+    mass: number;
+  }[] {
     return this.sunBodies().map(b => ({
       x: b.pos.x,
       y: b.pos.y,
       z: b.z,
       vx: b.vel.x,
       vy: b.vel.y,
+      vz: b.vz,
       mass: b.mass,
     }));
   }
@@ -1054,7 +1062,7 @@ export class Game {
   // The survivor-orbit seed at a tap point: engine-true softened speeds, and
   // stars beyond the ejection boundary (runaway slingshot survivors) culled so
   // they can't drag the seed's COM out into empty space.
-  private seedPlanetOrbit(pos: { x: number; y: number }): { x: number; y: number } {
+  private seedPlanetOrbit(pos: { x: number; y: number }): { x: number; y: number; vz: number } {
     const { width: w, height: h } = this.renderer.layout.canvas;
     const reach = planetEjectRadius(Math.min(w, h));
     return autoPlanetOrbit(pos, this.liveStars(), PHYSICS.G, PHYSICS.SOFTENING, reach);
@@ -1064,8 +1072,13 @@ export class Game {
     if (!this.nbody || this.atPlanetCap()) return;
     const com = this.systemCOM();
     if (com.mass <= 0) return;
-    const v = vel ?? this.seedPlanetOrbit(pos);
+    const seed = this.seedPlanetOrbit(pos);
+    const v = vel ?? seed;
     const planet = createBody(WORLD_MASS, vec2(pos.x, pos.y), vec2(v.x, v.y));
+    // Ride the seed frame out of plane even under a dragged aim — the drag is
+    // a 2D gesture, and co-moving vertically is what keeps the orbit beside a
+    // lofted star instead of shearing away from it.
+    planet.vz = seed.vz;
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
     this.worlds.push(new WorldState(planet));
     track('sandbox_add', { kind: 'planet', mode: 'set' });
@@ -1656,6 +1669,7 @@ export class Game {
       cameraZoom: this.computeCameraZoom(dt),
       sandboxOutcome: this.sandboxOutcome,
       placing: this.placing,
+      placingGrabbed: this.placingVelGrab,
       starCount: this.starCount(),
       planetCount: this.worlds.length,
       darkForest: this.darkForest
