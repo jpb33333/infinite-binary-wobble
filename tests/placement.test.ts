@@ -150,7 +150,7 @@ describe('autoPlanetOrbit', () => {
     const v = autoPlanetOrbit({ x: 100, y: 0 }, lone, G, EPS);
     const rel = { x: v.x - 10, y: v.y };
     expect(Math.hypot(rel.x, rel.y)).toBeCloseTo(soft(5, 100), 6);
-    expect(autoPlanetOrbit({ x: 1, y: 2 }, [], G, EPS)).toEqual({ x: 0, y: 0 });
+    expect(autoPlanetOrbit({ x: 1, y: 2 }, [], G, EPS)).toEqual({ x: 0, y: 0, vz: 0 });
   });
 
   // A star-center bullseye must seed the softened law, not sqrt(G·m/r)'s
@@ -168,7 +168,7 @@ describe('autoPlanetOrbit', () => {
 
   test('zero total mass seeds zero, not NaN', () => {
     const v = autoPlanetOrbit({ x: 1, y: 2 }, [{ x: 0, y: 0, vx: 0, vy: 0, mass: 0 }], G, EPS);
-    expect(v).toEqual({ x: 0, y: 0 });
+    expect(v).toEqual({ x: 0, y: 0, vz: 0 });
   });
 
   // A runaway slingshot survivor parked far outside the play field must not
@@ -199,6 +199,20 @@ describe('autoPlanetOrbit', () => {
     const v = autoPlanetOrbit({ x: 40, y: 0 }, lofted, G, EPS);
     const rel = { x: v.x - 10, y: v.y };
     expect(Math.hypot(rel.x, rel.y)).toBeCloseTo(soft(5, Math.hypot(40, 100)), 6);
+  });
+
+  // And the frame is ridden out of plane too: the seed carries vz — the host
+  // star's for S-type, the COM's for P-type — so a planet beside a climbing
+  // star doesn't shear away vertically from the sun it co-moves with.
+  test('the seed carries the frame vz: host star for S-type, COM for P-type', () => {
+    const lofted = [{ x: 0, y: 0, vx: 10, vy: 0, vz: 25, mass: 3 }];
+    expect(autoPlanetOrbit({ x: 30, y: 0 }, lofted, G, EPS).vz).toBeCloseTo(25, 9);
+    const pair = [
+      { x: -60, y: 0, vx: 50, vy: -400, vz: 40, mass: 3 },
+      { x: 60, y: 0, vx: 50, vy: 400, vz: -20, mass: 3 },
+    ];
+    // Far tap → P-type; vz is the mass-weighted mean: (40 − 20) / 2 = 10.
+    expect(autoPlanetOrbit({ x: 800, y: 0 }, pair, G, EPS).vz).toBeCloseTo(10, 9);
   });
 });
 
