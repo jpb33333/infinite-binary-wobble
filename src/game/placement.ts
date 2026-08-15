@@ -94,9 +94,15 @@ export function randomStarEntry(
 // slingshot survivor parked off-field must not drag the COM into empty space);
 // if no star is within reach, the full field is used so a far tap still gets
 // a wide orbit instead of a dead drop.
+//
+// The field is genuinely 3D — entry stars carry vz, supernova blasts kick out
+// of plane — so every distance here uses the star's z (the tap itself sits on
+// the z=0 plane). The seeded tangent stays in-plane: this is a 2.5D game and
+// the aim gesture is a 2D drag; only the SPEED honours the true radius.
 export interface OrbitStar {
   x: number;
   y: number;
+  z?: number; // out-of-plane offset; 0 when absent
   vx: number;
   vy: number;
   mass: number;
@@ -110,20 +116,22 @@ export function autoPlanetOrbit(
   reach: number = Infinity,
 ) {
   if (stars.length === 0) return vec2(0, 0);
-  const inReach = stars.filter(s => Math.hypot(pos.x - s.x, pos.y - s.y) <= reach);
+  const toStar = (s: OrbitStar) => Math.hypot(pos.x - s.x, pos.y - s.y, s.z ?? 0);
+  const inReach = stars.filter(s => toStar(s) <= reach);
   const field = inReach.length > 0 ? inReach : stars;
 
   let M = 0;
-  let cx = 0, cy = 0, cvx = 0, cvy = 0;
+  let cx = 0, cy = 0, cz = 0, cvx = 0, cvy = 0;
   for (const s of field) {
     M += s.mass;
     cx += s.mass * s.x;
     cy += s.mass * s.y;
+    cz += s.mass * (s.z ?? 0);
     cvx += s.mass * s.vx;
     cvy += s.mass * s.vy;
   }
   if (M <= 0) return vec2(0, 0);
-  cx /= M; cy /= M; cvx /= M; cvy /= M;
+  cx /= M; cy /= M; cz /= M; cvx /= M; cvy /= M;
 
   // Net spin about the COM decides prograde.
   let L = 0;
@@ -132,19 +140,20 @@ export function autoPlanetOrbit(
   }
   const spin = L >= 0 ? 1 : -1;
 
-  const circular = (ox: number, oy: number, m: number, bvx: number, bvy: number) => {
+  const circular = (ox: number, oy: number, oz: number, m: number, bvx: number, bvy: number) => {
     const dx = pos.x - ox;
     const dy = pos.y - oy;
-    const r = Math.hypot(dx, dy);
-    if (r < 1e-6 || m <= 0) return vec2(bvx, bvy);
+    const flat = Math.hypot(dx, dy); // in-plane part steers the tangent
+    const r = Math.hypot(dx, dy, oz); // true radius sets the speed
+    if (flat < 1e-6 || m <= 0) return vec2(bvx, bvy);
     const v = circularRelativeVelocity(m, 0, r, G, softening);
-    return vec2(bvx + (-dy / r) * v * spin, bvy + (dx / r) * v * spin);
+    return vec2(bvx + (-dy / flat) * v * spin, bvy + (dx / flat) * v * spin);
   };
 
   let near = field[0];
   let dNear = Infinity;
   for (const s of field) {
-    const d = Math.hypot(pos.x - s.x, pos.y - s.y);
+    const d = toStar(s);
     if (d < dNear) {
       dNear = d;
       near = s;
@@ -152,11 +161,16 @@ export function autoPlanetOrbit(
   }
   let dOther = Infinity;
   for (const s of field) {
-    if (s !== near) dOther = Math.min(dOther, Math.hypot(near.x - s.x, near.y - s.y));
+    if (s !== near)
+      dOther = Math.min(
+        dOther,
+        Math.hypot(near.x - s.x, near.y - s.y, (near.z ?? 0) - (s.z ?? 0)),
+      );
   }
 
   // Inside the star's dominance region (~0.45 of the way to its nearest
   // neighbour — the game-feel end of the Holman–Wiegert stability line).
-  if (dNear < 0.45 * dOther) return circular(near.x, near.y, near.mass, near.vx, near.vy);
-  return circular(cx, cy, M, cvx, cvy);
+  if (dNear < 0.45 * dOther)
+    return circular(near.x, near.y, near.z ?? 0, near.mass, near.vx, near.vy);
+  return circular(cx, cy, cz, M, cvx, cvy);
 }

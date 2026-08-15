@@ -1003,8 +1003,13 @@ export class Game {
     const pl = this.placing;
     this.placing = null;
     if (!pl || !pl.pos || !this.nbody) return;
-    if (pl.kind === 'star') this.addStarAt(pl.pos, pl.mass, pl.vel);
-    else this.addPlanetAt(pl.pos, pl.vel);
+    // Only a player-dragged aim is carried through; a default aim is re-derived
+    // by addStarAt/addPlanetAt at launch, so the default's correctness never
+    // depends on the sim staying frozen while placing — the tap-time seed is
+    // the preview, the launch-time derivation is the source of truth.
+    const aim = pl.velCustom ? pl.vel : null;
+    if (pl.kind === 'star') this.addStarAt(pl.pos, pl.mass, aim);
+    else this.addPlanetAt(pl.pos, aim);
   }
 
   private addStarAt(
@@ -1025,13 +1030,25 @@ export class Game {
     track('sandbox_add', { kind: 'star', mode: 'set' });
   }
 
-  // The live suns as the orbit seeder sees them (worlds excluded).
-  private liveStars(): { x: number; y: number; vx: number; vy: number; mass: number }[] {
+  // Every nbody body that isn't a tracked world — THE star/planet partition.
+  // All membership logic lives here; don't hand-roll the worlds filter again.
+  private sunBodies(): Body[] {
     if (!this.nbody) return [];
     const worlds = new Set(this.worlds.map(w => w.body));
-    return this.nbody.bodies
-      .filter(b => !worlds.has(b))
-      .map(b => ({ x: b.pos.x, y: b.pos.y, vx: b.vel.x, vy: b.vel.y, mass: b.mass }));
+    return this.nbody.bodies.filter(b => !worlds.has(b));
+  }
+
+  // The live suns as the orbit seeder sees them (position with z — the field
+  // is 3D and the seeder ranges by true distance).
+  private liveStars(): { x: number; y: number; z: number; vx: number; vy: number; mass: number }[] {
+    return this.sunBodies().map(b => ({
+      x: b.pos.x,
+      y: b.pos.y,
+      z: b.z,
+      vx: b.vel.x,
+      vy: b.vel.y,
+      mass: b.mass,
+    }));
   }
 
   // The survivor-orbit seed at a tap point: engine-true softened speeds, and
@@ -1080,8 +1097,7 @@ export class Game {
     }
     for (const t of this.unravelTracks) t.trail.push(t.body.pos.x, t.body.pos.y);
     if (this.worlds.length > 0) {
-      const planets = new Set(this.worlds.map(e => e.body));
-      const suns = this.nbody.bodies.filter(b => !planets.has(b));
+      const suns = this.sunBodies();
       for (const world of this.worlds) {
         world.update(dt, suns, this.goingDark);
         world.trail.push(world.body.pos.x, world.body.pos.y);
@@ -1141,8 +1157,7 @@ export class Game {
     if (!this.nbody) return;
 
     // The two sustained broadcast signals, derived from the live system.
-    const planets = new Set(this.worlds.map(w => w.body));
-    const starMasses = this.nbody.bodies.filter(b => !planets.has(b)).map(b => b.mass);
+    const starMasses = this.sunBodies().map(b => b.mass);
     const { luminosity, life } = systemBroadcast(starMasses, this.worlds);
     // The pre-wake flare decays like the forest's own, so a supernova spike is a
     // brief window in which a quiet system can still be noticed.
@@ -1188,8 +1203,7 @@ export class Game {
   // The hunt found you: a strike detonates your brightest star — the loud one
   // that gave you away — and ends the run. Reuses the supernova flash visual.
   private darkForestStrike(): void {
-    const planets = new Set(this.worlds.map(w => w.body));
-    const stars = this.nbody ? this.nbody.bodies.filter(b => !planets.has(b)) : [];
+    const stars = this.sunBodies();
     const target = stars.reduce<Body | null>(
       (best, b) => (!best || b.mass > best.mass ? b : best),
       null,
@@ -1245,8 +1259,7 @@ export class Game {
       },
       null,
     );
-    const planets = new Set(this.worlds.map(w => w.body));
-    const stars = this.nbody ? this.nbody.bodies.filter(b => !planets.has(b)) : [];
+    const stars = this.sunBodies();
     const com = this.systemCOM();
     const z = this.cameraZoom;
     const beamTo = (p: { x: number; y: number }) => ({
