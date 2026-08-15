@@ -24,6 +24,7 @@ import {
   placedPlanetVelocity,
   clampedVelocity,
   randomStarEntry,
+  autoPlanetOrbit,
 } from './placement.ts';
 import { PING_INTERVAL, pingStrength } from '../render/pings.ts';
 import { unlock as unlockAudio, playPing, playStrike, playGraze } from '../audio/sfx.ts';
@@ -499,18 +500,26 @@ export class Game {
     // drop point (world coords; the unravel is paused while placing).
     if (this.placing && this.state === 'resolved') {
       const pl = this.placing;
-      if (pl.pos && pl.kind === 'star') {
+      if (pl.pos) {
         const w = this.designToWorld(p);
-        const grabR = bodyRadius(pl.mass) + SET_STAR_GRAB_PAD / Math.max(this.cameraZoom, 1e-6);
+        // A planet's true radius is ~2px — give it a grabbable body.
+        const bodyR = pl.kind === 'star' ? bodyRadius(pl.mass) : Math.max(bodyRadius(pl.mass), 10);
+        const grabR = bodyR + SET_STAR_GRAB_PAD / Math.max(this.cameraZoom, 1e-6);
         if (Math.hypot(w.x - pl.pos.x, w.y - pl.pos.y) <= grabR) {
           this.placingVelGrab = true; // aim is set on drag (onPointerMove), not a bare tap
           return;
         }
       }
       pl.pos = this.designToWorld(p);
-      // Seed / re-seed the inbound default aim until the player takes over.
-      if (pl.kind === 'star' && !pl.velCustom) {
-        pl.vel = placedStarVelocity(pl.pos, this.systemCOM(), SET_STAR_INBOUND_SPEED);
+      // Seed / re-seed the default aim until the player takes over: stars get
+      // the inbound dart; planets get the survivor orbit read from the live
+      // star field (placement.autoPlanetOrbit — S-type near a star, P-type
+      // circumbinary otherwise, always prograde).
+      if (!pl.velCustom) {
+        pl.vel =
+          pl.kind === 'star'
+            ? placedStarVelocity(pl.pos, this.systemCOM(), SET_STAR_INBOUND_SPEED)
+            : autoPlanetOrbit(pl.pos, this.liveStars(), PHYSICS.G);
       }
       return;
     }
@@ -929,12 +938,12 @@ export class Game {
     const com = this.systemCOM();
     if (com.mass <= 0) return;
     const ang = Math.random() * Math.PI * 2;
-    const vCirc = Math.sqrt((PHYSICS.G * com.mass) / WORLD_ORBIT);
-    const planet = createBody(
-      WORLD_MASS,
-      vec2(com.x + Math.cos(ang) * WORLD_ORBIT, com.y + Math.sin(ang) * WORLD_ORBIT),
-      vec2(-Math.sin(ang) * vCirc, Math.cos(ang) * vCirc),
-    );
+    const pos = vec2(com.x + Math.cos(ang) * WORLD_ORBIT, com.y + Math.sin(ang) * WORLD_ORBIT);
+    // The same circumbinary math the Set flow's seeder degrades to at this
+    // radius — one source of truth for "circular around the COM".
+    const v = placedPlanetVelocity(pos, com, com.mass, PHYSICS.G);
+    const planet = createBody(WORLD_MASS, pos, vec2(v.x, v.y));
+    const vCirc = Math.hypot(v.x, v.y);
     planet.vz = (Math.random() - 0.5) * vCirc * 0.6; // a slightly inclined orbit
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
     this.worlds.push(new WorldState(planet));
@@ -963,7 +972,7 @@ export class Game {
     this.placing = null;
     if (!pl || !pl.pos || !this.nbody) return;
     if (pl.kind === 'star') this.addStarAt(pl.pos, pl.mass, pl.vel);
-    else this.addPlanetAt(pl.pos);
+    else this.addPlanetAt(pl.pos, pl.vel);
   }
 
   private addStarAt(
@@ -984,11 +993,20 @@ export class Game {
     track('sandbox_add', { kind: 'star', mode: 'set' });
   }
 
-  private addPlanetAt(pos: { x: number; y: number }): void {
+  // The live suns as the orbit seeder sees them (worlds excluded).
+  private liveStars(): { x: number; y: number; vx: number; vy: number; mass: number }[] {
+    if (!this.nbody) return [];
+    const worlds = new Set(this.worlds.map(w => w.body));
+    return this.nbody.bodies
+      .filter(b => !worlds.has(b))
+      .map(b => ({ x: b.pos.x, y: b.pos.y, vx: b.vel.x, vy: b.vel.y, mass: b.mass }));
+  }
+
+  private addPlanetAt(pos: { x: number; y: number }, vel?: { x: number; y: number } | null): void {
     if (!this.nbody || this.atPlanetCap()) return;
     const com = this.systemCOM();
     if (com.mass <= 0) return;
-    const v = placedPlanetVelocity(pos, com, com.mass, PHYSICS.G);
+    const v = vel ?? autoPlanetOrbit(pos, this.liveStars(), PHYSICS.G);
     const planet = createBody(WORLD_MASS, vec2(pos.x, pos.y), vec2(v.x, v.y));
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
     this.worlds.push(new WorldState(planet));

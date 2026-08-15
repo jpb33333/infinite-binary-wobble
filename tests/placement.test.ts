@@ -4,6 +4,7 @@ import {
   placedStarVelocity,
   clampedVelocity,
   randomStarEntry,
+  autoPlanetOrbit,
 } from '../src/game/placement.ts';
 
 // The auto-velocity for a "Set"-placed sandbox body. The interaction (tap to
@@ -93,5 +94,53 @@ describe('randomStarEntry', () => {
     i = 0;
     const b = randomStarEntry(6, 3, 768, G, rand);
     expect(a).toEqual(b);
+  });
+});
+
+// The survivor-orbit seed for Set planets: circumstellar near a star
+// (co-moving!), circumbinary far out, always prograde with the system's spin.
+describe('autoPlanetOrbit', () => {
+  const G = 1.5e7;
+  // A binary spinning counter-clockwise (+L), drifting +x at 50 px/s.
+  const binary = () => [
+    { x: -60, y: 0, vx: 50, vy: -400, mass: 3 },
+    { x: 60, y: 0, vx: 50, vy: 400, mass: 3 },
+  ];
+
+  test('near one star: co-moving circumstellar at circular speed', () => {
+    const stars = binary();
+    const pos = { x: 60 + 20, y: 0 }; // 20px off the right star — deep inside dominance
+    const v = autoPlanetOrbit(pos, stars, G);
+    const rel = { x: v.x - stars[1].vx, y: v.y - stars[1].vy };
+    const speed = Math.hypot(rel.x, rel.y);
+    expect(speed).toBeCloseTo(Math.sqrt((G * 3) / 20), 6);
+    // Tangential: relative velocity ⊥ the radial from the star.
+    expect(rel.x * 20 + rel.y * 0).toBeCloseTo(0, 6);
+    // Prograde (+L system): at +x from the star, tangent points +y.
+    expect(rel.y).toBeGreaterThan(0);
+  });
+
+  test('far out: circumbinary around the COM, riding the system drift', () => {
+    const stars = binary();
+    const pos = { x: 800, y: 0 };
+    const v = autoPlanetOrbit(pos, stars, G);
+    const rel = { x: v.x - 50, y: v.y - 0 }; // COM drifts +x at 50
+    expect(Math.hypot(rel.x, rel.y)).toBeCloseTo(Math.sqrt((G * 6) / 800), 6);
+    expect(rel.y).toBeGreaterThan(0); // prograde
+    expect(Math.abs(rel.x)).toBeLessThan(1e-6);
+  });
+
+  test('retrograde system flips the seeded tangent', () => {
+    const stars = binary().map(s => ({ ...s, vy: -s.vy })); // spin now −L
+    const v = autoPlanetOrbit({ x: 800, y: 0 }, stars, G);
+    expect(v.y).toBeLessThan(0);
+  });
+
+  test('single star and empty field degrade gracefully', () => {
+    const lone = [{ x: 0, y: 0, vx: 10, vy: 0, mass: 5 }];
+    const v = autoPlanetOrbit({ x: 100, y: 0 }, lone, G);
+    const rel = { x: v.x - 10, y: v.y };
+    expect(Math.hypot(rel.x, rel.y)).toBeCloseTo(Math.sqrt((G * 5) / 100), 6);
+    expect(autoPlanetOrbit({ x: 1, y: 2 }, [], G)).toEqual({ x: 0, y: 0 });
   });
 });

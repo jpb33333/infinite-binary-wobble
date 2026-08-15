@@ -72,3 +72,70 @@ export function randomStarEntry(
     vz: (rand() - 0.5) * 60,
   };
 }
+
+// The auto-orbit seed for a Set PLANET: read the live star field and pick the
+// orbit most likely to LAST — the two survivable regimes of real multi-star
+// systems. Tap near one star (inside its dominance region) → a circumstellar
+// "S-type" orbit: circular speed for that star at that radius, CO-MOVING with
+// the star (orbiting a moving sun demands riding along). Tap anywhere else →
+// a circumbinary "P-type" orbit around the mass-weighted COM, riding the
+// system's drift. Either way the tangent runs PROGRADE with the system's net
+// angular momentum — co-rotating orbits survive; retrograde ones get eaten.
+// The player can always drag the ghost to override.
+export interface OrbitStar {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  mass: number;
+}
+
+export function autoPlanetOrbit(pos: P, stars: OrbitStar[], G: number) {
+  if (stars.length === 0) return vec2(0, 0);
+
+  let M = 0;
+  let cx = 0, cy = 0, cvx = 0, cvy = 0;
+  for (const s of stars) {
+    M += s.mass;
+    cx += s.mass * s.x;
+    cy += s.mass * s.y;
+    cvx += s.mass * s.vx;
+    cvy += s.mass * s.vy;
+  }
+  cx /= M; cy /= M; cvx /= M; cvy /= M;
+
+  // Net spin about the COM decides prograde.
+  let L = 0;
+  for (const s of stars) {
+    L += s.mass * ((s.x - cx) * (s.vy - cvy) - (s.y - cy) * (s.vx - cvx));
+  }
+  const spin = L >= 0 ? 1 : -1;
+
+  const circular = (ox: number, oy: number, m: number, bvx: number, bvy: number) => {
+    const dx = pos.x - ox;
+    const dy = pos.y - oy;
+    const r = Math.hypot(dx, dy);
+    if (r < 1e-6 || m <= 0) return vec2(bvx, bvy);
+    const v = Math.sqrt((G * m) / r);
+    return vec2(bvx + (-dy / r) * v * spin, bvy + (dx / r) * v * spin);
+  };
+
+  let near = stars[0];
+  let dNear = Infinity;
+  for (const s of stars) {
+    const d = Math.hypot(pos.x - s.x, pos.y - s.y);
+    if (d < dNear) {
+      dNear = d;
+      near = s;
+    }
+  }
+  let dOther = Infinity;
+  for (const s of stars) {
+    if (s !== near) dOther = Math.min(dOther, Math.hypot(near.x - s.x, near.y - s.y));
+  }
+
+  // Inside the star's dominance region (~0.45 of the way to its nearest
+  // neighbour — the game-feel end of the Holman–Wiegert stability line).
+  if (dNear < 0.45 * dOther) return circular(near.x, near.y, near.mass, near.vx, near.vy);
+  return circular(cx, cy, M, cvx, cvy);
+}

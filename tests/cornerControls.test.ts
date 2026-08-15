@@ -595,3 +595,29 @@ describe('musicPillLayout — bottom-right anchor in both design spaces', () => 
     }
   });
 });
+
+// Planets aim now: an aimed planet shows the velocity readout row and the
+// buttons cascade below it (mass row stays star-only).
+describe('placementHudLayout — aimed planets read out their velocity', () => {
+  const desktopBase = {
+    massWidth: 60,
+    lineAdvance: lineAdvanceAt(1),
+    measure: labelMeasurerAt(1),
+    viewScale: 1,
+    hintWidth: 300,
+    phase: desktopPhase('landscape'),
+  };
+
+  test('desktop planet with pos+vel: no mass row, velocity row, buttons below', () => {
+    const layout = placementHudLayout({ kind: 'planet', hasPos: true, hasVel: true, ...desktopBase });
+    expect(layout.minus).toBeNull();
+    expect(layout.velY).not.toBeNull();
+    expect(layout.launch!.y).toBeGreaterThan(layout.velY!);
+    expect(layout.cancel.y).toBe(layout.launch!.y);
+  });
+
+  test('an unaimed planet still shows no velocity row', () => {
+    const layout = placementHudLayout({ kind: 'planet', hasPos: false, hasVel: false, ...desktopBase });
+    expect(layout.velY).toBeNull();
+  });
+});

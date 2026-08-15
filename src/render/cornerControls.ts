@@ -299,7 +299,8 @@ export function placementHudLayout(o: {
   }
 
   let velY: number | null = null;
-  if (o.kind === 'star' && o.hasPos && o.hasVel) {
+  // Any aimed body reads out its launch velocity (planets aim too now).
+  if (o.hasPos && o.hasVel) {
     velY = y + 4;
     y += Math.max(22, Math.round(o.lineAdvance) + 6);
   }
