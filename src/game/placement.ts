@@ -1,4 +1,5 @@
 import { vec2 } from '../physics/Vec2.ts';
+import { circularRelativeVelocity } from '../physics/orbit.ts';
 
 // Auto-velocity for a body the player "Set"-places in the sandbox. Quick-set:
 // the player picks the spot (and a star's mass); we supply a sensible velocity.
@@ -82,6 +83,17 @@ export function randomStarEntry(
 // system's drift. Either way the tangent runs PROGRADE with the system's net
 // angular momentum — co-rotating orbits survive; retrograde ones get eaten.
 // The player can always drag the ghost to override.
+//
+// Speeds come from the ENGINE-TRUE Plummer-softened circular law
+// (orbit.ts's circularRelativeVelocity), not bare sqrt(G·m/r) — the bare law
+// diverges as r → 0, so a tap on a star's centre would seed past escape speed
+// and eject in seconds, while the softened law tops out at exactly the speed
+// the engine's own force field can hold in a circle.
+//
+// `reach` culls stars farther than that distance from the tap (a runaway
+// slingshot survivor parked off-field must not drag the COM into empty space);
+// if no star is within reach, the full field is used so a far tap still gets
+// a wide orbit instead of a dead drop.
 export interface OrbitStar {
   x: number;
   y: number;
@@ -90,23 +102,32 @@ export interface OrbitStar {
   mass: number;
 }
 
-export function autoPlanetOrbit(pos: P, stars: OrbitStar[], G: number) {
+export function autoPlanetOrbit(
+  pos: P,
+  stars: OrbitStar[],
+  G: number,
+  softening: number,
+  reach: number = Infinity,
+) {
   if (stars.length === 0) return vec2(0, 0);
+  const inReach = stars.filter(s => Math.hypot(pos.x - s.x, pos.y - s.y) <= reach);
+  const field = inReach.length > 0 ? inReach : stars;
 
   let M = 0;
   let cx = 0, cy = 0, cvx = 0, cvy = 0;
-  for (const s of stars) {
+  for (const s of field) {
     M += s.mass;
     cx += s.mass * s.x;
     cy += s.mass * s.y;
     cvx += s.mass * s.vx;
     cvy += s.mass * s.vy;
   }
+  if (M <= 0) return vec2(0, 0);
   cx /= M; cy /= M; cvx /= M; cvy /= M;
 
   // Net spin about the COM decides prograde.
   let L = 0;
-  for (const s of stars) {
+  for (const s of field) {
     L += s.mass * ((s.x - cx) * (s.vy - cvy) - (s.y - cy) * (s.vx - cvx));
   }
   const spin = L >= 0 ? 1 : -1;
@@ -116,13 +137,13 @@ export function autoPlanetOrbit(pos: P, stars: OrbitStar[], G: number) {
     const dy = pos.y - oy;
     const r = Math.hypot(dx, dy);
     if (r < 1e-6 || m <= 0) return vec2(bvx, bvy);
-    const v = Math.sqrt((G * m) / r);
+    const v = circularRelativeVelocity(m, 0, r, G, softening);
     return vec2(bvx + (-dy / r) * v * spin, bvy + (dx / r) * v * spin);
   };
 
-  let near = stars[0];
+  let near = field[0];
   let dNear = Infinity;
-  for (const s of stars) {
+  for (const s of field) {
     const d = Math.hypot(pos.x - s.x, pos.y - s.y);
     if (d < dNear) {
       dNear = d;
@@ -130,7 +151,7 @@ export function autoPlanetOrbit(pos: P, stars: OrbitStar[], G: number) {
     }
   }
   let dOther = Infinity;
-  for (const s of stars) {
+  for (const s of field) {
     if (s !== near) dOther = Math.min(dOther, Math.hypot(near.x - s.x, near.y - s.y));
   }
 

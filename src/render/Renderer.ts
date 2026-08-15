@@ -1654,7 +1654,7 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Live velocity readout for a Set star, so its aim reads like the setup HUD.
+    // Live velocity readout for an aimed Set body, so it reads like the setup HUD.
     if (lay.velY !== null && pl.vel) {
       ctx.save();
       ctx.textAlign = 'left';

@@ -235,7 +235,7 @@ export interface PlacementHudLayout {
   minus: PillRect | null;
   plus: PillRect | null;
   massCenter: { x: number; y: number } | null;
-  // Star-with-aim velocity readout baseline, or null when hidden.
+  // Aimed-body velocity readout baseline (stars and planets), or null when hidden.
   velY: number | null;
   launch: PillRect | null;
   cancel: PillRect;
