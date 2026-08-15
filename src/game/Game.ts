@@ -24,6 +24,7 @@ import {
   placedPlanetVelocity,
   clampedVelocity,
   randomStarEntry,
+  autoPlanetOrbit,
 } from './placement.ts';
 import { PING_INTERVAL, pingStrength } from '../render/pings.ts';
 import { unlock as unlockAudio, playPing, playStrike, playGraze } from '../audio/sfx.ts';
@@ -59,6 +60,19 @@ const SET_STAR_MASS_MIN = 1;
 const SET_STAR_MASS_MAX = 5;
 const SET_STAR_INBOUND_SPEED = 220; // px/s, aimed straight at the barycenter (the default aim)
 const SET_STAR_GRAB_PAD = 16; // screen px of forgiveness around the ghost when grabbing to aim
+// A planet aims too, but its survivor orbits run 300–1600 px/s (softened
+// circular speed around the suns) — far past the setup phase's 300 px/s star
+// cap — so planet drags get their own ceiling. Sized to cover circular +
+// co-moving frame speed at every radius a fingertip can distinguish; feel-tune
+// by playing, per the house rules.
+const SET_PLANET_AIM_CAP = 1600; // px/s
+// Grab what's drawn: the planet ghost renders at WORLD_DRAW_R (5) with a ring
+// at +7 (Renderer), so 12 is its visible radius at zoom 1 — not the ~2 px
+// physics body of bodyRadius(WORLD_MASS).
+const SET_PLANET_GRAB_RADIUS = 12; // world px
+// A grab becomes an aim only once the pointer travels this far — a bare tap or
+// touch jitter on the ghost must not overwrite the seeded survivor orbit.
+const SET_AIM_DRAG_SLOP = 8; // screen px
 // Hard caps on the sandbox population — the gravity sum is all-pairs O(n²), so
 // bound it so a busy system can't overheat the device.
 const MAX_STARS = 10;
@@ -120,15 +134,19 @@ export class Game {
     kind: 'star' | 'planet';
     pos: { x: number; y: number } | null;
     mass: number;
-    // Set-star launch velocity (WORLD px/s). Seeded with the inbound default;
-    // `velCustom` flips true once the player drags the ghost to aim, so moving
-    // the spot afterward keeps their aim instead of re-defaulting. Null for a
-    // planet (it keeps its auto circular orbit).
+    // Launch velocity (WORLD px/s), null only before the first placement tap.
+    // Seeded on every tap — stars get the inbound dart, planets the survivor
+    // orbit (placement.autoPlanetOrbit). `velCustom` flips true once the
+    // player drags the ghost to aim, so moving the spot afterward keeps their
+    // aim instead of re-defaulting.
     vel: { x: number; y: number } | null;
     velCustom: boolean;
   } | null = null;
-  // True while dragging a velocity vector out of the Set-star ghost.
+  // True while dragging a velocity vector out of the Set ghost (star or
+  // planet). `placingGrabStart` holds the grab's world point until the drag
+  // clears SET_AIM_DRAG_SLOP — inside the slop, the seeded aim stays put.
   private placingVelGrab = false;
+  private placingGrabStart: { x: number; y: number } | null = null;
   private extinctionTimer = 0;
   // Act III — "The Fermi Paradox". null until a thriving world wakes the forest;
   // then it runs the visibility/detection hunt against the hidden systems.
@@ -495,22 +513,31 @@ export class Game {
     // velocity *out of* the star. Caught by /qa on 2026-06-01.
 
     // Sandbox "Set" placement. Two gestures while placing (mirrors setup): grab
-    // the ghost star to aim its velocity, or tap empty field to set/move the
+    // the ghost body to aim its velocity, or tap empty field to set/move the
     // drop point (world coords; the unravel is paused while placing).
     if (this.placing && this.state === 'resolved') {
       const pl = this.placing;
-      if (pl.pos && pl.kind === 'star') {
+      if (pl.pos) {
         const w = this.designToWorld(p);
-        const grabR = bodyRadius(pl.mass) + SET_STAR_GRAB_PAD / Math.max(this.cameraZoom, 1e-6);
+        // Grab what's drawn: the star's body, or the planet ghost's ring.
+        const bodyR = pl.kind === 'star' ? bodyRadius(pl.mass) : SET_PLANET_GRAB_RADIUS;
+        const grabR = bodyR + SET_STAR_GRAB_PAD / Math.max(this.cameraZoom, 1e-6);
         if (Math.hypot(w.x - pl.pos.x, w.y - pl.pos.y) <= grabR) {
           this.placingVelGrab = true; // aim is set on drag (onPointerMove), not a bare tap
+          this.placingGrabStart = w; // and only once the drag clears the slop
           return;
         }
       }
       pl.pos = this.designToWorld(p);
-      // Seed / re-seed the inbound default aim until the player takes over.
-      if (pl.kind === 'star' && !pl.velCustom) {
-        pl.vel = placedStarVelocity(pl.pos, this.systemCOM(), SET_STAR_INBOUND_SPEED);
+      // Seed / re-seed the default aim until the player takes over: stars get
+      // the inbound dart; planets get the survivor orbit read from the live
+      // star field (placement.autoPlanetOrbit — S-type near a star, P-type
+      // circumbinary otherwise, always prograde).
+      if (!pl.velCustom) {
+        pl.vel =
+          pl.kind === 'star'
+            ? placedStarVelocity(pl.pos, this.systemCOM(), SET_STAR_INBOUND_SPEED)
+            : this.seedPlanetOrbit(pl.pos);
       }
       return;
     }
@@ -546,10 +573,20 @@ export class Game {
     const p = this.renderer.screenToLogical(e);
     this.hover = p;
 
-    // Aiming a Set star: drag the ghost to set its launch velocity (capped),
+    // Aiming a Set body: drag the ghost to set its launch velocity (capped),
     // marking it custom so re-tapping the spot won't snap back to the auto-aim.
+    // Inside the drag slop nothing is written — a bare tap or touch jitter on
+    // the ghost must not overwrite the seeded survivor orbit.
     if (this.placingVelGrab && this.placing?.pos) {
-      this.placing.vel = clampedVelocity(this.placing.pos, this.designToWorld(p), LIMITS.maxVelocityPerBody);
+      const w = this.designToWorld(p);
+      if (this.placingGrabStart) {
+        const slop = SET_AIM_DRAG_SLOP / Math.max(this.cameraZoom, 1e-6);
+        const moved = Math.hypot(w.x - this.placingGrabStart.x, w.y - this.placingGrabStart.y);
+        if (moved < slop) return;
+        this.placingGrabStart = null; // slop cleared — this drag is an aim now
+      }
+      const cap = this.placing.kind === 'star' ? LIMITS.maxVelocityPerBody : SET_PLANET_AIM_CAP;
+      this.placing.vel = clampedVelocity(this.placing.pos, w, cap);
       this.placing.velCustom = true;
       return;
     }
@@ -578,6 +615,7 @@ export class Game {
     this.arrowControl.release();
     this.draggingCard = false;
     this.placingVelGrab = false;
+    this.placingGrabStart = null;
   }
 
   // Keep the dragged WIN card fully on-canvas (8 px margin) so it can't be
@@ -929,12 +967,14 @@ export class Game {
     const com = this.systemCOM();
     if (com.mass <= 0) return;
     const ang = Math.random() * Math.PI * 2;
-    const vCirc = Math.sqrt((PHYSICS.G * com.mass) / WORLD_ORBIT);
-    const planet = createBody(
-      WORLD_MASS,
-      vec2(com.x + Math.cos(ang) * WORLD_ORBIT, com.y + Math.sin(ang) * WORLD_ORBIT),
-      vec2(-Math.sin(ang) * vCirc, Math.cos(ang) * vCirc),
-    );
+    const pos = vec2(com.x + Math.cos(ang) * WORLD_ORBIT, com.y + Math.sin(ang) * WORLD_ORBIT);
+    // Rest-frame counter-clockwise circular orbit about the full-system COM —
+    // deliberately simpler than the Set flow's autoPlanetOrbit (no drift
+    // riding, no spin sign, planet-inclusive COM): random drops predate the
+    // seeder and keep their old feel.
+    const v = placedPlanetVelocity(pos, com, com.mass, PHYSICS.G);
+    const planet = createBody(WORLD_MASS, pos, vec2(v.x, v.y));
+    const vCirc = Math.hypot(v.x, v.y);
     planet.vz = (Math.random() - 0.5) * vCirc * 0.6; // a slightly inclined orbit
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
     this.worlds.push(new WorldState(planet));
@@ -956,6 +996,7 @@ export class Game {
       velCustom: false,
     };
     this.placingVelGrab = false;
+    this.placingGrabStart = null;
   }
 
   private launchPlaced(): void {
@@ -963,7 +1004,7 @@ export class Game {
     this.placing = null;
     if (!pl || !pl.pos || !this.nbody) return;
     if (pl.kind === 'star') this.addStarAt(pl.pos, pl.mass, pl.vel);
-    else this.addPlanetAt(pl.pos);
+    else this.addPlanetAt(pl.pos, pl.vel);
   }
 
   private addStarAt(
@@ -984,11 +1025,29 @@ export class Game {
     track('sandbox_add', { kind: 'star', mode: 'set' });
   }
 
-  private addPlanetAt(pos: { x: number; y: number }): void {
+  // The live suns as the orbit seeder sees them (worlds excluded).
+  private liveStars(): { x: number; y: number; vx: number; vy: number; mass: number }[] {
+    if (!this.nbody) return [];
+    const worlds = new Set(this.worlds.map(w => w.body));
+    return this.nbody.bodies
+      .filter(b => !worlds.has(b))
+      .map(b => ({ x: b.pos.x, y: b.pos.y, vx: b.vel.x, vy: b.vel.y, mass: b.mass }));
+  }
+
+  // The survivor-orbit seed at a tap point: engine-true softened speeds, and
+  // stars beyond the ejection boundary (runaway slingshot survivors) culled so
+  // they can't drag the seed's COM out into empty space.
+  private seedPlanetOrbit(pos: { x: number; y: number }): { x: number; y: number } {
+    const { width: w, height: h } = this.renderer.layout.canvas;
+    const reach = planetEjectRadius(Math.min(w, h));
+    return autoPlanetOrbit(pos, this.liveStars(), PHYSICS.G, PHYSICS.SOFTENING, reach);
+  }
+
+  private addPlanetAt(pos: { x: number; y: number }, vel?: { x: number; y: number } | null): void {
     if (!this.nbody || this.atPlanetCap()) return;
     const com = this.systemCOM();
     if (com.mass <= 0) return;
-    const v = placedPlanetVelocity(pos, com, com.mass, PHYSICS.G);
+    const v = vel ?? this.seedPlanetOrbit(pos);
     const planet = createBody(WORLD_MASS, vec2(pos.x, pos.y), vec2(v.x, v.y));
     this.nbody.addBody(planet, true); // noMerge — a planet doesn't fuse
     this.worlds.push(new WorldState(planet));

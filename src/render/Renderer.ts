@@ -849,8 +849,9 @@ export class Renderer {
         ctx.restore();
         // The player-settable launch velocity, drawn like the setup slingshot
         // (arrow length in world px = px/s) in the same camera transform.
-        if (input.placing.kind === 'star' && input.placing.vel) {
-          drawVelocityArrow(ctx, gp, input.placing.vel, palette.danger, false);
+        if (input.placing.vel) {
+          const aimCol = input.placing.kind === 'star' ? palette.danger : palette.world;
+          drawVelocityArrow(ctx, gp, input.placing.vel, aimCol, false);
         }
       }
     } else {
@@ -1609,9 +1610,7 @@ export class Renderer {
     // phone-fit text exactly filled, overprinting its neighbours. The hint is
     // measured too, so the whole HUD can yield to the centred phase block.
     const hint = pl.pos
-      ? kind === 'star'
-        ? `Tap to move · drag the star to aim · LAUNCH`
-        : `Tap to move it · LAUNCH to drop the ${kind}`
+      ? `Tap to move · drag the ${kind} to aim · LAUNCH`
       : `Tap the field to place the ${kind}`;
     ctx.save();
     ctx.font = `400 ${cpx(15)}px ${fonts.serif}`;
@@ -1655,7 +1654,7 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Live velocity readout for a Set star, so its aim reads like the setup HUD.
+    // Live velocity readout for an aimed Set body, so it reads like the setup HUD.
     if (lay.velY !== null && pl.vel) {
       ctx.save();
       ctx.textAlign = 'left';

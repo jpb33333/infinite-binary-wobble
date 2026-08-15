@@ -235,7 +235,7 @@ export interface PlacementHudLayout {
   minus: PillRect | null;
   plus: PillRect | null;
   massCenter: { x: number; y: number } | null;
-  // Star-with-aim velocity readout baseline, or null when hidden.
+  // Aimed-body velocity readout baseline (stars and planets), or null when hidden.
   velY: number | null;
   launch: PillRect | null;
   cancel: PillRect;
@@ -299,7 +299,8 @@ export function placementHudLayout(o: {
   }
 
   let velY: number | null = null;
-  if (o.kind === 'star' && o.hasPos && o.hasVel) {
+  // Any aimed body reads out its launch velocity (planets aim too now).
+  if (o.hasPos && o.hasVel) {
     velY = y + 4;
     y += Math.max(22, Math.round(o.lineAdvance) + 6);
   }

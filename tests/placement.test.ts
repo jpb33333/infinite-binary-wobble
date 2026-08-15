@@ -4,7 +4,11 @@ import {
   placedStarVelocity,
   clampedVelocity,
   randomStarEntry,
+  autoPlanetOrbit,
 } from '../src/game/placement.ts';
+import { NBodySimulation } from '../src/physics/nbody.ts';
+import { createBody } from '../src/physics/Body.ts';
+import { vec2 } from '../src/physics/Vec2.ts';
 
 // The auto-velocity for a "Set"-placed sandbox body. The interaction (tap to
 // place, +/- mass) is canvas-only and untested; this proves the drop physics.
@@ -93,5 +97,121 @@ describe('randomStarEntry', () => {
     i = 0;
     const b = randomStarEntry(6, 3, 768, G, rand);
     expect(a).toEqual(b);
+  });
+});
+
+// The survivor-orbit seed for Set planets: circumstellar near a star
+// (co-moving!), circumbinary far out, always prograde with the system's spin —
+// and always at the ENGINE-TRUE softened circular speed
+// (sqrt(G·m·r² / (r²+ε²)^1.5)), so a seed can never outrun the Plummer-softened
+// field that has to hold it. ε here mirrors PHYSICS.SOFTENING.
+describe('autoPlanetOrbit', () => {
+  const G = 1.5e7;
+  const EPS = 6; // PHYSICS.SOFTENING — the engine the seeds must live in
+  const soft = (m: number, r: number) =>
+    Math.sqrt((G * m * r * r) / (r * r + EPS * EPS) ** 1.5);
+  // A binary spinning counter-clockwise (+L), drifting +x at 50 px/s.
+  const binary = () => [
+    { x: -60, y: 0, vx: 50, vy: -400, mass: 3 },
+    { x: 60, y: 0, vx: 50, vy: 400, mass: 3 },
+  ];
+
+  test('near one star: co-moving circumstellar at softened circular speed', () => {
+    const stars = binary();
+    const pos = { x: 60 + 20, y: 0 }; // 20px off the right star — deep inside dominance
+    const v = autoPlanetOrbit(pos, stars, G, EPS);
+    const rel = { x: v.x - stars[1].vx, y: v.y - stars[1].vy };
+    const speed = Math.hypot(rel.x, rel.y);
+    expect(speed).toBeCloseTo(soft(3, 20), 6);
+    // Tangential: relative velocity ⊥ the radial from the star.
+    expect(rel.x * 20 + rel.y * 0).toBeCloseTo(0, 6);
+    // Prograde (+L system): at +x from the star, tangent points +y.
+    expect(rel.y).toBeGreaterThan(0);
+  });
+
+  test('far out: circumbinary around the COM, riding the system drift', () => {
+    const stars = binary();
+    const pos = { x: 800, y: 0 };
+    const v = autoPlanetOrbit(pos, stars, G, EPS);
+    const rel = { x: v.x - 50, y: v.y - 0 }; // COM drifts +x at 50
+    expect(Math.hypot(rel.x, rel.y)).toBeCloseTo(soft(6, 800), 6);
+    expect(rel.y).toBeGreaterThan(0); // prograde
+    expect(Math.abs(rel.x)).toBeLessThan(1e-6);
+  });
+
+  test('retrograde system flips the seeded tangent', () => {
+    const stars = binary().map(s => ({ ...s, vy: -s.vy })); // spin now −L
+    const v = autoPlanetOrbit({ x: 800, y: 0 }, stars, G, EPS);
+    expect(v.y).toBeLessThan(0);
+  });
+
+  test('single star and empty field degrade gracefully', () => {
+    const lone = [{ x: 0, y: 0, vx: 10, vy: 0, mass: 5 }];
+    const v = autoPlanetOrbit({ x: 100, y: 0 }, lone, G, EPS);
+    const rel = { x: v.x - 10, y: v.y };
+    expect(Math.hypot(rel.x, rel.y)).toBeCloseTo(soft(5, 100), 6);
+    expect(autoPlanetOrbit({ x: 1, y: 2 }, [], G, EPS)).toEqual({ x: 0, y: 0 });
+  });
+
+  // A star-center bullseye must seed the softened law, not sqrt(G·m/r)'s
+  // divergence: at r=3 the unsoftened law fires 3873 px/s — past the softened
+  // escape speed — and the run ends in ejection seconds later.
+  test('bullseye tap seeds the softened speed, below softened escape', () => {
+    const star = { x: 0, y: 0, vx: 25, vy: -40, mass: 3 };
+    const v = autoPlanetOrbit({ x: 3, y: 0 }, [star], G, EPS);
+    const rel = { x: v.x - star.vx, y: v.y - star.vy };
+    const speed = Math.hypot(rel.x, rel.y);
+    expect(speed).toBeCloseTo(soft(3, 3), 6);
+    const vEscape = Math.sqrt((2 * G * 3) / Math.hypot(3, EPS));
+    expect(speed).toBeLessThan(vEscape);
+  });
+
+  test('zero total mass seeds zero, not NaN', () => {
+    const v = autoPlanetOrbit({ x: 1, y: 2 }, [{ x: 0, y: 0, vx: 0, vy: 0, mass: 0 }], G, EPS);
+    expect(v).toEqual({ x: 0, y: 0 });
+  });
+
+  // A runaway slingshot survivor parked far outside the play field must not
+  // drag the P-type COM (and drift, and spin) into empty space.
+  test('stars beyond reach are culled from the seed field', () => {
+    const stars = [
+      { x: -100, y: 0, vx: -200, vy: -300, mass: 3 },
+      { x: 100, y: 0, vx: -200, vy: 300, mass: 3 },
+      { x: 3000, y: 0, vx: 600, vy: 0, mass: 5 }, // the runaway
+    ];
+    const v = autoPlanetOrbit({ x: 350, y: 0 }, stars, G, EPS, 1600);
+    // Culled to the binary alone: P-type about (0,0), drifting (−200, 0), CCW.
+    expect(v.x).toBeCloseTo(-200, 6);
+    expect(v.y).toBeCloseTo(soft(6, 350), 6);
+  });
+
+  test('a tap beyond reach of every star falls back to the full field', () => {
+    const v = autoPlanetOrbit({ x: 9000, y: 0 }, binary(), G, EPS, 1600);
+    const rel = { x: v.x - 50, y: v.y }; // still rides the COM drift
+    expect(Math.hypot(rel.x, rel.y)).toBeCloseTo(soft(6, 9000), 6);
+  });
+});
+
+// The seed must hold up inside the real engine: drop a planet with the seeded
+// velocity into NBodySimulation at the old worst case — a bullseye tap right
+// beside a moving star — and it must stay gravitationally bound. Under the
+// unsoftened seed this exact setup ejected within seconds.
+describe('autoPlanetOrbit × NBodySimulation', () => {
+  test('a bullseye-seeded planet stays bound to its moving star', () => {
+    const G = 1.5e7;
+    const EPS = 6;
+    const DT = 1 / 240;
+    const star = createBody(3, vec2(0, 0), vec2(40, -30));
+    const v = autoPlanetOrbit({ x: 6, y: 0 }, [{ x: 0, y: 0, vx: 40, vy: -30, mass: 3 }], G, EPS);
+    const planet = createBody(0.02, vec2(6, 0), vec2(v.x, v.y));
+    const sim = new NBodySimulation([star], G, EPS);
+    sim.addBody(planet, true); // noMerge — planets don't fuse
+    let maxR = 0;
+    for (let i = 0; i < 2400; i++) {
+      // 10 simulated seconds
+      sim.step(DT);
+      maxR = Math.max(maxR, Math.hypot(planet.pos.x - star.pos.x, planet.pos.y - star.pos.y));
+    }
+    expect(maxR).toBeLessThan(300);
   });
 });
