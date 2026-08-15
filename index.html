@@ -26,12 +26,13 @@
     <title>Infinite Binary Wobble</title>
     <!-- Strict Content-Security-Policy. default-src 'none' denies every
          resource type by default; only same-origin script/style/img/font/
-         manifest are re-allowed, plus frame-src for the one sanctioned outsider:
-         the SoundCloud embed the music pill opens (its player runs entirely
-         inside its own iframe; nothing external loads into THIS page)
-         (manifest-src set explicitly — it falls back
-         to default-src 'none', which silently blocked the PWA manifest), and
-         the game makes zero network requests (connect falls back to 'none').
+         manifest are re-allowed (manifest-src set explicitly — it falls back
+         to default-src 'none', which silently blocked the PWA manifest). The
+         two SoundCloud entries are the music pill's whole allowance: frame-src
+         for the sandboxed widget iframe (its player runs entirely inside its
+         own frame; nothing external loads into THIS page) and connect-src for
+         the one fetch the game ever makes — resolving a pasted station link
+         through SoundCloud's oEmbed endpoint. Everything else stays 'none'.
          require-trusted-types-for neutralises DOM-XSS sinks.
          Delivered via <meta> because GitHub Pages can't set HTTP headers, so
          the header-only protections (frame-ancestors, X-Frame-Options, etc.)

@@ -6,6 +6,13 @@ import { authenticate } from './auth.ts';
 
 const TOKEN_TTL_SEC = 60 * 60 * 24 * 30; // 30 days
 
+// Checkout-session minting is rate-limited per device: each mint is a Stripe
+// API call plus a D1 row, and an authenticated device gains nothing from
+// hoarding sessions (unlock happens only in the verified webhook). The
+// recorded pending sessions double as the ledger — no extra table.
+const CHECKOUT_WINDOW_MS = 60 * 60 * 1000;
+const CHECKOUT_MAX_PER_WINDOW = 5;
+
 /**
  * Web bot-gate → device token. With a valid existing cookie, REUSES that
  * device (sliding cookie renewal); otherwise verifies a Cloudflare Turnstile
@@ -97,6 +104,13 @@ export async function handleStripeCheckout(req: Request, env: Env): Promise<Resp
   const auth = await authenticate(req, env);
   if (!auth) return jsonError(401, 'unauthenticated');
   if (!env.STRIPE_PRICE_ID) return jsonError(503, 'checkout_unconfigured');
+
+  const recent = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM stripe_payments WHERE device_id = ?1 AND created_at > ?2`,
+  )
+    .bind(auth.deviceId, Date.now() - CHECKOUT_WINDOW_MS)
+    .first<{ n: number }>();
+  if ((recent?.n ?? 0) >= CHECKOUT_MAX_PER_WINDOW) return jsonError(429, 'rate_limited');
 
   const params = new URLSearchParams({
     mode: 'payment',

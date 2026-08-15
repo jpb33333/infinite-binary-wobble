@@ -12,6 +12,7 @@ function fakeDB() {
   const entitlements = new Map<string, string>(); // device_id → status
   const payments = new Map<string, string | null>(); // payment_intent → device_id
   const devices = new Map<string, { last_seen: number }>(); // device_id → row
+  const checkoutRows: { device: string; at: number }[] = []; // pending checkout mints
   const db = {
     processed,
     entitlements,
@@ -48,6 +49,8 @@ function fakeDB() {
                 if (args.length === 8) {
                   const pi = args[2] == null ? null : String(args[2]);
                   if (pi) payments.set(pi, args[1] == null ? null : String(args[1]));
+                } else {
+                  checkoutRows.push({ device: String(args[1]), at: Number(args[2]) });
                 }
                 return { meta: { changes: 1 } };
               }
@@ -80,6 +83,12 @@ function fakeDB() {
               throw new Error(`unhandled sql (run): ${sql}`);
             },
             async first() {
+              if (sql.includes('SELECT COUNT(*)') && sql.includes('FROM stripe_payments')) {
+                const n = checkoutRows.filter(
+                  r => r.device === String(args[0]) && r.at > Number(args[1]),
+                ).length;
+                return { n };
+              }
               if (sql.includes('SELECT device_id FROM stripe_payments')) {
                 const device = payments.get(String(args[0]));
                 return device === undefined ? null : { device_id: device };
@@ -290,6 +299,16 @@ describe('handleStripeCheckout', () => {
     const res = await handleStripeCheckout(await authedRequest(), makeEnv(db));
     expect(res.status).toBe(502);
     expect(db.entitlements.size).toBe(0);
+  });
+
+  it('rate-limits session minting per device — each mint is a Stripe call and a D1 row', async () => {
+    const db = fakeDB();
+    for (let i = 0; i < 5; i++) {
+      expect((await handleStripeCheckout(await authedRequest(), makeEnv(db))).status).toBe(200);
+    }
+    const res = await handleStripeCheckout(await authedRequest(), makeEnv(db));
+    expect(res.status).toBe(429);
+    expect(((await res.json()) as { error: string }).error).toBe('rate_limited');
   });
 });
 

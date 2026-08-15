@@ -31,4 +31,19 @@ describe('web device token', () => {
     const t = await signToken({ deviceId: 'dev-1', iat: now, exp: now + 100 }, KEY);
     expect(await verifyToken(t, OTHER, now + 1)).toBeNull();
   });
+
+  it('rejects a correctly-signed token whose payload shape is wrong', async () => {
+    const now = 1_000_000;
+    // These signatures are OURS and valid — the shape gate must still refuse:
+    // a signer bug (or a leaked key) must not smuggle structured garbage into
+    // the fields downstream code binds into SQL and echoes into responses.
+    const forge = (payload: object) => signToken(payload as Parameters<typeof signToken>[0], KEY);
+    expect(await verifyToken(await forge({ deviceId: 123, iat: now, exp: now + 100 }), KEY, now)).toBeNull();
+    expect(await verifyToken(await forge({ iat: now, exp: now + 100 }), KEY, now)).toBeNull();
+    expect(await verifyToken(await forge({ deviceId: '', iat: now, exp: now + 100 }), KEY, now)).toBeNull();
+    expect(
+      await verifyToken(await forge({ deviceId: 'x'.repeat(129), iat: now, exp: now + 100 }), KEY, now),
+    ).toBeNull();
+    expect(await verifyToken(await forge({ deviceId: 'ok', exp: now + 100 }), KEY, now)).toBeNull();
+  });
 });
