@@ -55,15 +55,39 @@ export function looksLikeSoundcloud(input: string): boolean {
   return u.pathname.length > 1;
 }
 
+// The only hosts a station URL may point at — canonical widget resources
+// (api.soundcloud.com), page URLs, and short links. Enforced when extracting
+// from oEmbed AND when loading the stored directory, so neither a spoofed
+// oEmbed answer nor a poisoned localStorage entry can aim the player frame at
+// a foreign origin. (CSP frame-src is the backstop; this keeps the data model
+// itself clean above it.)
+const RESOURCE_HOSTS = new Set([
+  'soundcloud.com',
+  'www.soundcloud.com',
+  'on.soundcloud.com',
+  'api.soundcloud.com',
+]);
+
+export function isSoundcloudResource(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  return u.protocol === 'https:' && RESOURCE_HOSTS.has(u.hostname.toLowerCase());
+}
+
 // oEmbed answers with an iframe snippet whose src carries the CANONICAL
 // resource as its url= param (e.g. api.soundcloud.com/tracks/123) — the one
-// form the widget accepts for anything a player pasted. Extract + decode it.
+// form the widget accepts for anything a player pasted. Extract + decode it;
+// only a SoundCloud-hosted https resource passes.
 export function canonicalFromOembedHtml(html: string): string | null {
   const m = html.match(/[?&]url=([^"&\\]+)/);
   if (!m) return null;
   try {
     const decoded = decodeURIComponent(m[1]);
-    return decoded.startsWith('https://') ? decoded : null;
+    return isSoundcloudResource(decoded) ? decoded : null;
   } catch {
     return null;
   }
@@ -130,7 +154,10 @@ export function loadStations(): StationStore {
             !!x &&
             typeof x === 'object' &&
             typeof (x as Station).url === 'string' &&
-            typeof (x as Station).title === 'string',
+            typeof (x as Station).title === 'string' &&
+            // Stored URLs re-prove their host on every load — a poisoned
+            // entry must not survive into the directory or the widget.
+            isSoundcloudResource((x as Station).url),
         )
       : [];
     const selected =

@@ -71,7 +71,19 @@ export async function verifyToken(
   if (!ok) return null;
   try {
     const payload = JSON.parse(dec.decode(b64urlDecode(body))) as TokenPayload;
-    if (typeof payload.exp !== 'number' || payload.exp < nowSec) return null;
+    // The signature proves WE minted it; the shape gate proves a signer bug
+    // (or a leaked key) still can't smuggle structured garbage into the
+    // fields downstream code binds into SQL and echoes into responses.
+    // deviceId is a server UUID (36 chars) — 128 is a generous ceiling.
+    if (
+      typeof payload.deviceId !== 'string' ||
+      payload.deviceId.length === 0 ||
+      payload.deviceId.length > 128 ||
+      typeof payload.iat !== 'number' ||
+      typeof payload.exp !== 'number' ||
+      payload.exp < nowSec
+    )
+      return null;
     return payload;
   } catch {
     return null;

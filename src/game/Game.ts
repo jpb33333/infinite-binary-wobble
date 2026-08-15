@@ -1355,6 +1355,17 @@ export class Game {
     frame.src = stationEmbedSrc(this.stationStore.selected);
     frame.allow = 'autoplay';
     frame.title = 'Music station';
+    // Third-party frame, least privilege: the widget needs scripts and its own
+    // origin, and its attribution links open soundcloud.com in a real tab
+    // (popups that escape). Everything else — top-navigation, downloads,
+    // modals, pointer-lock — stays denied.
+    frame.sandbox.add(
+      'allow-scripts',
+      'allow-same-origin',
+      'allow-popups',
+      'allow-popups-to-escape-sandbox',
+    );
+    frame.referrerPolicy = 'no-referrer';
     const strip = document.createElement('div');
     strip.className = 'station-strip';
     panel.append(frame, strip);

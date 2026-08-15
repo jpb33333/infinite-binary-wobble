@@ -5,6 +5,7 @@ import {
   hasStation,
   stationEmbedSrc,
   looksLikeSoundcloud,
+  isSoundcloudResource,
   canonicalFromOembedHtml,
   resolveStation,
   loadStations,
@@ -66,6 +67,34 @@ describe('canonicalFromOembedHtml — the widget-ready resource', () => {
     expect(canonicalFromOembedHtml('<iframe src="https://w.soundcloud.com/player/"></iframe>')).toBeNull();
     expect(canonicalFromOembedHtml('url=%ZZbroken')).toBeNull();
     expect(canonicalFromOembedHtml('?url=javascript%3Aalert(1)')).toBeNull(); // non-https decodes rejected
+  });
+
+  test('a canonical pointing anywhere but SoundCloud is refused', () => {
+    // https alone is not enough: only SoundCloud hosts may reach the widget.
+    expect(canonicalFromOembedHtml('?url=https%3A%2F%2Fevil.example%2Ftracks%2F1')).toBeNull();
+  });
+});
+
+describe('isSoundcloudResource — the only hosts a station may point at', () => {
+  test('accepts the widget-canonical and page forms', () => {
+    for (const u of [
+      'https://api.soundcloud.com/tracks/123',
+      'https://soundcloud.com/artist/track',
+      'https://www.soundcloud.com/artist/track',
+      'https://on.soundcloud.com/abc',
+    ])
+      expect(isSoundcloudResource(u)).toBe(true);
+  });
+
+  test('rejects other hosts, lookalikes, schemes, and garbage', () => {
+    for (const u of [
+      'https://evil.example/tracks/1',
+      'https://soundcloud.com.evil.example/x',
+      'http://soundcloud.com/artist/track',
+      'javascript:alert(1)',
+      'not a url',
+    ])
+      expect(isSoundcloudResource(u)).toBe(false);
   });
 });
 
@@ -132,6 +161,23 @@ describe('the private directory — localStorage, failing open', () => {
     const added = [{ url: 'https://api.soundcloud.com/tracks/7', title: 'Seven' }];
     saveStations({ added, selected: added[0].url });
     expect(loadStations()).toEqual({ added, selected: added[0].url });
+  });
+
+  test('a poisoned entry pointing off-SoundCloud is dropped on load', () => {
+    stub({
+      getItem: () =>
+        JSON.stringify({
+          added: [
+            { url: 'https://api.soundcloud.com/tracks/7', title: 'Seven' },
+            { url: 'https://evil.example/x', title: 'Trap' },
+          ],
+          selected: 'https://evil.example/x',
+        }),
+    });
+    expect(loadStations()).toEqual({
+      added: [{ url: 'https://api.soundcloud.com/tracks/7', title: 'Seven' }],
+      selected: DEFAULT_STATION.url,
+    });
   });
 
   test('corrupted or hostile payloads fall back fresh; unknown selection resets', () => {
