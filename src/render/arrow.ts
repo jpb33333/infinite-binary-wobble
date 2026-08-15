@@ -10,6 +10,11 @@ export function drawVelocityArrow(
   color: string, // HEX (e.g. "#E8956F") — never an rgba() string; `rgba()` below assumes hex
   showTooltip: boolean = true,
   alpha: number = 1.0, // scale every internal alpha; lets callers dim a locked-in arrow
+  // Camera zoom this arrow is drawn inside. The LENGTH stays semantic (world
+  // px = px/s), but stroke, head, and glow divide by this so they hold their
+  // on-screen size — a zoomed-out aim must not thin to a hairline. Tooltip
+  // callers are all at scale 1 (the tooltip is design-space sized).
+  camScale: number = 1,
 ): void {
   const mag = Math.hypot(vel.x, vel.y);
   if (mag < 0.5) return; // don't draw a degenerate arrow
@@ -22,7 +27,7 @@ export function drawVelocityArrow(
 
   ctx.save();
   ctx.strokeStyle = rgba(color, 0.85 * alpha);
-  ctx.lineWidth = 2.2;
+  ctx.lineWidth = 2.2 / camScale;
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(origin.x, origin.y);
@@ -31,7 +36,7 @@ export function drawVelocityArrow(
 
   // Arrowhead — two strokes forming a chevron
   const angle = Math.atan2(vel.y, vel.x);
-  const headLen = 14;
+  const headLen = 14 / camScale;
   const headAngle = Math.PI / 7;
   ctx.beginPath();
   ctx.moveTo(tipX, tipY);
@@ -48,12 +53,13 @@ export function drawVelocityArrow(
 
   // Glow at the tip — pulls the eye to the drag handle
   ctx.globalCompositeOperation = 'lighter';
-  const glow = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, 18);
+  const glowR = 18 / camScale;
+  const glow = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, glowR);
   glow.addColorStop(0, rgba(color, 0.6 * alpha));
   glow.addColorStop(1, rgba(color, 0));
   ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(tipX, tipY, 18, 0, Math.PI * 2);
+  ctx.arc(tipX, tipY, glowR, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 

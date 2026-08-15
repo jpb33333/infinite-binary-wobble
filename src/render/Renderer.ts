@@ -184,6 +184,13 @@ const MIN_UNRAVEL_SCREEN_R = 3;
 // in Game.ts (kept here only for the "X/10" display).
 const SANDBOX_CAP = 10;
 
+// The Set-placement accent: a star reads danger, a planet reads world. Ghost
+// body, aim arrow, and the LAUNCH button must always agree — take the color
+// from here, never inline the ternary.
+function kindAccent(kind: 'star' | 'planet'): string {
+  return kind === 'star' ? palette.danger : palette.world;
+}
+
 // Pseudo-3D depth: the viewer sits VIEW_DIST in front of the z = 0 plane. A body
 // nearer the viewer (z > 0) draws bigger + brighter; farther (z < 0) smaller +
 // dimmer. Clamped so a body that swings deep doesn't balloon or vanish.
@@ -833,7 +840,7 @@ export class Renderer {
         const gp = input.placing.pos;
         const baseR = input.placing.kind === 'star' ? bodyRadius(input.placing.mass) : WORLD_DRAW_R;
         const gr = Math.max(baseR, MIN_UNRAVEL_SCREEN_R / cz);
-        const col = input.placing.kind === 'star' ? palette.danger : palette.world;
+        const col = kindAccent(input.placing.kind);
         ctx.save();
         ctx.globalAlpha = 0.5;
         ctx.fillStyle = col;
@@ -848,10 +855,10 @@ export class Renderer {
         ctx.stroke();
         ctx.restore();
         // The player-settable launch velocity, drawn like the setup slingshot
-        // (arrow length in world px = px/s) in the same camera transform.
+        // (arrow length in world px = px/s) in the same camera transform —
+        // cosmetics compensated by the zoom so the stroke stays screen-true.
         if (input.placing.vel) {
-          const aimCol = input.placing.kind === 'star' ? palette.danger : palette.world;
-          drawVelocityArrow(ctx, gp, input.placing.vel, aimCol, false);
+          drawVelocityArrow(ctx, gp, input.placing.vel, col, false, 1, cz);
         }
       }
     } else {
@@ -1667,7 +1674,7 @@ export class Renderer {
     if (lay.launch) {
       const launch: CanvasButton = { label: PLACEMENT_LABELS.launch, ...lay.launch };
       drawButton(ctx, launch, {
-        primary: kind === 'star' ? palette.danger : palette.world,
+        primary: kindAccent(kind),
         hovered: hoveredName === 'place_launch',
       });
       this.register('place_launch', launch);

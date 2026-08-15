@@ -290,8 +290,9 @@ describe('sandboxClusterLayout — pills sized to their compensated labels', () 
 
 describe('placementHudLayout — measured rows for the Set placement HUD', () => {
   // Hint strings as the Renderer draws them, cpx(12) sans ≈ 0.55em/char.
-  const hintWidthAt = (scale: number): number =>
-    'Tap to move · drag the star to aim · LAUNCH'.length * cpxAt(12, scale) * 0.55;
+  // Planets aim too, and "planet" is the wider word — the widest HUD variant.
+  const hintWidthAt = (scale: number, kind: 'star' | 'planet' = 'star'): number =>
+    `Tap to move · drag the ${kind} to aim · LAUNCH`.length * cpxAt(12, scale) * 0.55;
   const desktop = {
     massWidth: 60,
     lineAdvance: lineAdvanceAt(1),
@@ -312,7 +313,7 @@ describe('placementHudLayout — measured rows for the Set placement HUD', () =>
     expect(layout.cancel).toEqual({ x: 134, y: 114, width: 110, height: PILL_H });
   });
 
-  test('desktop planet flow: no mass/velocity rows, buttons right below the hint', () => {
+  test('desktop planet before placing: no mass/velocity rows, Cancel right below the hint', () => {
     const layout = placementHudLayout({ kind: 'planet', hasPos: false, hasVel: false, ...desktop });
     expect(layout.minus).toBeNull();
     expect(layout.velY).toBeNull();
@@ -385,6 +386,62 @@ describe('placementHudLayout — measured rows for the Set placement HUD', () =>
           hasPos: true,
           hasVel: true,
           massWidth: cpxAt(15, scale) * 0.5 * 'mass 5.0'.length,
+          lineAdvance: lineAdvanceAt(scale),
+          measure: labelMeasurerAt(scale),
+          viewScale: scale,
+          hintWidth,
+          phase,
+        });
+        const right = Math.max(16 + hintWidth, layout.cancel.x + layout.cancel.width);
+        expect(right + 24 <= phase.left || layout.hintY - 8 >= phase.bottom + 16).toBe(true);
+      }
+    }
+  });
+
+  // The aimed PLANET is the widest HUD variant — the longest hint plus a
+  // velocity row and no mass pills — so it gets the same phone-scale
+  // non-overlap guarantees as the star flow, with its own measured hint.
+  test('phone scales, aimed planet: velocity row and buttons stack without collisions', () => {
+    for (const scale of PHONE_SCALES) {
+      const measure = labelMeasurerAt(scale);
+      const layout = placementHudLayout({
+        kind: 'planet',
+        hasPos: true,
+        hasVel: true,
+        massWidth: 0, // the mass row is star-only
+        lineAdvance: lineAdvanceAt(scale),
+        measure,
+        viewScale: scale,
+        hintWidth: hintWidthAt(scale, 'planet'),
+        phase: phaseAt(scale, 1280, ACT_EYEBROWS[2], ACT2_SERIF),
+      });
+      // No mass pills, but the aim readout is present and ordered.
+      expect(layout.minus).toBeNull();
+      expect(layout.velY).not.toBeNull();
+      expect(layout.velY!).toBeGreaterThan(layout.hintY);
+      const launch = layout.launch!;
+      const cancel = layout.cancel;
+      expect(launch.y).toBeGreaterThan(layout.velY!);
+      expect(cancel.y).toBe(launch.y);
+      // Pills fit their labels, share a width, and keep visible air.
+      expect(launch.width).toBeGreaterThanOrEqual(measure('Launch') + 20);
+      expect(cancel.width).toBeGreaterThanOrEqual(measure('Cancel') + 20);
+      expect(cancel.width).toBe(launch.width);
+      expect((cancel.x - (launch.x + launch.width)) * scale).toBeGreaterThanOrEqual(8 - 1e-9);
+      expect(intersects(launch, cancel)).toBe(false);
+    }
+  });
+
+  test('phone scales, aimed planet: the whole HUD clears the phase block or drops below it', () => {
+    for (const scale of PHONE_SCALES) {
+      for (const canvasW of [1280, 800]) {
+        const phase = phaseAt(scale, canvasW, ACT_EYEBROWS[2], ACT2_SERIF);
+        const hintWidth = hintWidthAt(scale, 'planet');
+        const layout = placementHudLayout({
+          kind: 'planet',
+          hasPos: true,
+          hasVel: true,
+          massWidth: 0,
           lineAdvance: lineAdvanceAt(scale),
           measure: labelMeasurerAt(scale),
           viewScale: scale,

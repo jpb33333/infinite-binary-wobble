@@ -190,6 +190,16 @@ describe('autoPlanetOrbit', () => {
     const rel = { x: v.x - 50, y: v.y }; // still rides the COM drift
     expect(Math.hypot(rel.x, rel.y)).toBeCloseTo(soft(6, 9000), 6);
   });
+
+  // The field is genuinely 3D (entry stars carry vz, supernova blasts kick out
+  // of plane): distances use the star's z, so a tap beside a lofted star seeds
+  // the cooler true-radius speed, not the hot 2D projection.
+  test('an out-of-plane star seeds at its 3D distance', () => {
+    const lofted = [{ x: 0, y: 0, z: 100, vx: 10, vy: 0, mass: 5 }];
+    const v = autoPlanetOrbit({ x: 40, y: 0 }, lofted, G, EPS);
+    const rel = { x: v.x - 10, y: v.y };
+    expect(Math.hypot(rel.x, rel.y)).toBeCloseTo(soft(5, Math.hypot(40, 100)), 6);
+  });
 });
 
 // The seed must hold up inside the real engine: drop a planet with the seeded
