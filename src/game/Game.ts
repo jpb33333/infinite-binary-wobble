@@ -37,7 +37,16 @@ import {
   loadStations,
   saveStations,
 } from '../audio/station.ts';
-import { CAMERA_MIN_ZOOM, CAMERA_EASE, cameraFitRadius, planetEjectRadius } from './camera.ts';
+import {
+  CAMERA_MIN_ZOOM,
+  CAMERA_EASE,
+  COM_GLIDE,
+  cameraFitRadius,
+  planetEjectRadius,
+  seedGlide,
+  glideStep,
+} from './camera.ts';
+import { boundCore, worldAdrift, type CoreFrame } from './boundCore.ts';
 import { recordGame, loadStats, summarize, type StatsSummary } from './stats.ts';
 import { Trail } from '../render/trail.ts';
 import { palette, lineHeightFor } from '../theme.ts';
@@ -125,6 +134,19 @@ export class Game {
   private worlds: WorldState[] = [];
   // Eased camera zoom for the unravel (1 = the two-body game's fixed view).
   private cameraZoom = 1;
+  // Presentation barycenter the camera and beam mappings follow: the bound
+  // core's COM plus a decaying glide delta that absorbs discontinuous COM
+  // jumps (a star added, a runaway stripped from the core, a graze
+  // annihilation) so the view never snap-cuts. Physics — the ejection verdict —
+  // reads the true core, never this eased value. Null until the sandbox exists;
+  // advanced only from advanceNBody, so it stays static exactly when the
+  // unravel is paused (placing, chapter cards, a finished run).
+  private viewCOM: { x: number; y: number } | null = null;
+  private viewComDelta = { x: 0, y: 0 };
+  // Core membership from the previous advanceNBody frame — the identity diff
+  // that detects a COM discontinuity worth absorbing. Merges churn identity
+  // too, but conserve the COM, so their seeded delta is ≈0 and harmless.
+  private prevCoreMembers: Set<Body> | null = null;
   // How the sandbox finally ends (null while it's still running): life dies
   // out, a world is flung away, or the dark forest finds you — or you endure.
   private sandboxOutcome: 'extinction' | 'ejection' | 'detected' | 'survived' | null = null;
@@ -670,6 +692,9 @@ export class Game {
     this.unravelTracks = [];
     this.worlds = [];
     this.cameraZoom = 1;
+    this.viewCOM = null;
+    this.viewComDelta = { x: 0, y: 0 };
+    this.prevCoreMembers = null;
     this.sandboxOutcome = null;
     this.darkForest = null;
     this.chapterCard = null;
@@ -716,6 +741,9 @@ export class Game {
     this.unravelTracks = [];
     this.worlds = [];
     this.cameraZoom = 1;
+    this.viewCOM = null;
+    this.viewComDelta = { x: 0, y: 0 };
+    this.prevCoreMembers = null;
     this.sandboxOutcome = null;
     this.darkForest = null;
     this.chapterCard = null;
@@ -784,6 +812,9 @@ export class Game {
     this.unravelTracks = [];
     this.worlds = [];
     this.cameraZoom = 1;
+    this.viewCOM = null;
+    this.viewComDelta = { x: 0, y: 0 };
+    this.prevCoreMembers = null;
     this.sandboxOutcome = null;
     this.darkForest = null;
     this.chapterCard = null;
@@ -896,6 +927,13 @@ export class Game {
       { body: this.sim.a, trail: this.trails.p1, kind: 'p1', mergedCount: 1 },
       { body: this.sim.b, trail: this.trails.p2, kind: 'p2', mergedCount: 1 },
     ];
+    // Born here, not on the first advanceNBody tick: the Act II chapter card
+    // pauses the unravel while render() already needs camera offsets. The fresh
+    // core IS the two-body barycenter the camera was tracking — continuity free.
+    const core = this.boundCoreNow();
+    this.viewCOM = { x: core.x, y: core.y };
+    this.viewComDelta = { x: 0, y: 0 };
+    this.prevCoreMembers = new Set(core.members);
     // The WIN card is gone now; drop any in-progress card drag.
     this.winCardOffset = { x: 0, y: 0 };
     this.draggingCard = false;
@@ -903,18 +941,29 @@ export class Game {
     this.queueChapter(2);
   }
 
-  // Mass-weighted barycenter of the whole running system (suns + the tiny
-  // planets, whose mass is negligible). Spawn reference for new bodies.
+  // The bound core of the star field (boundCore.ts): the suns that still
+  // constitute the system. Runaway slingshot survivors — unbound and beyond
+  // the eject boundary — stop counting toward the barycenter that the camera,
+  // the spawn aims, and the ejection verdict all measure from, exactly as the
+  // planet seeder already culls them. Fresh each call: cheap at MAX_STARS, and
+  // always in step with the live bodies.
+  private boundCoreNow(): CoreFrame {
+    const { width: w, height: h } = this.renderer.layout.canvas;
+    return boundCore(
+      this.sunBodies(),
+      PHYSICS.G,
+      PHYSICS.SOFTENING,
+      planetEjectRadius(Math.min(w, h)),
+    );
+  }
+
+  // Mass-weighted barycenter of the bound core — the spawn/aim reference for
+  // new bodies. Suns only: a world must not define the frame it is judged
+  // against (and at minimum-mass twin suns, ten worlds would otherwise sway
+  // the COM by ~9%).
   private systemCOM(): { x: number; y: number; mass: number } {
-    let M = 0;
-    let cx = 0;
-    let cy = 0;
-    for (const s of this.nbody?.bodies ?? []) {
-      M += s.mass;
-      cx += s.mass * s.pos.x;
-      cy += s.mass * s.pos.y;
-    }
-    return M > 0 ? { x: cx / M, y: cy / M, mass: M } : { x: 0, y: 0, mass: 0 };
+    const core = this.boundCoreNow();
+    return { x: core.x, y: core.y, mass: core.mass };
   }
 
   // Add a star — repeatable. Enters from a random edge of the field, generally
@@ -1108,6 +1157,12 @@ export class Game {
       if (merge) this.onMerge(merge);
       this.simAccum -= PHYSICS.DT;
     }
+    // After the substeps, so the camera/eject reference matches the rendered
+    // positions. A graze's removeBody fires later this frame (updateDarkForest):
+    // this frame draws with the pre-removal viewCOM and the next frame's
+    // membership diff seeds the glide — which is what keeps the strike beam and
+    // the camera in one frame of reference at the moment of the flash.
+    this.updateViewCOM(dt);
     for (const t of this.unravelTracks) t.trail.push(t.body.pos.x, t.body.pos.y);
     if (this.worlds.length > 0) {
       const suns = this.sunBodies();
@@ -1120,36 +1175,58 @@ export class Game {
     this.checkSandboxOutcome(dt);
   }
 
-  // The sandbox's planetary endings. EJECTION: a planet is slingshot past the
-  // edge of the most-zoomed-out view (planetEjectRadius) → lost to the dark.
-  // EXTINCTION: planets exist but every one has been dead longer than the grace
-  // window (life gets a chance to reboot first). Stars merging is NOT an ending
-  // — mergers grow stars until the supernova mass detonates them (nbody.ts),
-  // and the dark forest (visibility.ts) handles the rest.
+  // Advance the presentation barycenter (see the viewCOM field): track the
+  // bound core exactly, and absorb membership jumps into a decaying glide.
+  private updateViewCOM(dt: number): void {
+    const core = this.boundCoreNow();
+    if (core.members.length === 0) return;
+    const changed =
+      !this.prevCoreMembers ||
+      this.prevCoreMembers.size !== core.members.length ||
+      core.members.some(m => !this.prevCoreMembers!.has(m));
+    if (changed && this.viewCOM) {
+      this.viewComDelta = seedGlide(this.viewCOM, core);
+    }
+    this.viewComDelta = glideStep(this.viewComDelta, dt, COM_GLIDE);
+    this.viewCOM = { x: core.x + this.viewComDelta.x, y: core.y + this.viewComDelta.y };
+    this.prevCoreMembers = new Set(core.members);
+  }
+
+  // The sandbox's planetary endings. EJECTION: a planet past the edge of the
+  // most-zoomed-out view (planetEjectRadius) AND genuinely unbound — actually
+  // leaving, not lingering near the apoapsis of a long bound ellipse (Kepler
+  // guarantees those swing home; out there the climate model freezes them,
+  // which is the honest cost of the excursion). EXTINCTION: planets exist but
+  // every one has been dead longer than the grace window (life gets a chance
+  // to reboot first). Stars merging is NOT an ending — mergers grow stars
+  // until the supernova mass detonates them (nbody.ts), and the dark forest
+  // (visibility.ts) handles the rest.
   private checkSandboxOutcome(dt: number): void {
     if (!this.nbody || this.sandboxOutcome) return;
-    // EJECTION: any planet flung past the camera's furthest pull-back. Measured
-    // from the same barycenter the camera zoom fits around, so at the instant of
-    // loss the planet sits right at the readable edge of the frame.
+    // EJECTION: measured against the TRUE bound core — never the eased viewCOM
+    // the camera follows, so at the instant of loss the planet sits at the
+    // readable edge of the frame up to the decaying glide delta (and, as ever,
+    // only at boundary-crossing; after the grace it is well beyond).
     if (this.worlds.length > 0) {
-      const com = this.systemCOM();
+      const core = this.boundCoreNow();
       const { width: w, height: h } = this.renderer.layout.canvas;
       const ejectR = planetEjectRadius(Math.min(w, h));
       for (const e of this.worlds) {
-        const dist = Math.hypot(e.body.pos.x - com.x, e.body.pos.y - com.y);
+        const dist = Math.hypot(e.body.pos.x - core.x, e.body.pos.y - core.y);
         // The renderer reads driftFraction to warn ON the planet as it nears the
         // edge (≈¾ of the way out) — so the loss is telegraphed, not abrupt.
         e.driftFraction = Math.min(1, dist / ejectR);
-        if (dist > ejectR) {
-          // Past the edge, but grant a grace beat: a chaotic orbit can still
-          // swing it home, and the loss shouldn't snap the instant it crosses.
+        if (worldAdrift(e.body, core, PHYSICS.G, PHYSICS.SOFTENING, ejectR)) {
+          // Past the edge AND unbound — but grant a grace beat: a chaotic kick
+          // can still bend it back, and the loss shouldn't snap the instant the
+          // verdict first fires.
           e.secondsAdrift += dt;
           if (e.secondsAdrift > EJECT_GRACE) {
             this.sandboxOutcome = 'ejection';
             return;
           }
         } else {
-          e.secondsAdrift = 0; // pulled home — reprieve
+          e.secondsAdrift = 0; // inside the line, or bound and coming home
         }
       }
     }
@@ -1216,16 +1293,21 @@ export class Game {
   // The hunt found you: a strike detonates your brightest star — the loud one
   // that gave you away — and ends the run. Reuses the supernova flash visual.
   private darkForestStrike(): void {
-    const stars = this.sunBodies();
-    const target = stars.reduce<Body | null>(
+    // Target the heaviest CORE star — the hunter locked onto the system at the
+    // canvas centre, and a stripped runaway may be fully off-screen now that
+    // the camera rightly stops chasing it: the climactic beam must land where
+    // the player is looking.
+    const core = this.boundCoreNow();
+    const target = core.members.reduce<Body | null>(
       (best, b) => (!best || b.mass > best.mass ? b : best),
       null,
     );
     if (target && this.nbody) {
       // Aim the beam from the locked hunter (canvas space) to where the doomed
-      // star is SEEN: the camera draws world point P at centre + (P − COM)·zoom,
-      // so map the star into that same canvas space for the beam's far end.
-      const com = this.systemCOM();
+      // star is SEEN: the camera draws world point P at centre + (P − COM)·zoom
+      // with COM = the viewCOM the camera itself follows, so map the star into
+      // that same canvas space for the beam's far end.
+      const com = this.viewCOM ?? core;
       const { width: cw, height: ch } = this.renderer.layout.canvas;
       const z = this.cameraZoom;
       const hunter = this.darkForest?.systems.find(s => s.hunter);
@@ -1272,8 +1354,13 @@ export class Game {
       },
       null,
     );
-    const stars = this.sunBodies();
-    const com = this.systemCOM();
+    // Target and map through the CORE: the annihilated star must be one the
+    // player can see (a stripped runaway may be off-frame), and the beam's far
+    // end must live in the same canvas space the camera draws — which follows
+    // viewCOM, not the raw all-body COM.
+    const core = this.boundCoreNow();
+    const stars = core.members;
+    const com = this.viewCOM ?? core;
     const z = this.cameraZoom;
     const beamTo = (p: { x: number; y: number }) => ({
       toX: cw / 2 + (p.x - com.x) * z,
@@ -1713,16 +1800,25 @@ export class Game {
     });
   }
 
-  // Ease the camera zoom toward whatever fits the whole system in frame. Only
-  // the unravel pulls back (its bodies fling wide); the two-body game holds at
-  // zoom 1. Smoothed so a slingshot doesn't snap the view.
+  // Ease the camera zoom toward whatever fits the BOUND CORE + worlds in
+  // frame. Only the unravel pulls back (its bodies fling wide); the two-body
+  // game holds at zoom 1. Smoothed so a slingshot doesn't snap the view. A
+  // runaway stripped from the core no longer stretches the fit: it exits the
+  // frame instead of pinning the camera at max pull-back while the live system
+  // shrinks to a speck. Centred on the same viewCOM the offset uses, so the
+  // fit is exact for what is actually drawn.
   private computeCameraZoom(dt: number): number {
     let target = 1;
     if (this.nbody && this.state === 'resolved' && this.nbody.bodies.length > 0) {
-      const com = this.systemCOM();
+      const core = this.boundCoreNow();
+      const centre = this.viewCOM ?? core;
       let maxExtent = 0;
-      for (const b of this.nbody.bodies) {
-        const d = Math.hypot(b.pos.x - com.x, b.pos.y - com.y);
+      for (const b of core.members) {
+        const d = Math.hypot(b.pos.x - centre.x, b.pos.y - centre.y);
+        if (d > maxExtent) maxExtent = d;
+      }
+      for (const e of this.worlds) {
+        const d = Math.hypot(e.body.pos.x - centre.x, e.body.pos.y - centre.y);
         if (d > maxExtent) maxExtent = d;
       }
       const { width: w, height: h } = this.renderer.layout.canvas;
@@ -1738,10 +1834,12 @@ export class Game {
   // when net linear momentum drifts the whole system. Returns null in
   // non-sim states where no offset should apply (title, setup, countdown).
   private computeCameraOffset(): { x: number; y: number } | null {
-    // During the three-body unravel, follow the barycenter of all three so the
-    // chaos stays watchable as it scatters.
+    // During the unravel, follow the bound core's presentation barycenter
+    // (viewCOM: the true core COM plus the decaying glide) so the live system
+    // stays watchable — and centred where Act III stages its hunt — instead of
+    // chasing the all-body COM out after every runaway.
     if (this.nbody && this.state === 'resolved') {
-      const c = this.nbody.centerOfMass();
+      const c = this.viewCOM ?? this.boundCoreNow();
       return {
         x: this.renderer.layout.canvas.width / 2 - c.x,
         y: this.renderer.layout.canvas.height / 2 - c.y,
