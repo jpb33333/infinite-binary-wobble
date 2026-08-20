@@ -134,10 +134,45 @@ describe('boundCore — who still counts as the system', () => {
     expect(core.mass).toBe(1);
   });
 
-  test('the strip distance is 3D: a z-axis runaway is stripped too', () => {
-    const suns = [...binary(), star(1, 0, 0, 0, 0, 150, 10)];
+  test('staging is 2D: a sun escaping straight out of plane stays a member', () => {
+    // It is still DRAWN at the canvas centre (the stage is 2D), so it stays in
+    // the frame the camera, beams, and worlds are judged against — it only
+    // strips once its planar distance crosses the boundary. Mirrors
+    // worldAdrift's staging rule exactly.
+    const suns = [...binary(), star(1, 0, 30, 0, 0, 150, 10)];
     const core = boundCore(suns, G, SOFT, REACH);
-    expect(core.members).toHaveLength(2);
+    expect(core.members).toHaveLength(3);
+  });
+
+  test('a lighter-but-lucky float tie cannot steal the core (ULP-tolerant tie-break)', () => {
+    // A pure two-sun fission is an ANALYTIC energy tie, but frameOf's (m·v)/m
+    // round-trip breaks bitwise equality for full-entropy masses — on `===`
+    // the survivor was decided by rounding noise and flipped frame to frame.
+    const suns = [
+      star(3.7, -137.3, 11.9, -9.83, 1.07),
+      star(1.3, 151.2, -7.4, 10.41, -0.93),
+    ];
+    const core = boundCore(suns, G, SOFT, REACH);
+    expect(core.members).toHaveLength(1);
+    expect(core.members[0].mass).toBe(3.7);
+  });
+
+  test('the rejoin cannot smuggle a flagrant escaper back in (strip → rejoin → strip)', () => {
+    // Review counterexample at production constants: a fast passer-by inside
+    // the boundary (s1) pollutes the frame that re-admits a marginal escaper
+    // (s2); without the final strip pass the returned core kept all three,
+    // with its COM dragged 800 px into empty space. The settled core must be
+    // the anchor star alone, at the origin.
+    const [g, soft, reach] = [1.5e7, 6, 1600];
+    const suns = [
+      star(2, 0, 0, 0, 0), // the anchor
+      star(1, 1500, 0, -435, 0), // fast passer-by, inside the line
+      star(1, -4750, 0, -145, 0), // marginal escaper, far out
+    ];
+    const core = boundCore(suns, g, soft, reach);
+    expect(core.members).toHaveLength(1);
+    expect(core.members[0].mass).toBe(2);
+    expect(core.x).toBeCloseTo(0, 9);
   });
 
   test('the core carries the members’ mass-weighted velocity (the frame worlds are judged in)', () => {

@@ -32,7 +32,9 @@ export function planetEjectRadius(minDim: number): number {
 // glides instead of snap-cutting. Deliberately NOT first-order easing of the
 // COM itself: post-win systems carry net momentum, and easing a moving target
 // lags it forever — the absorber tracks exactly between jumps, zero lag.
-export const COM_GLIDE = 2.5; // per-second decay of an absorbed jump (matches CAMERA_EASE's feel)
+// Per-second decay of an absorbed jump. Aliased to CAMERA_EASE so the pan and
+// the zoom breathe at one rate — split them only if play says otherwise.
+export const COM_GLIDE = CAMERA_EASE;
 
 // Seed the absorber across a discontinuity: the delta that keeps the viewed
 // point where it was — newCOM + delta = the point the camera was looking at.
