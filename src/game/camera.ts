@@ -23,3 +23,35 @@ export function cameraFitRadius(minDim: number): number {
 export function planetEjectRadius(minDim: number): number {
   return cameraFitRadius(minDim) / CAMERA_MIN_ZOOM;
 }
+
+// ── The COM glide (snap absorber) ──
+// The camera tracks the bound core's barycenter exactly — but that barycenter
+// JUMPS when core membership changes (a star added, a runaway stripped from
+// the core, a graze annihilation). The absorber keeps the viewed point
+// continuous across the jump and decays the difference away, so the view
+// glides instead of snap-cutting. Deliberately NOT first-order easing of the
+// COM itself: post-win systems carry net momentum, and easing a moving target
+// lags it forever — the absorber tracks exactly between jumps, zero lag.
+// Per-second decay of an absorbed jump. Aliased to CAMERA_EASE so the pan and
+// the zoom breathe at one rate — split them only if play says otherwise.
+export const COM_GLIDE = CAMERA_EASE;
+
+// Seed the absorber across a discontinuity: the delta that keeps the viewed
+// point where it was — newCOM + delta = the point the camera was looking at.
+export function seedGlide(
+  prevView: { x: number; y: number },
+  nextCOM: { x: number; y: number },
+): { x: number; y: number } {
+  return { x: prevView.x - nextCOM.x, y: prevView.y - nextCOM.y };
+}
+
+// Decay the absorbed jump toward zero. Exponential, so it is frame-rate
+// independent: two half-steps land exactly where one full step does.
+export function glideStep(
+  delta: { x: number; y: number },
+  dt: number,
+  rate: number = COM_GLIDE,
+): { x: number; y: number } {
+  const k = Math.exp(-rate * dt);
+  return { x: delta.x * k, y: delta.y * k };
+}

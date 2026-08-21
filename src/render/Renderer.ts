@@ -252,6 +252,13 @@ export class Renderer {
   // — the orbit, the arrow, the countdown — IS the content and keeps moving.
   private reducedMotion = false;
 
+  // The Game reads this to snap (rather than glide) the camera's barycenter
+  // across membership jumps: a large smooth whole-scene pan is the classic
+  // vestibular trigger, so under reduced motion it becomes a cut.
+  get prefersReducedMotion(): boolean {
+    return this.reducedMotion;
+  }
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d');

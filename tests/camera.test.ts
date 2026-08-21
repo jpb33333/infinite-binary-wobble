@@ -1,8 +1,11 @@
 import { describe, test, expect } from 'vitest';
 import {
   CAMERA_MIN_ZOOM,
+  COM_GLIDE,
   cameraFitRadius,
   planetEjectRadius,
+  seedGlide,
+  glideStep,
 } from '../src/game/camera.ts';
 
 // The post-win unravel lets a planet slingshot freely (no leash). A planet flung
@@ -39,5 +42,43 @@ describe('planet ejection boundary ties to the camera’s furthest pull-back', (
     expect(planetEjectRadius(1600)).toBeCloseTo(planetEjectRadius(800) * 2, 9);
     expect(cameraFitRadius(minDim)).toBeGreaterThan(0);
     expect(planetEjectRadius(minDim)).toBeGreaterThan(cameraFitRadius(minDim));
+  });
+});
+
+// The COM glide: when the tracked barycenter jumps (a star added, a runaway
+// stripped from the bound core, a graze annihilation), the camera's viewed
+// point must stay continuous and then ease home — never snap-cut.
+describe('COM glide (snap absorber)', () => {
+  test('seeding preserves the viewed point exactly across a COM jump', () => {
+    const prevView = { x: 10, y: 5 };
+    const nextCOM = { x: 310, y: -95 }; // a ~300 px membership jump
+    const delta = seedGlide(prevView, nextCOM);
+    expect(nextCOM.x + delta.x).toBeCloseTo(prevView.x, 12);
+    expect(nextCOM.y + delta.y).toBeCloseTo(prevView.y, 12);
+  });
+
+  test('the absorbed jump decays exponentially to nothing', () => {
+    let delta = { x: 100, y: -40 };
+    const mag0 = Math.hypot(delta.x, delta.y);
+    delta = glideStep(delta, 1);
+    expect(Math.hypot(delta.x, delta.y)).toBeCloseTo(mag0 * Math.exp(-COM_GLIDE), 9);
+    for (let i = 0; i < 5; i++) delta = glideStep(delta, 1);
+    expect(Math.hypot(delta.x, delta.y)).toBeLessThan(1e-3); // gone within seconds
+  });
+
+  test('frame-rate independent: two half-steps land exactly where one full step does', () => {
+    const full = glideStep({ x: 80, y: 60 }, 1 / 30);
+    const halves = glideStep(glideStep({ x: 80, y: 60 }, 1 / 60), 1 / 60);
+    expect(halves.x).toBeCloseTo(full.x, 12);
+    expect(halves.y).toBeCloseTo(full.y, 12);
+  });
+
+  test('a COM-conserving change (a merge) seeds a zero delta — exact tracking has zero lag', () => {
+    // Merges replace bodies but conserve the barycenter: the seeded delta is 0,
+    // and a zero delta stays zero — the camera keeps tracking exactly.
+    const view = { x: 42, y: -7 };
+    const delta = seedGlide(view, { x: 42, y: -7 });
+    expect(delta).toEqual({ x: 0, y: 0 });
+    expect(glideStep(delta, 1 / 60)).toEqual({ x: 0, y: 0 });
   });
 });

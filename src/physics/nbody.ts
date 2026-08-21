@@ -161,18 +161,6 @@ export function totalMomentum(bodies: Body[]): { x: number; y: number; z: number
   return { x, y, z };
 }
 
-export function centerOfMass(bodies: Body[]): { x: number; y: number } {
-  let mx = 0;
-  let my = 0;
-  let m = 0;
-  for (const b of bodies) {
-    mx += b.mass * b.pos.x;
-    my += b.mass * b.pos.y;
-    m += b.mass;
-  }
-  return m > 0 ? { x: mx / m, y: my / m } : { x: 0, y: 0 };
-}
-
 // Smallest current distance between any pair — collision detection reads this.
 export function minPairSeparation(bodies: Body[]): number {
   let min = Infinity;
@@ -352,9 +340,5 @@ export class NBodySimulation {
 
   momentum(): { x: number; y: number; z: number } {
     return totalMomentum(this.bodies);
-  }
-
-  centerOfMass(): { x: number; y: number } {
-    return centerOfMass(this.bodies);
   }
 }
